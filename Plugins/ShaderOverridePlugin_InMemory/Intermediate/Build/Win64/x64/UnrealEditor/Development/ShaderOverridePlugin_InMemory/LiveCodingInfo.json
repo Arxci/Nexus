@@ -1,0 +1,9 @@
+{
+	"RemapUnityFiles": 
+	{
+		"Module.ShaderOverridePlugin_InMemory.cpp.obj": [
+			"PerModuleInline.gen.cpp.obj",
+			"ShaderOverridePlugin_InMemory.cpp.obj"
+		]
+	}
+}

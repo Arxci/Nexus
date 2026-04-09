@@ -1,0 +1,14 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "c:\\users\\garrett\\documents\\unreal projects\\nexus\\plugins\\shaderoverrideplugin_inmemory\\source\\shaderoverrideplugin_inmemory\\private\\shaderoverrideplugin_inmemory.cpp",
+        "ProvidedModule": "",
+        "PCH": "c:\\users\\garrett\\documents\\unreal projects\\nexus\\intermediate\\build\\win64\\x64\\nexuseditor\\development\\unrealed\\sharedpch.unrealed.project.valapi.valexpapi.cpp20.inclorderunreal5_4.h.pch",
+        "Includes": [
+            "c:\\users\\garrett\\documents\\unreal projects\\nexus\\plugins\\shaderoverrideplugin_inmemory\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\shaderoverrideplugin_inmemory\\definitions.shaderoverrideplugin_inmemory.h",
+            "c:\\users\\garrett\\documents\\unreal projects\\nexus\\plugins\\shaderoverrideplugin_inmemory\\source\\shaderoverrideplugin_inmemory\\public\\shaderoverrideplugin_inmemory.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}
