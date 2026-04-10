@@ -9,15 +9,14 @@
 
 UNexusAbilitySystemComponent::UNexusAbilitySystemComponent()
 {
-	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bCanEverTick = false;
 }
-
 
 UNexusAbility* UNexusAbilitySystemComponent::GiveAbility(const TSubclassOf<UNexusAbility> AbilityClass)
 {
 	if (!AbilityClass || GrantedAbilities.Contains(AbilityClass)) return nullptr;	
 	
-	if (UNexusAbility* NewAbility = NewObject<UNexusAbility>(GetOwner(), AbilityClass))
+	if (UNexusAbility* NewAbility = NewObject<UNexusAbility>(this, AbilityClass))
 	{
 		GrantedAbilities.Add(AbilityClass, NewAbility);
 		return NewAbility;

@@ -42,7 +42,6 @@ TStatId UNexusAbility::GetStatId() const
 
 UNexusAbilitySystemComponent* UNexusAbility::GetNexusComponent() const
 {
-	// The component created us, so it is our Outer object
 	return Cast<UNexusAbilitySystemComponent>(GetOuter());
 }
 

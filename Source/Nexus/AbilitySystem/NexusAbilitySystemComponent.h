@@ -3,12 +3,14 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Components/ActorComponent.h"
 #include "NexusAbilitySystemComponent.generated.h"
 
 class ACharacter;
 class AController;
-class UActorComponent;
 class UNexusAbility;
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAbilityStateChanged, UNexusAbility*, Ability);
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class NEXUS_API UNexusAbilitySystemComponent : public UActorComponent
@@ -26,7 +28,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	AController* GetController() const { return CachedController; }
 
-protected:
 	UFUNCTION(BlueprintCallable, Category="Ability System")
 	UNexusAbility* GiveAbility(TSubclassOf<UNexusAbility> AbilityClass);
 
@@ -35,6 +36,15 @@ protected:
 
 	UFUNCTION(BlueprintCallable, Category="Ability System")
 	bool TryDeactivateAbilityByClass(TSubclassOf<UNexusAbility> InAbilityToDeactivate);
+
+	UPROPERTY(BlueprintAssignable)
+	FOnAbilityStateChanged OnAbilityActivated;
+
+	UPROPERTY(BlueprintAssignable)
+	FOnAbilityStateChanged OnAbilityDeactivated;
+
+protected:
+
 
 	UPROPERTY(Transient)
 	ACharacter* CachedCharacter = nullptr;

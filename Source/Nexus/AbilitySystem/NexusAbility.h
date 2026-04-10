@@ -20,6 +20,8 @@ class NEXUS_API UNexusAbility : public UObject, public FTickableGameObject
 	GENERATED_BODY()
 
 public:
+	UNexusAbility();
+	
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Ability System|Abilities")
 	void ActivateAbility();
 	virtual void ActivateAbility_Implementation();

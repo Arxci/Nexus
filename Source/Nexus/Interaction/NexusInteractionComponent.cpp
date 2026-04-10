@@ -5,6 +5,11 @@
 #include "AbilitySystemComponent.h"
 
 
+UNexusInteractionComponent::UNexusInteractionComponent()
+{
+
+}
+
 void UNexusInteractionComponent::TickComponent(float DeltaTime, ELevelTick TickType,
                                                FActorComponentTickFunction* ThisTickFunction)
 {

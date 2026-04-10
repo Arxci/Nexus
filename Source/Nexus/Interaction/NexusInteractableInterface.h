@@ -20,8 +20,11 @@ class NEXUS_API INexusInteractableInterface
 
 
 protected:
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Interaction")
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interaction")
 	void TryStartInteraction();
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Interaction")
+	virtual void TryStartInteraction_Implementation();
+
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interaction")
 	void TryStopInteraction();
+	virtual void TryStopInteraction_Implementation();
 };
