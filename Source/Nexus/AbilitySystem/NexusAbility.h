@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "UObject/NoExportTypes.h"
 #include "Tickable.h"
 #include "GameplayTagContainer.h"
 #include "NexusAbility.generated.h"
@@ -26,13 +25,14 @@ class NEXUS_API UNexusAbility : public UObject, public FTickableGameObject
 public:
 	UNexusAbility();
 	
-	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Ability System|Abilities")
-	void ActivateAbility();
-	virtual void ActivateAbility_Implementation();
-
-	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Ability System|Abilities")
-	void DeactivateAbility();
-	virtual void DeactivateAbility_Implementation();
+	virtual void OnActivateAbility();
+    virtual void OnDeactivateAbility();
+	
+    UFUNCTION(BlueprintImplementableEvent, Category = "Ability System|Abilities")
+    void K2_OnActivateAbility();
+    
+    UFUNCTION(BlueprintImplementableEvent, Category = "Ability System|Abilities")
+    void K2_OnDeactivateAbility();
 
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Ability System|Abilities")
 	bool CanActivateAbility() const;
@@ -45,7 +45,7 @@ public:
 	class UNexusAbilitySystemComponent* GetNexusAbilitySystemComponent() const;
 
 	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
-	ACharacter* GetCharacter() const;
+    AActor* GetAvatarActor() const;
 
 	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
 	AController* GetController() const;

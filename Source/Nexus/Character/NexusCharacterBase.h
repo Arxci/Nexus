@@ -14,7 +14,7 @@ class NEXUS_API ANexusCharacterBase : public ACharacter, public INexusAbilitySys
 	GENERATED_BODY()
 
 public:
-	ANexusCharacterBase(const class FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
+	ANexusCharacterBase(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
 	virtual UNexusAbilitySystemComponent* GetNexusAbilityComponent() const override;
 

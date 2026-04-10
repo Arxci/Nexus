@@ -29,6 +29,6 @@ void ANexusCharacterBase::PossessedBy(AController* NewController)
 
 	if (NexusAbilitySystemComponent)
 	{
-		NexusAbilitySystemComponent->InitAbilityActorInfo(this);
+		NexusAbilitySystemComponent->InitAbilityActorInfo(this, NewController);
 	}
 }

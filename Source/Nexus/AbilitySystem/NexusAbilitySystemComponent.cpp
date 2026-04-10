@@ -12,12 +12,12 @@ UNexusAbilitySystemComponent::UNexusAbilitySystemComponent()
 	PrimaryComponentTick.bCanEverTick = false;
 }
 
-void UNexusAbilitySystemComponent::InitAbilityActorInfo(ACharacter* InCharacter)
+void UNexusAbilitySystemComponent::InitAbilityActorInfo(AActor* InOwnerActor, AController* InController)
 {
-	if (InCharacter)
+	if (InController)
 	{
-		CachedCharacter = InCharacter;
-		CachedController = InCharacter->GetController();
+		CachedAvatarActor = InOwnerActor;
+		CachedController = InController;
 	}
 }
 
@@ -101,7 +101,7 @@ bool UNexusAbilitySystemComponent::TryActivateAbilityByClass(const TSubclassOf<U
 
 	FoundAbility->ActivationState = ENexusAbilityActivationState::Active;
 	
-	FoundAbility->ActivateAbility();
+	FoundAbility->OnActivateAbility();
 	OnAbilityActivated.Broadcast(FoundAbility);
 
 	if (!FoundAbility->bStartCooldownOnEnd)
@@ -139,7 +139,7 @@ void UNexusAbilitySystemComponent::DeactivateAbility(UNexusAbility* Ability)
 		RemoveTags(Ability->ActivationOwnedTags);
 	}
 	
-	Ability->DeactivateAbility();
+	Ability->OnDeactivateAbility();
 	OnAbilityDeactivated.Broadcast(Ability);
 
 	if (Ability->bStartCooldownOnEnd)

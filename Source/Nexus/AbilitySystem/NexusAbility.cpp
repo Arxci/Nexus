@@ -3,7 +3,6 @@
 
 #include "NexusAbility.h"
 #include "NexusAbilitySystemComponent.h"
-#include "GameFramework/Character.h"
 
 UNexusAbility::UNexusAbility()
 {
@@ -11,14 +10,14 @@ UNexusAbility::UNexusAbility()
 	bIsEnabled = true;
 }
 
-void UNexusAbility::ActivateAbility_Implementation()
+void UNexusAbility::OnActivateAbility()
 {
-
+	K2_OnActivateAbility();
 }
 
-void UNexusAbility::DeactivateAbility_Implementation()
+void UNexusAbility::OnDeactivateAbility()
 {
-	
+    K2_OnDeactivateAbility();
 }
 
 bool UNexusAbility::CanActivateAbility_Implementation() const
@@ -54,7 +53,7 @@ float UNexusAbility::GetCooldownProgress() const
 	if (CooldownDuration <= 0.0f) return 1.0f;
 	const float Remaining = GetCooldownRemaining();
 	if (Remaining <= 0.0f) return 1.0f;
-	return 1.0f - (Remaining / CooldownDuration);
+	return 1.0f - Remaining / CooldownDuration;
 }
 
 void UNexusAbility::CommitCooldown()
@@ -82,7 +81,6 @@ bool UNexusAbility::IsTickable() const
 
 TStatId UNexusAbility::GetStatId() const
 {
-	// Required for Unreal's profiler. 
 	RETURN_QUICK_DECLARE_CYCLE_STAT(UNexusAbility, STATGROUP_Tickables);
 }
 
@@ -91,18 +89,18 @@ UNexusAbilitySystemComponent* UNexusAbility::GetNexusAbilitySystemComponent() co
 	return Cast<UNexusAbilitySystemComponent>(GetOuter());
 }
 
-ACharacter* UNexusAbility::GetCharacter() const
+AActor* UNexusAbility::GetAvatarActor() const
 {
-	if (UNexusAbilitySystemComponent* Comp = GetNexusAbilitySystemComponent())
+	if (const UNexusAbilitySystemComponent* Comp = GetNexusAbilitySystemComponent())
 	{
-		return Comp->GetCharacter(); 
+		return Comp->GetAvatarActor();
 	}
 	return nullptr;
 }
 
 AController* UNexusAbility::GetController() const
 {
-	if (UNexusAbilitySystemComponent* Comp = GetNexusAbilitySystemComponent())
+	if (const UNexusAbilitySystemComponent* Comp = GetNexusAbilitySystemComponent())
 	{
 		return Comp->GetController(); 
 	}
@@ -111,9 +109,9 @@ AController* UNexusAbility::GetController() const
 
 UWorld* UNexusAbility::GetWorld() const
 {
-	if (const ACharacter* Char = GetCharacter())
+	if (const AActor* Actor = GetAvatarActor())
 	{
-		return Char->GetWorld();
+		return Actor->GetWorld();
 	}
 	return nullptr;
 }

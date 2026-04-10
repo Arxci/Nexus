@@ -8,7 +8,7 @@ public class Nexus : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "GameplayAbilities", "GameplayTasks", "GameplayTags" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "GameplayTags" });
 
 		PrivateDependencyModuleNames.AddRange(new string[] { "InputCore", "EnhancedInput", "CommonInput", "ModularGameplay",  });
 

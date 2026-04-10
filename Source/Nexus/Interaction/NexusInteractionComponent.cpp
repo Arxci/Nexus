@@ -2,7 +2,6 @@
 
 
 #include "NexusInteractionComponent.h"
-#include "AbilitySystemComponent.h"
 
 
 UNexusInteractionComponent::UNexusInteractionComponent()

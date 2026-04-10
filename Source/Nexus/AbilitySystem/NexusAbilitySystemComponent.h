@@ -22,12 +22,12 @@ class NEXUS_API UNexusAbilitySystemComponent : public UActorComponent
 public:
 	UNexusAbilitySystemComponent();
 
-	void InitAbilityActorInfo(ACharacter* InCharacter);
+	void InitAbilityActorInfo(AActor* InOwnerActor, AController* InController);
 
 	// --- Getters ---
 
-	UFUNCTION(BlueprintCallable, Category = "Ability System")
-	ACharacter* GetCharacter() const { return CachedCharacter; }
+    UFUNCTION(BlueprintCallable, Category = "Ability System")
+    AActor* GetAvatarActor() const { return GetOwner(); }
 
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	AController* GetController() const { return CachedController; }
@@ -80,37 +80,37 @@ public:
 	// --- Tags ---
 
 	/** Check whether the component currently has a specific tag */
-	UFUNCTION(BlueprintCallable, Category = "Ability System|Tags")
+	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	bool HasTag(FGameplayTag Tag) const;
 
-	/** Check whether the component currently has ALL of the specified tags */
-	UFUNCTION(BlueprintCallable, Category = "Ability System|Tags")
+	/** Check whether the component currently has ALL the specified tags */
+	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	bool HasAllTags(const FGameplayTagContainer& TagContainer) const;
 
 	/** Check whether the component currently has ANY of the specified tags */
-	UFUNCTION(BlueprintCallable, Category = "Ability System|Tags")
+	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	bool HasAnyTags(const FGameplayTagContainer& TagContainer) const;
 
 	/** Get the current owned tags */
-	UFUNCTION(BlueprintCallable, Category = "Ability System|Tags")
+	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	FGameplayTagContainer GetOwnedTags() const;
 
 	/** Add a loose gameplay tag. Increments the tag's ref count. */
-	UFUNCTION(BlueprintCallable, Category = "Ability System|Tags")
+	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	void AddLooseGameplayTag(FGameplayTag Tag);
 
 	/** Remove a loose gameplay tag. Decrements the tag's ref count. */
-	UFUNCTION(BlueprintCallable, Category = "Ability System|Tags")
+	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	void RemoveLooseGameplayTag(FGameplayTag Tag);
 
-	UPROPERTY(BlueprintAssignable, Category = "Ability System|Tags")
+	UPROPERTY(BlueprintAssignable, Category = "Ability System")
 	FOnTagChanged OnTagChanged;
 
 protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	
 	UPROPERTY(Transient)
-	ACharacter* CachedCharacter = nullptr;
+	AActor* CachedAvatarActor  = nullptr;
 
 	UPROPERTY(Transient)
 	AController* CachedController = nullptr;

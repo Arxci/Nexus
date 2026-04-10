@@ -4,7 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "Nexus/Character/NexusCharacterBase.h"
-#include "GameFramework/Character.h"
 #include "InputActionValue.h"
 
 #include "NexusHeroCharacter.generated.h"
@@ -20,10 +19,10 @@ class NEXUS_API ANexusHeroCharacter : public ANexusCharacterBase
 	GENERATED_BODY()
 
 public:
-	ANexusHeroCharacter(const class FObjectInitializer& ObjectInitializer  = FObjectInitializer::Get());
+	ANexusHeroCharacter(const FObjectInitializer& ObjectInitializer  = FObjectInitializer::Get());
 
-	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-	virtual void CalcCamera(float DeltaTime, struct FMinimalViewInfo& OutResult) override;
+	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
+	virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult) override;
 
 protected:
 	virtual void BeginPlay() override;
