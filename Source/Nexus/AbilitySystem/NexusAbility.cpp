@@ -7,21 +7,24 @@
 
 UNexusAbility::UNexusAbility()
 {
-	CurrentState = ENexusAbilityState::Inactive;
+	ActivationState = ENexusAbilityActivationState::Idle;
+	bIsEnabled = true;
 }
 
 void UNexusAbility::ActivateAbility_Implementation()
 {
-	if (CurrentState == ENexusAbilityState::Active) return; 
-    
-	CurrentState = ENexusAbilityState::Active;
+
 }
 
 void UNexusAbility::DeactivateAbility_Implementation()
 {
-	if (CurrentState == ENexusAbilityState::Inactive) return;
 	
-	CurrentState = ENexusAbilityState::Inactive;
+}
+
+bool UNexusAbility::CanActivateAbility_Implementation() const
+{
+
+	return true;
 }
 
 void UNexusAbility::Tick(float DeltaTime)
@@ -31,7 +34,9 @@ void UNexusAbility::Tick(float DeltaTime)
 
 bool UNexusAbility::IsTickable() const
 {
-	return CurrentState == ENexusAbilityState::Active && !HasAnyFlags(RF_ClassDefaultObject);
+	return bIsEnabled
+		&& ActivationState == ENexusAbilityActivationState::Active
+		&& !HasAnyFlags(RF_ClassDefaultObject);
 }
 
 TStatId UNexusAbility::GetStatId() const

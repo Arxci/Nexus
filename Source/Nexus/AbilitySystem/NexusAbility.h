@@ -5,19 +5,23 @@
 #include "CoreMinimal.h"
 #include "UObject/NoExportTypes.h"
 #include "Tickable.h"
+#include "GameplayTagContainer.h"
 #include "NexusAbility.generated.h"
 
+
 UENUM(BlueprintType)
-enum class ENexusAbilityState : uint8
+enum class ENexusAbilityActivationState : uint8
 {
-	Inactive    UMETA(DisplayName = "Inactive"),
-	Active      UMETA(DisplayName = "Active"),
+	Idle    UMETA(DisplayName = "Idle"),
+	Active  UMETA(DisplayName = "Active"),
 };
 
 UCLASS()
 class NEXUS_API UNexusAbility : public UObject, public FTickableGameObject
 {
 	GENERATED_BODY()
+
+	friend class UNexusAbilitySystemComponent;
 
 public:
 	UNexusAbility();
@@ -30,6 +34,10 @@ public:
 	void DeactivateAbility();
 	virtual void DeactivateAbility_Implementation();
 
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Ability System|Abilities")
+	bool CanActivateAbility() const;
+	virtual bool CanActivateAbility_Implementation() const;
+
 	class UNexusAbilitySystemComponent* GetNexusComponent() const;
 
 	UFUNCTION(BlueprintCallable, Category = "Abilities")
@@ -41,7 +49,13 @@ public:
 	virtual UWorld* GetWorld() const override;
 
 	UFUNCTION(BlueprintCallable, Category = "Abilities")
-	ENexusAbilityState GetState() const { return CurrentState; }
+	ENexusAbilityActivationState GetActivationState() const { return ActivationState; }
+
+	UFUNCTION(BlueprintCallable, Category = "Abilities")
+	bool IsEnabled() const { return bIsEnabled; }
+
+	UFUNCTION(BlueprintCallable, Category = "Abilities")
+	bool IsActive() const { return ActivationState == ENexusAbilityActivationState::Active; }
 
 	virtual void Tick(float DeltaTime) override;
 	virtual bool IsTickable() const override;
@@ -49,7 +63,27 @@ public:
 
 protected:
 	UPROPERTY(BlueprintReadOnly, Category = "Abilities")
-	ENexusAbilityState CurrentState = ENexusAbilityState::Inactive;
+	ENexusAbilityActivationState ActivationState = ENexusAbilityActivationState::Idle;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Abilities")
+	bool bIsEnabled = true;
 	
-	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Tags")
+	FGameplayTagContainer AbilityTags;
+
+	/** Tags applied to the owning actor while this ability is active */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Tags")
+	FGameplayTagContainer ActivationOwnedTags;
+
+	/** Tags that must ALL be present on the owner for activation */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Tags")
+	FGameplayTagContainer ActivationRequiredTags;
+
+	/** Tags that must ALL be absent from the owner for activation */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Tags")
+	FGameplayTagContainer ActivationBlockedTags;
+
+	/** On activation, cancel any active abilities whose AbilityTags match any of these tags */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Tags")
+	FGameplayTagContainer CancelAbilitiesWithTags;
 };
