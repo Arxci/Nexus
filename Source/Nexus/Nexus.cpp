@@ -3,4 +3,6 @@
 #include "Nexus.h"
 #include "Modules/ModuleManager.h"
 
-IMPLEMENT_PRIMARY_GAME_MODULE( FDefaultGameModuleImpl, Nexus, "Nexus" );
+DEFINE_LOG_CATEGORY(LogNexusAbilitySystem);
+
+IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Nexus, "Nexus");

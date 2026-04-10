@@ -4,6 +4,7 @@
 #include "NexusAbilitySystemComponent.h"
 #include "NexusAbility.h" 
 #include "GameFramework/Character.h" 
+#include "Nexus/Nexus.h"
 
 
 UNexusAbilitySystemComponent::UNexusAbilitySystemComponent()
@@ -20,6 +21,13 @@ void UNexusAbilitySystemComponent::InitAbilityActorInfo(ACharacter* InCharacter)
 	}
 }
 
+void UNexusAbilitySystemComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	DeactivateAllAbilities();
+	Super::EndPlay(EndPlayReason);
+}
+
+// --- Ability Lifecycle ---
 
 UNexusAbility* UNexusAbilitySystemComponent::GiveAbility(const TSubclassOf<UNexusAbility> AbilityClass)
 {
@@ -39,15 +47,47 @@ bool UNexusAbilitySystemComponent::TryActivateAbilityByClass(const TSubclassOf<U
 	if (!InAbilityToActivate) return false;
 
 	UNexusAbility* FoundAbility = GrantedAbilities.FindRef(InAbilityToActivate);
-	if (!FoundAbility) return false;
+	if (!FoundAbility)
+	{
+		UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: not granted"),
+			*InAbilityToActivate->GetName());
+		return false;
+	}
 	
-	if (!FoundAbility->IsEnabled()) return false;
+	if (!FoundAbility->IsEnabled())
+	{
+		UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: disabled"),
+			*InAbilityToActivate->GetName());
+		return false;
+	}
 	
-	if (FoundAbility->IsActive()) return false;
+	if (FoundAbility->IsActive())
+	{
+		UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: already active"),
+			*InAbilityToActivate->GetName());
+		return false;
+	}
+
+	if (FoundAbility->IsOnCooldown())
+	{
+		UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: on cooldown (%.2fs remaining)"),
+			*InAbilityToActivate->GetName(), FoundAbility->GetCooldownRemaining());
+		return false;
+	}
 	
-	if (!CheckTagRequirements(FoundAbility)) return false;
+	if (!CheckTagRequirements(FoundAbility))
+	{
+		UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: tag requirements not met"),
+			*InAbilityToActivate->GetName());
+		return false;
+	}
 	
-	if (!FoundAbility->CanActivateAbility()) return false;
+	if (!FoundAbility->CanActivateAbility())
+	{
+		UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: CanActivateAbility returned false"),
+			*InAbilityToActivate->GetName());
+		return false;
+	}
 	
 	if (!FoundAbility->CancelAbilitiesWithTags.IsEmpty())
 	{
@@ -64,6 +104,13 @@ bool UNexusAbilitySystemComponent::TryActivateAbilityByClass(const TSubclassOf<U
 	FoundAbility->ActivateAbility();
 	OnAbilityActivated.Broadcast(FoundAbility);
 
+	if (!FoundAbility->bStartCooldownOnEnd)
+	{
+		FoundAbility->CommitCooldown();
+	}
+
+	UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] SUCCESS"), *InAbilityToActivate->GetName());
+
 	return true;
 }
 
@@ -76,8 +123,6 @@ bool UNexusAbilitySystemComponent::TryDeactivateAbilityByClass(const TSubclassOf
 
 	if (!FoundAbility->IsActive()) return false;
 
-	FoundAbility->ActivationState = ENexusAbilityActivationState::Idle;
-
 	DeactivateAbility(FoundAbility);
 	
 	return true;
@@ -86,6 +131,8 @@ bool UNexusAbilitySystemComponent::TryDeactivateAbilityByClass(const TSubclassOf
 void UNexusAbilitySystemComponent::DeactivateAbility(UNexusAbility* Ability)
 {
 	if (!Ability || !Ability->IsActive()) return;
+
+	Ability->ActivationState = ENexusAbilityActivationState::Idle;
 	
 	if (!Ability->ActivationOwnedTags.IsEmpty())
 	{
@@ -94,6 +141,11 @@ void UNexusAbilitySystemComponent::DeactivateAbility(UNexusAbility* Ability)
 	
 	Ability->DeactivateAbility();
 	OnAbilityDeactivated.Broadcast(Ability);
+
+	if (Ability->bStartCooldownOnEnd)
+	{
+		Ability->CommitCooldown();
+	}
 }
 
 void UNexusAbilitySystemComponent::SetAbilityEnabled(TSubclassOf<UNexusAbility> AbilityClass, bool bEnabled)
@@ -110,6 +162,83 @@ void UNexusAbilitySystemComponent::SetAbilityEnabled(TSubclassOf<UNexusAbility> 
 		}
 	}
 }
+
+void UNexusAbilitySystemComponent::DeactivateAllAbilities()
+{
+	for (const auto& Pair : GrantedAbilities)
+	{
+		if (Pair.Value && Pair.Value->IsActive())
+		{
+			DeactivateAbility(Pair.Value);
+		}
+	}
+}
+
+bool UNexusAbilitySystemComponent::TryActivateAbilityByTag(FGameplayTag AbilityTag)
+{
+	if (!AbilityTag.IsValid()) return false;
+
+	for (const auto& Pair : GrantedAbilities)
+	{
+		UNexusAbility* Ability = Pair.Value;
+		if (Ability && Ability->AbilityTags.HasTag(AbilityTag))
+		{
+			if (TryActivateAbilityByClass(Pair.Key))
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+bool UNexusAbilitySystemComponent::TryDeactivateAbilityByTag(FGameplayTag AbilityTag)
+{
+	if (!AbilityTag.IsValid()) return false;
+
+	bool bDeactivatedAny = false;
+	for (const auto& Pair : GrantedAbilities)
+	{
+		UNexusAbility* Ability = Pair.Value;
+		if (Ability && Ability->IsActive() && Ability->AbilityTags.HasTag(AbilityTag))
+		{
+			DeactivateAbility(Ability);
+			bDeactivatedAny = true;
+		}
+	}
+	return bDeactivatedAny;
+}
+
+// --- Ability Queries ---
+
+UNexusAbility* UNexusAbilitySystemComponent::FindAbilityByClass(TSubclassOf<UNexusAbility> AbilityClass) const
+{
+	return GrantedAbilities.FindRef(AbilityClass);
+}
+
+bool UNexusAbilitySystemComponent::IsAbilityActive(TSubclassOf<UNexusAbility> AbilityClass) const
+{
+	if (const UNexusAbility* Ability = GrantedAbilities.FindRef(AbilityClass))
+	{
+		return Ability->IsActive();
+	}
+	return false;
+}
+
+TArray<UNexusAbility*> UNexusAbilitySystemComponent::GetActiveAbilities() const
+{
+	TArray<UNexusAbility*> Result;
+	for (const auto& Pair : GrantedAbilities)
+	{
+		if (Pair.Value && Pair.Value->IsActive())
+		{
+			Result.Add(Pair.Value);
+		}
+	}
+	return Result;
+}
+
+// --- Tags ---
 
 void UNexusAbilitySystemComponent::AddTags(const FGameplayTagContainer& Tags)
 {
@@ -166,6 +295,8 @@ FGameplayTagContainer UNexusAbilitySystemComponent::GetOwnedTags() const
 
 void UNexusAbilitySystemComponent::AddLooseGameplayTag(FGameplayTag Tag)
 {
+	if (!Tag.IsValid()) return;
+
 	int32& Count = TagRefCounts.FindOrAdd(Tag, 0);
 	Count++;
 	if (Count == 1)
@@ -178,6 +309,8 @@ void UNexusAbilitySystemComponent::AddLooseGameplayTag(FGameplayTag Tag)
 
 void UNexusAbilitySystemComponent::RemoveLooseGameplayTag(FGameplayTag Tag)
 {
+	if (!Tag.IsValid()) return;
+
 	if (int32* Count = TagRefCounts.Find(Tag))
 	{
 		(*Count)--;

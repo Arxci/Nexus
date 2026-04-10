@@ -24,11 +24,15 @@ public:
 
 	void InitAbilityActorInfo(ACharacter* InCharacter);
 
+	// --- Getters ---
+
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	ACharacter* GetCharacter() const { return CachedCharacter; }
 
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	AController* GetController() const { return CachedController; }
+
+	// --- Ability Lifecycle ---
 
 	UFUNCTION(BlueprintCallable, Category="Ability System")
 	UNexusAbility* GiveAbility(TSubclassOf<UNexusAbility> AbilityClass);
@@ -39,16 +43,41 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Ability System")
 	bool TryDeactivateAbilityByClass(TSubclassOf<UNexusAbility> InAbilityToDeactivate);
 
+	UFUNCTION(BlueprintCallable, Category = "Ability System")
+	void SetAbilityEnabled(TSubclassOf<UNexusAbility> AbilityClass, bool bEnabled);
+
+	UFUNCTION(BlueprintCallable, Category = "Ability System")
+	void DeactivateAllAbilities();
+	
+	void DeactivateAbility(UNexusAbility* Ability);
+
+	UFUNCTION(BlueprintCallable, Category = "Ability System")
+	bool TryActivateAbilityByTag(FGameplayTag AbilityTag);
+
+	/** Deactivate all active abilities whose AbilityTags contain the given tag */
+	UFUNCTION(BlueprintCallable, Category = "Ability System")
+	bool TryDeactivateAbilityByTag(FGameplayTag AbilityTag);
+
+	// --- Ability Queries ---
+	
+	UFUNCTION(BlueprintCallable, Category = "Ability System")
+	UNexusAbility* FindAbilityByClass(TSubclassOf<UNexusAbility> AbilityClass) const;
+	
+	UFUNCTION(BlueprintCallable, Category = "Ability System")
+	bool IsAbilityActive(TSubclassOf<UNexusAbility> AbilityClass) const;
+	
+	UFUNCTION(BlueprintCallable, Category = "Ability System")
+	TArray<UNexusAbility*> GetActiveAbilities() const;
+
+	// --- Delegates ---
+
 	UPROPERTY(BlueprintAssignable)
 	FOnAbilityStateChanged OnAbilityActivated;
 
 	UPROPERTY(BlueprintAssignable)
 	FOnAbilityStateChanged OnAbilityDeactivated;
 
-	UFUNCTION(BlueprintCallable, Category = "Ability System")
-	void SetAbilityEnabled(TSubclassOf<UNexusAbility> AbilityClass, bool bEnabled);
-	
-	void DeactivateAbility(UNexusAbility* Ability);
+	// --- Tags ---
 
 	/** Check whether the component currently has a specific tag */
 	UFUNCTION(BlueprintCallable, Category = "Ability System|Tags")
@@ -78,6 +107,8 @@ public:
 	FOnTagChanged OnTagChanged;
 
 protected:
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	
 	UPROPERTY(Transient)
 	ACharacter* CachedCharacter = nullptr;
 
@@ -88,21 +119,12 @@ protected:
 	TMap<TSubclassOf<UNexusAbility>, UNexusAbility*> GrantedAbilities;
 
 private:
-	/** Authoritative tag presence: count > 0 means tag is owned */
 	TMap<FGameplayTag, int32> TagRefCounts;
-
-	/** Cached container rebuilt whenever TagRefCounts changes */
 	FGameplayTagContainer OwnedTags;
 
-	/** Add all tags from a container, incrementing ref counts */
+
 	void AddTags(const FGameplayTagContainer& Tags);
-
-	/** Remove all tags from a container, decrementing ref counts */
 	void RemoveTags(const FGameplayTagContainer& Tags);
-
-	/** Check required/blocked tag conditions for an ability */
 	bool CheckTagRequirements(const UNexusAbility* Ability) const;
-
-	/** Cancel active abilities whose AbilityTags overlap with the given tags */
 	void CancelAbilitiesWithTags(const FGameplayTagContainer& Tags);
 };

@@ -16,7 +16,7 @@ enum class ENexusAbilityActivationState : uint8
 	Active  UMETA(DisplayName = "Active"),
 };
 
-UCLASS()
+UCLASS(Blueprintable)
 class NEXUS_API UNexusAbility : public UObject, public FTickableGameObject
 {
 	GENERATED_BODY()
@@ -38,52 +38,80 @@ public:
 	bool CanActivateAbility() const;
 	virtual bool CanActivateAbility_Implementation() const;
 
-	class UNexusAbilitySystemComponent* GetNexusComponent() const;
+	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
+	void EndAbility();
 
-	UFUNCTION(BlueprintCallable, Category = "Abilities")
+	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
+	class UNexusAbilitySystemComponent* GetNexusAbilitySystemComponent() const;
+
+	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
 	ACharacter* GetCharacter() const;
 
-	UFUNCTION(BlueprintCallable, Category = "Abilities")
+	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
 	AController* GetController() const;
 
 	virtual UWorld* GetWorld() const override;
 
-	UFUNCTION(BlueprintCallable, Category = "Abilities")
+	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
 	ENexusAbilityActivationState GetActivationState() const { return ActivationState; }
 
-	UFUNCTION(BlueprintCallable, Category = "Abilities")
+	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
 	bool IsEnabled() const { return bIsEnabled; }
 
-	UFUNCTION(BlueprintCallable, Category = "Abilities")
+	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
 	bool IsActive() const { return ActivationState == ENexusAbilityActivationState::Active; }
+
+	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
+	bool IsOnCooldown() const;
+
+	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
+	float GetCooldownRemaining() const;
+
+	/** Returns 0.0 when cooldown just started, 1.0 when finished */
+	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
+	float GetCooldownProgress() const;
+
+	/** Manually start the cooldown timer. Called automatically by the component based on bStartCooldownOnEnd. */
+	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
+	void CommitCooldown();
 
 	virtual void Tick(float DeltaTime) override;
 	virtual bool IsTickable() const override;
 	virtual TStatId GetStatId() const override;
 
 protected:
-	UPROPERTY(BlueprintReadOnly, Category = "Abilities")
+	UPROPERTY(BlueprintReadOnly, Category = "Ability System|Abilities")
 	ENexusAbilityActivationState ActivationState = ENexusAbilityActivationState::Idle;
 
-	UPROPERTY(BlueprintReadOnly, Category = "Abilities")
+	UPROPERTY(BlueprintReadOnly, Category = "Ability System|Abilities")
 	bool bIsEnabled = true;
 	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Tags")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Abilities")
 	FGameplayTagContainer AbilityTags;
 
 	/** Tags applied to the owning actor while this ability is active */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Tags")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Abilities")
 	FGameplayTagContainer ActivationOwnedTags;
 
 	/** Tags that must ALL be present on the owner for activation */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Tags")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Abilities")
 	FGameplayTagContainer ActivationRequiredTags;
 
 	/** Tags that must ALL be absent from the owner for activation */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Tags")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Abilities")
 	FGameplayTagContainer ActivationBlockedTags;
 
 	/** On activation, cancel any active abilities whose AbilityTags match any of these tags */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Tags")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Abilities")
 	FGameplayTagContainer CancelAbilitiesWithTags;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Abilities", meta = (ClampMin = "0.0"))
+	float CooldownDuration = 0.0f;
+
+	/** If true, cooldown starts when the ability ends. If false, cooldown starts on activation. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Abilities")
+	bool bStartCooldownOnEnd = true;
+
+private:
+	float CooldownEndTime = 0.0f;
 };

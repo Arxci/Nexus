@@ -23,8 +23,49 @@ void UNexusAbility::DeactivateAbility_Implementation()
 
 bool UNexusAbility::CanActivateAbility_Implementation() const
 {
-
 	return true;
+}
+
+void UNexusAbility::EndAbility()
+{
+	if (UNexusAbilitySystemComponent* Comp = GetNexusAbilitySystemComponent())
+	{
+		Comp->DeactivateAbility(this);
+	}
+}
+
+bool UNexusAbility::IsOnCooldown() const
+{
+	if (CooldownDuration <= 0.0f) return false;
+	const UWorld* World = GetWorld();
+	return World && World->GetTimeSeconds() < CooldownEndTime;
+}
+
+float UNexusAbility::GetCooldownRemaining() const
+{
+	if (CooldownDuration <= 0.0f) return 0.0f;
+	const UWorld* World = GetWorld();
+	if (!World) return 0.0f;
+	return FMath::Max(0.0f, CooldownEndTime - World->GetTimeSeconds());
+}
+
+float UNexusAbility::GetCooldownProgress() const
+{
+	if (CooldownDuration <= 0.0f) return 1.0f;
+	const float Remaining = GetCooldownRemaining();
+	if (Remaining <= 0.0f) return 1.0f;
+	return 1.0f - (Remaining / CooldownDuration);
+}
+
+void UNexusAbility::CommitCooldown()
+{
+	if (CooldownDuration > 0.0f)
+	{
+		if (const UWorld* World = GetWorld())
+		{
+			CooldownEndTime = World->GetTimeSeconds() + CooldownDuration;
+		}
+	}
 }
 
 void UNexusAbility::Tick(float DeltaTime)
@@ -45,14 +86,14 @@ TStatId UNexusAbility::GetStatId() const
 	RETURN_QUICK_DECLARE_CYCLE_STAT(UNexusAbility, STATGROUP_Tickables);
 }
 
-UNexusAbilitySystemComponent* UNexusAbility::GetNexusComponent() const
+UNexusAbilitySystemComponent* UNexusAbility::GetNexusAbilitySystemComponent() const
 {
 	return Cast<UNexusAbilitySystemComponent>(GetOuter());
 }
 
 ACharacter* UNexusAbility::GetCharacter() const
 {
-	if (UNexusAbilitySystemComponent* Comp = GetNexusComponent())
+	if (UNexusAbilitySystemComponent* Comp = GetNexusAbilitySystemComponent())
 	{
 		return Comp->GetCharacter(); 
 	}
@@ -61,7 +102,7 @@ ACharacter* UNexusAbility::GetCharacter() const
 
 AController* UNexusAbility::GetController() const
 {
-	if (UNexusAbilitySystemComponent* Comp = GetNexusComponent())
+	if (UNexusAbilitySystemComponent* Comp = GetNexusAbilitySystemComponent())
 	{
 		return Comp->GetController(); 
 	}
