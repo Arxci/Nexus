@@ -22,7 +22,7 @@ class NEXUS_API UNexusAbilitySystemComponent : public UActorComponent
 public:
 	UNexusAbilitySystemComponent();
 
-	void InitAbilityActorInfo(AActor* InOwnerActor, AController* InController);
+	void InitAbilityActorInfo(AController* InController);
 
 	// --- Getters ---
 
@@ -108,9 +108,6 @@ public:
 
 protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-	
-	UPROPERTY(Transient)
-	AActor* CachedAvatarActor  = nullptr;
 
 	UPROPERTY(Transient)
 	AController* CachedController = nullptr;

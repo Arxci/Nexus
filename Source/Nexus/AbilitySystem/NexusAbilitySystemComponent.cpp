@@ -12,12 +12,15 @@ UNexusAbilitySystemComponent::UNexusAbilitySystemComponent()
 	PrimaryComponentTick.bCanEverTick = false;
 }
 
-void UNexusAbilitySystemComponent::InitAbilityActorInfo(AActor* InOwnerActor, AController* InController)
+void UNexusAbilitySystemComponent::InitAbilityActorInfo(AController* InController)
 {
-	if (InController)
+	CachedController = InController;
+
+	if (!InController)
 	{
-		CachedAvatarActor = InOwnerActor;
-		CachedController = InController;
+		UE_LOG(LogNexusAbilitySystem, Warning,
+			TEXT("InitAbilityActorInfo called with null controller on [%s]"),
+			*GetNameSafe(GetOwner()));
 	}
 }
 

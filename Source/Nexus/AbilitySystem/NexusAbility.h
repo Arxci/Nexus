@@ -26,13 +26,15 @@ public:
 	UNexusAbility();
 	
 	virtual void OnActivateAbility();
-    virtual void OnDeactivateAbility();
-	
-    UFUNCTION(BlueprintImplementableEvent, Category = "Ability System|Abilities")
-    void K2_OnActivateAbility();
-    
-    UFUNCTION(BlueprintImplementableEvent, Category = "Ability System|Abilities")
-    void K2_OnDeactivateAbility();
+	virtual void OnDeactivateAbility();
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "Ability System|Abilities",
+		meta = (DisplayName = "On Activate Ability", ScriptName = "OnActivateAbility"))
+	void K2_OnActivateAbility();
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "Ability System|Abilities",
+		meta = (DisplayName = "On Deactivate Ability", ScriptName = "OnDeactivateAbility"))
+	void K2_OnDeactivateAbility();
 
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Ability System|Abilities")
 	bool CanActivateAbility() const;
@@ -78,6 +80,7 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	virtual bool IsTickable() const override;
 	virtual TStatId GetStatId() const override;
+	virtual bool IsTickableInEditor() const override { return false; }
 
 protected:
 	UPROPERTY(BlueprintReadOnly, Category = "Ability System|Abilities")

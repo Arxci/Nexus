@@ -10,6 +10,8 @@
 
 ANexusHeroCharacter::ANexusHeroCharacter(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
+	SprintAbilityTag = FGameplayTag::RequestGameplayTag(FName("GameplayAbility.Locomotion.Run"));
+	
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 
 	GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
@@ -52,6 +54,8 @@ void ANexusHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 	{
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ANexusHeroCharacter::Move);
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ANexusHeroCharacter::Look);
+		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::StartSprint);
+		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::StopSprint);
 	}
 }
 
@@ -68,6 +72,26 @@ void ANexusHeroCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResul
 	}
 }
 
+void ANexusHeroCharacter::StartSprint()
+{
+	bWantsToSprint = true;
+
+	if (NexusAbilitySystemComponent && SprintAbilityTag.IsValid())
+	{
+		NexusAbilitySystemComponent->TryActivateAbilityByTag(SprintAbilityTag);
+	}
+}
+
+void ANexusHeroCharacter::StopSprint()
+{
+	bWantsToSprint = false;
+
+	if (NexusAbilitySystemComponent && SprintAbilityTag.IsValid())
+	{
+		NexusAbilitySystemComponent->TryDeactivateAbilityByTag(SprintAbilityTag);
+	}
+}
+
 void ANexusHeroCharacter::Move(const FInputActionValue& Value)
 {
 	FVector2D MovementVector = Value.Get<FVector2D>();
@@ -75,13 +99,18 @@ void ANexusHeroCharacter::Move(const FInputActionValue& Value)
 	if (Controller != nullptr)
 	{
 		const FRotator Rotation = Controller->GetControlRotation();
-		const FRotator YawRotation(0, Rotation.Yaw, 0); 
-		
+		const FRotator YawRotation(0, Rotation.Yaw, 0);
+
 		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
 		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
-		
+
 		AddMovementInput(ForwardDirection, MovementVector.Y);
 		AddMovementInput(RightDirection, MovementVector.X);
+		
+		if (bWantsToSprint && NexusAbilitySystemComponent && SprintAbilityTag.IsValid())
+		{
+			NexusAbilitySystemComponent->TryActivateAbilityByTag(SprintAbilityTag);
+		}
 	}
 }
 

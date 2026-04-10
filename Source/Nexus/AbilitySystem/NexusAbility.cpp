@@ -17,7 +17,7 @@ void UNexusAbility::OnActivateAbility()
 
 void UNexusAbility::OnDeactivateAbility()
 {
-    K2_OnDeactivateAbility();
+	K2_OnDeactivateAbility();
 }
 
 bool UNexusAbility::CanActivateAbility_Implementation() const

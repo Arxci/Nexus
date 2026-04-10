@@ -13,7 +13,7 @@ class UInputAction;
 class USceneComponent;
 class USpringArmComponent;
 
-UCLASS()
+UCLASS(PrioritizeCategories = "Abilities|Camera|Input")
 class NEXUS_API ANexusHeroCharacter : public ANexusCharacterBase
 {
 	GENERATED_BODY()
@@ -42,7 +42,16 @@ protected:
 	UInputAction* MoveAction;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
 	UInputAction* LookAction;
+	UPROPERTY(EditAnywhere, Category = "Input")
+	UInputAction* SprintAction;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Abilities")
+	FGameplayTag SprintAbilityTag;
 
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
+	void StartSprint();
+	void StopSprint();
+private:
+	bool bWantsToSprint = false;
 };
