@@ -14,14 +14,15 @@ void UNexusAbility::OnActivateAbility()
 	K2_OnAbilityActivated();
 }
 
-bool UNexusAbility::OnEndAbilityRequested(bool bForce)
+ENexusEndRequestResult UNexusAbility::OnEndAbilityRequested(bool bForce)
 {
 	// Default: nothing to wait on. The ASC will commit teardown immediately
 	// after this returns. Subclasses that need to wait on an external event
 	// (animation, physics resize, tag transition, ...) should override this,
-	// kick off whatever they need, and return true. When bForce is true, clean
-	// up synchronously and return false (or anything — the ASC commits anyway).
-	return false;
+	// kick off whatever they need, and return DeferUntilEndAbility. When
+	// bForce is true, clean up synchronously and return CommitNow (or
+	// anything — the ASC commits anyway).
+	return ENexusEndRequestResult::CommitNow;
 }
 
 

@@ -15,6 +15,62 @@ enum class ENexusAbilityActivationState : uint8
 	Ending  UMETA(DisplayName = "Ending"),
 };
 
+/**
+ * Result returned from UNexusAbility::OnEndAbilityRequested.
+ *
+ * CommitNow              - Tear the ability down immediately. The ASC will
+ *                          call CommitAbilityEnd as soon as the request
+ *                          returns.
+ * DeferUntilEndAbility   - Keep the ability in the Ending state. The ability
+ *                          is responsible for calling EndAbility() on itself
+ *                          once whatever it is waiting on has resolved
+ *                          (capsule resize, montage finishing, tag drop, ...).
+ */
+UENUM(BlueprintType)
+enum class ENexusEndRequestResult : uint8
+{
+	CommitNow             UMETA(DisplayName = "Commit Now"),
+	DeferUntilEndAbility  UMETA(DisplayName = "Defer Until EndAbility"),
+};
+
+/**
+ * Controls when the cooldown timer starts ticking.
+ *
+ * OnActivate - Cooldown begins the moment the ability activates. Use this
+ *              for "this ability can re-fire every N seconds regardless of
+ *              how long it runs."
+ * OnEnd      - Cooldown begins when the ability finishes. Use this for
+ *              "after this ability ends, wait N seconds before it can fire
+ *              again."
+ */
+UENUM(BlueprintType)
+enum class ENexusCooldownStartPolicy : uint8
+{
+	OnActivate  UMETA(DisplayName = "On Activate"),
+	OnEnd       UMETA(DisplayName = "On End"),
+};
+
+/**
+ * Controls what happens when TryActivate is called on an ability that is
+ * already Active or Ending.
+ *
+ * OnceAtATime    - Activation fails with AlreadyActive. Use for toggle-style
+ *                  abilities (crouch, run, aim).
+ * Retrigger      - The running instance is force-ended and the ability is
+ *                  re-activated from scratch. Use for "fire weapon"-style
+ *                  abilities that should always respond to input.
+ * IgnoreIfActive - Activation silently succeeds without disturbing the
+ *                  running instance. Use when re-pressing the input should
+ *                  be a no-op (e.g. a channelled ability that keeps going).
+ */
+UENUM(BlueprintType)
+enum class ENexusAbilityInstancePolicy : uint8
+{
+	OnceAtATime     UMETA(DisplayName = "Once At A Time"),
+	Retrigger       UMETA(DisplayName = "Retrigger"),
+	IgnoreIfActive  UMETA(DisplayName = "Ignore If Active"),
+};
+
 UCLASS(Blueprintable)
 class NEXUS_API UNexusAbility : public UObject
 {
@@ -43,7 +99,7 @@ public:
 	 *         itself. false to let the ASC commit teardown immediately. When
 	 *         bForce is true the return value is ignored.
 	 */
-	virtual bool OnEndAbilityRequested(bool bForce);
+	virtual ENexusEndRequestResult OnEndAbilityRequested(bool bForce);
 	
 	virtual void OnDeactivateAbility();
 
@@ -104,6 +160,8 @@ public:
 	void CommitCooldown();
 
 	bool GetCanTick() const { return bCanTick; }
+
+	ENexusAbilityInstancePolicy GetInstancePolicy() const { return InstancePolicy; }
 	
 protected:
 	virtual void TickAbility(float DeltaTime) {}
@@ -145,6 +203,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Abilities")
 	bool bStartCooldownOnEnd = true;
 
+	/** When the cooldown timer begins relative to the ability's lifecycle. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Abilities")
+	ENexusCooldownStartPolicy CooldownStartPolicy = ENexusCooldownStartPolicy::OnEnd;
+
+	/** What happens when TryActivate is called while this ability is already Active or Ending. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Abilities")
+	ENexusAbilityInstancePolicy InstancePolicy = ENexusAbilityInstancePolicy::OnceAtATime;
 private:
 	float CooldownEndTime = 0.0f;
 };

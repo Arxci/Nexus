@@ -18,5 +18,5 @@ class NEXUS_API INexusAbilitySystemInterface
 
 public:
 
-	virtual class UNexusAbilitySystemComponent* GetNexusAbilityComponent() const = 0;
+	virtual class UNexusAbilitySystemComponent* GetNexusAbilitySystemComponent() const = 0;
 };

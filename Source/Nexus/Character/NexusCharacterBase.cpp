@@ -27,7 +27,7 @@ UNexusCharacterMovementComponent* ANexusCharacterBase::GetNexusCharacterMovement
 	return NexusCharacterMovement;
 }
 
-UNexusAbilitySystemComponent* ANexusCharacterBase::GetNexusAbilityComponent() const
+UNexusAbilitySystemComponent* ANexusCharacterBase::GetNexusAbilitySystemComponent() const
 {
 	return NexusAbilitySystemComponent;
 }
@@ -138,5 +138,13 @@ void ANexusCharacterBase::OnEndRun()
 	if (NexusAbilitySystemComponent)
 	{
 		NexusAbilitySystemComponent->RemoveLooseGameplayTag(NexusGameplayTags::Character_State_Locomotion_Run);
+	}
+}
+
+void ANexusCharacterBase::ComponentsToSave_Implementation(TArray<UActorComponent*>& Components)
+{
+	if (NexusAbilitySystemComponent)
+	{
+		Components.Add(NexusAbilitySystemComponent);
 	}
 }

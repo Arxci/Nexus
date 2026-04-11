@@ -74,23 +74,14 @@ void ANexusHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 void ANexusHeroCharacter::OnCrouchInputStarted()
 {
 	if (!NexusAbilitySystemComponent) return;
-	
+
 	if (CrouchInputMode == ECrouchInputMode::Hold)
 	{
 		NexusAbilitySystemComponent->AbilityInputPressed(NexusGameplayTags::InputTag_Crouch);
 	}
-	else 
+	else
 	{
-
-		if (NexusAbilitySystemComponent->IsAbilityActiveByTag(
-				NexusGameplayTags::Ability_Locomotion_Crouch))
-		{
-			NexusAbilitySystemComponent->AbilityInputReleased(NexusGameplayTags::InputTag_Crouch);
-		}
-		else
-		{
-			NexusAbilitySystemComponent->AbilityInputPressed(NexusGameplayTags::InputTag_Crouch);
-		}
+		NexusAbilitySystemComponent->AbilityInputToggled(NexusGameplayTags::InputTag_Crouch);
 	}
 }
 
@@ -110,18 +101,9 @@ void ANexusHeroCharacter::OnRunInputStarted()
 	{
 		NexusAbilitySystemComponent->AbilityInputPressed(NexusGameplayTags::InputTag_Run);
 	}
-	else 
+	else
 	{
-
-		if (NexusAbilitySystemComponent->IsAbilityActiveByTag(
-				NexusGameplayTags::Ability_Locomotion_Run))
-		{
-			NexusAbilitySystemComponent->AbilityInputReleased(NexusGameplayTags::InputTag_Run);
-		}
-		else
-		{
-			NexusAbilitySystemComponent->AbilityInputPressed(NexusGameplayTags::InputTag_Run);
-		}
+		NexusAbilitySystemComponent->AbilityInputToggled(NexusGameplayTags::InputTag_Run);
 	}
 }
 

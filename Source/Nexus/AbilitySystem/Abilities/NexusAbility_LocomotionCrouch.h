@@ -6,9 +6,6 @@
 #include "Nexus/AbilitySystem/NexusAbility.h"
 #include "NexusAbility_LocomotionCrouch.generated.h"
 
-/**
- * 
- */
 UCLASS()
 class NEXUS_API UNexusAbility_LocomotionCrouch : public UNexusAbility
 {
@@ -18,7 +15,7 @@ protected:
 	UNexusAbility_LocomotionCrouch();
 	
 	virtual void OnActivateAbility() override;
-	virtual bool OnEndAbilityRequested(bool bForce) override;
+	virtual ENexusEndRequestResult OnEndAbilityRequested(bool bForce) override;
 	virtual void OnDeactivateAbility() override;
 
 private:

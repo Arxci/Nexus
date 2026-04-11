@@ -4,19 +4,20 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "EMSActorSaveInterface.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemInterface.h"
 #include "NexusCharacterBase.generated.h"
 
 UCLASS(PrioritizeCategories = ("Abilities"))
-class NEXUS_API ANexusCharacterBase : public ACharacter, public INexusAbilitySystemInterface
+class NEXUS_API ANexusCharacterBase : public ACharacter, public INexusAbilitySystemInterface, public IEMSActorSaveInterface
 {
 	GENERATED_BODY()
 
 public:
 	ANexusCharacterBase(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
-	virtual UNexusAbilitySystemComponent* GetNexusAbilityComponent() const override;
+	virtual UNexusAbilitySystemComponent* GetNexusAbilitySystemComponent() const override;
 
 	UFUNCTION(BlueprintPure, Category = "Character")
 	UNexusCharacterMovementComponent* GetNexusCharacterMovement() const;
@@ -42,6 +43,16 @@ public:
 	/** Companion to StartRunning(). Mirrors ACharacter::UnCrouch(). */
 	UFUNCTION(BlueprintCallable, Category = "Character")
 	void StopRunning();
+
+	// --- IEMSActorSaveInterface ---
+
+	/**
+	 * Hand EMS the list of components it should serialize alongside this
+	 * actor. The ASC is the only persistent gameplay state on the pawn — the
+	 * CMC and the camera rig reconstruct themselves on load — so it's the
+	 * only component we surface here.
+	 */
+	virtual void ComponentsToSave_Implementation(TArray<UActorComponent*>& Components) override;
 
 protected:
 	virtual void BeginPlay() override;

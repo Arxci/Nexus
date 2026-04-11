@@ -55,10 +55,11 @@ UNexusAbility* UNexusAbilitySystemComponent::GiveAbility(const TSubclassOf<UNexu
 	
 	if (UNexusAbility* Existing = GrantedAbilities.FindRef(AbilityClass))
 	{
+		// Already granted. Re-enable if needed, but do not re-broadcast
+		// OnAbilityGiven — that delegate is reserved for first-time grants.
 		if (!Existing->IsEnabled())
 		{
 			SetAbilityEnabled(AbilityClass, true);
-			OnAbilityGiven.Broadcast(Existing);
 		}
 		return Existing;
 	}
@@ -70,30 +71,6 @@ UNexusAbility* UNexusAbilitySystemComponent::GiveAbility(const TSubclassOf<UNexu
 		return NewAbility;
 	}
 	return nullptr;
-}
-
-bool UNexusAbilitySystemComponent::RemoveAbility(const TSubclassOf<UNexusAbility> AbilityClass)
-{
-	if (!AbilityClass) return false;
-
-	UNexusAbility* FoundAbility = GrantedAbilities.FindRef(AbilityClass);
-	if (!FoundAbility)
-	{
-		UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("RemoveAbility [%s] FAILED: not granted"),
-			*AbilityClass->GetName());
-		return false;
-	}
-	if (!FoundAbility->IsEnabled())
-	{
-		return true; 
-	}
-
-	SetAbilityEnabled(AbilityClass, false); 
-	OnAbilityRemoved.Broadcast(FoundAbility);
-
-	UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("RemoveAbility [%s] SUCCESS"),
-		*AbilityClass->GetName());
-	return true;
 }
 
 ENexusAbilityActivationResult UNexusAbilitySystemComponent::TryActivateAbilityByClassWithResult(const TSubclassOf<UNexusAbility> InAbilityToActivate)
@@ -120,10 +97,30 @@ ENexusAbilityActivationResult UNexusAbilitySystemComponent::TryActivateAbilityBy
 
     if (FoundAbility->IsActive() || FoundAbility->IsEnding())
     {
-        UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: already active (state=%s)"),
-            *InAbilityToActivate->GetName(),
-            FoundAbility->IsEnding() ? TEXT("Ending") : TEXT("Active"));
-        return ENexusAbilityActivationResult::AlreadyActive;
+        // Already running. How we respond is governed by the ability's
+        // InstancePolicy — toggle-style abilities reject re-activation,
+        // retrigger abilities force-end first and then re-activate, and
+        // ignore-if-active abilities silently succeed.
+        switch (FoundAbility->GetInstancePolicy())
+        {
+        case ENexusAbilityInstancePolicy::OnceAtATime:
+            UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: already active (state=%s)"),
+                *InAbilityToActivate->GetName(),
+                FoundAbility->IsEnding() ? TEXT("Ending") : TEXT("Active"));
+            return ENexusAbilityActivationResult::AlreadyActive;
+
+        case ENexusAbilityInstancePolicy::IgnoreIfActive:
+            UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] SUCCESS (no-op: IgnoreIfActive)"),
+                *InAbilityToActivate->GetName());
+            return ENexusAbilityActivationResult::Success;
+
+        case ENexusAbilityInstancePolicy::Retrigger:
+            UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] retrigger: force-ending running instance"),
+                *InAbilityToActivate->GetName());
+            DeactivateAbility(FoundAbility, /*bForce=*/true);
+            // Fall through to activation below.
+            break;
+        }
     }
 
     if (FoundAbility->IsOnCooldown())
@@ -162,7 +159,7 @@ ENexusAbilityActivationResult UNexusAbilitySystemComponent::TryActivateAbilityBy
     FoundAbility->OnActivateAbility();
     OnAbilityActivated.Broadcast(FoundAbility);
 
-    if (!FoundAbility->bStartCooldownOnEnd)
+    if (FoundAbility->CooldownStartPolicy == ENexusCooldownStartPolicy::OnActivate)
     {
         FoundAbility->CommitCooldown();
     }
@@ -216,13 +213,13 @@ void UNexusAbilitySystemComponent::DeactivateAbility(UNexusAbility* Ability, boo
 	// tags and cannot be re-activated while in this state.
 	Ability->ActivationState = ENexusAbilityActivationState::Ending;
 
-	const bool bDeferCommit = Ability->OnEndAbilityRequested(bForce);
+	const ENexusEndRequestResult EndResult = Ability->OnEndAbilityRequested(bForce);
 
 	// A forced deactivation always commits. A soft deactivation commits only
 	// if the ability did not ask to defer. Note that if the ability called
 	// EndAbility() synchronously inside OnEndAbilityRequested, the state is
 	// already Idle and CommitAbilityEnd will early-out.
-	if (bForce || !bDeferCommit)
+	if (bForce || EndResult == ENexusEndRequestResult::CommitNow)
 	{
 		CommitAbilityEnd(Ability);
 	}
@@ -242,7 +239,7 @@ void UNexusAbilitySystemComponent::CommitAbilityEnd(UNexusAbility* Ability)
 	Ability->OnDeactivateAbility();
 	OnAbilityDeactivated.Broadcast(Ability);
 
-	if (Ability->bStartCooldownOnEnd)
+	if (Ability->CooldownStartPolicy == ENexusCooldownStartPolicy::OnEnd)
 	{
 		Ability->CommitCooldown();
 	}
@@ -522,4 +519,128 @@ void UNexusAbilitySystemComponent::AbilityInputReleased(FGameplayTag InputTag)
 			DeactivateAbility(Ability);
 		}
 	}
+}
+
+void UNexusAbilitySystemComponent::AbilityInputToggled(FGameplayTag InputTag)
+{
+	if (!InputTag.IsValid()) return;
+
+	// Snapshot the classes we want to touch before dispatching, because
+	// activation / deactivation can mutate GrantedAbilities indirectly
+	// (future instance-policy work, tag-driven cancel lists, etc.).
+	TArray<TSubclassOf<UNexusAbility>, TInlineAllocator<4>> ToActivate;
+	TArray<UNexusAbility*, TInlineAllocator<4>> ToDeactivate;
+
+	for (const auto& Pair : GrantedAbilities)
+	{
+		UNexusAbility* Ability = Pair.Value;
+		if (!Ability || Ability->InputTag != InputTag) continue;
+
+		if (Ability->IsActive() || Ability->IsEnding())
+		{
+			ToDeactivate.Add(Ability);
+		}
+		else
+		{
+			ToActivate.Add(Pair.Key);
+		}
+	}
+
+	for (UNexusAbility* Ability : ToDeactivate)
+	{
+		DeactivateAbility(Ability);
+	}
+	for (const TSubclassOf<UNexusAbility>& AbilityClass : ToActivate)
+	{
+		TryActivateAbilityByClass(AbilityClass);
+	}
+}
+
+// --- Easy Multi Save integration ---
+
+void UNexusAbilitySystemComponent::ComponentPreSave_Implementation()
+{
+	CaptureSaveState();
+}
+
+void UNexusAbilitySystemComponent::ComponentLoaded_Implementation()
+{
+	RestoreSaveState();
+}
+
+void UNexusAbilitySystemComponent::CaptureSaveState()
+{
+	SavedAbilityState.Reset();
+	SavedAbilityState.Reserve(GrantedAbilities.Num());
+
+	for (const auto& Pair : GrantedAbilities)
+	{
+		const UNexusAbility* Ability = Pair.Value;
+		if (!Ability) continue;
+
+		FNexusAbilitySaveEntry Entry;
+		Entry.AbilityClass = TSoftClassPtr<UNexusAbility>(Pair.Key.Get());
+		Entry.bEnabled = Ability->IsEnabled();
+		Entry.CooldownTimeRemaining = Ability->GetCooldownRemaining();
+		SavedAbilityState.Add(MoveTemp(Entry));
+	}
+
+	UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("CaptureSaveState: %d abilities"),
+		SavedAbilityState.Num());
+}
+
+void UNexusAbilitySystemComponent::RestoreSaveState()
+{
+	const UWorld* World = GetWorld();
+	const float WorldTime = World ? World->GetTimeSeconds() : 0.0f;
+
+	for (const FNexusAbilitySaveEntry& Entry : SavedAbilityState)
+	{
+		UClass* ResolvedClass = Entry.AbilityClass.LoadSynchronous();
+		if (!ResolvedClass)
+		{
+			UE_LOG(LogNexusAbilitySystem, Warning,
+				TEXT("RestoreSaveState: failed to resolve ability class '%s' — skipping. "
+				     "Was the class deleted or moved since the save was taken?"),
+				*Entry.AbilityClass.ToString());
+			continue;
+		}
+
+		// GiveAbility is idempotent — if the class was already granted via
+		// ANexusCharacterBase::PossessedBy (DefaultAbilities), this returns
+		// the existing instance without re-broadcasting OnAbilityGiven.
+		UNexusAbility* Ability = GiveAbility(ResolvedClass);
+		if (!Ability)
+		{
+			UE_LOG(LogNexusAbilitySystem, Warning,
+				TEXT("RestoreSaveState: GiveAbility returned null for class '%s'"),
+				*ResolvedClass->GetName());
+			continue;
+		}
+
+		// Enable/disable without going through SetAbilityEnabled's
+		// force-deactivate branch — restoration happens on a cold ASC whose
+		// abilities are all Idle, so there's nothing to tear down.
+		Ability->bIsEnabled = Entry.bEnabled;
+
+		// Rebuild CooldownEndTime from the saved remaining time. We only
+		// write a non-zero end time if the ability had cooldown left at
+		// save time; a fully-cooled ability gets a zero, which IsOnCooldown
+		// correctly reads as "not on cooldown."
+		if (Entry.CooldownTimeRemaining > 0.0f && World)
+		{
+			Ability->CooldownEndTime = WorldTime + Entry.CooldownTimeRemaining;
+		}
+		else
+		{
+			Ability->CooldownEndTime = 0.0f;
+		}
+	}
+
+	UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("RestoreSaveState: restored %d abilities"),
+		SavedAbilityState.Num());
+
+	// We don't clear SavedAbilityState here — it gets overwritten on the
+	// next CaptureSaveState, and leaving it intact lets debug tools inspect
+	// "what did EMS last hand us?" after a load.
 }

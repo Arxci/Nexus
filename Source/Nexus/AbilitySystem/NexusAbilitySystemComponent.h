@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "EMSCompSaveInterface.h"
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
 #include "NexusAbilitySystemComponent.generated.h"
@@ -27,10 +28,35 @@ enum class ENexusAbilityActivationResult : uint8
 	ConditionFailed   UMETA(DisplayName = "Condition Failed"),
 };
 
-UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
-class NEXUS_API UNexusAbilitySystemComponent : public UActorComponent
+USTRUCT()
+struct FNexusAbilitySaveEntry
 {
 	GENERATED_BODY()
+
+	/** The ability class that was granted. Soft so saves survive class moves / renames. */
+	UPROPERTY(SaveGame)
+	TSoftClassPtr<UNexusAbility> AbilityClass;
+
+	/** Mirrors UNexusAbility::bIsEnabled at the moment of save. */
+	UPROPERTY(SaveGame)
+	bool bEnabled = true;
+
+	/**
+	 * How many seconds of cooldown were left at save time. On restore we
+	 * rebuild CooldownEndTime = WorldTime + this value, so reloading resumes
+	 * the cooldown from where it was.
+	 */
+	UPROPERTY(SaveGame)
+	float CooldownTimeRemaining = 0.0f;
+};
+
+UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
+class NEXUS_API UNexusAbilitySystemComponent : public UActorComponent, public IEMSCompSaveInterface
+{
+	GENERATED_BODY()
+	
+	friend class UNexusAbility;
+	
 
 public:
 	UNexusAbilitySystemComponent();
@@ -72,6 +98,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	bool TryDeactivateAbilityByTag(FGameplayTag AbilityTag);
 
+	/**
+	 * Enable or disable an already-granted ability. Disabling an ability
+	 * forcibly ends it if it is currently Active or Ending. Abilities in this
+	 * system are pooled for the lifetime of the ASC — there is no true
+	 * "remove" operation; use this instead.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	void SetAbilityEnabled(TSubclassOf<UNexusAbility> AbilityClass, bool bEnabled);
 
@@ -85,23 +117,11 @@ public:
 	 * wind down gracefully: it transitions to Ending, OnEndAbilityRequested
 	 * fires, and the commit is deferred if the ability wants to wait on an
 	 * external state. When bForce is true the ability is torn down
-	 * unconditionally — use this for EndPlay, RemoveAbility, death/respawn,
+	 * unconditionally — use this for EndPlay, death/respawn,
 	 * SetAbilityEnabled(false), and anywhere else you cannot tolerate an
 	 * ability refusing to end.
 	 */
 	void DeactivateAbility(UNexusAbility* Ability, bool bForce = false);
-
-	/**
-	 * Commits final teardown of an ability: flips state to Idle, removes
-	 * owned tags, fires OnDeactivateAbility, broadcasts, and starts the
-	 * cooldown if applicable. Called by the ability itself via EndAbility()
-	 * when it is ready to actually end, and by DeactivateAbility() when a
-	 * forced or non-deferred deactivation has been requested.
-	 */
-	void CommitAbilityEnd(UNexusAbility* Ability);
-	
-	UFUNCTION(BlueprintCallable, Category="Ability System")
-	bool RemoveAbility(TSubclassOf<UNexusAbility> AbilityClass);
 
 	// --- Ability Queries ---
 	
@@ -125,11 +145,9 @@ public:
     UPROPERTY(BlueprintAssignable)
     FOnAbilityStateChanged OnAbilityDeactivated;
 
+	/** Broadcast only on the first-time grant of an ability class. Re-enabling via SetAbilityEnabled does not re-broadcast. */
 	UPROPERTY(BlueprintAssignable)
 	FOnAbilityStateChanged OnAbilityGiven;
-
-	UPROPERTY(BlueprintAssignable)
-	FOnAbilityStateChanged OnAbilityRemoved;
 
 	// --- Tags ---
 
@@ -168,11 +186,44 @@ public:
 
 	// Input Routing
 
+	/** Route a "pressed" input event. Activates all granted abilities whose InputTag matches. */
 	UFUNCTION(BlueprintCallable, Category = "Ability System|Input")
 	void AbilityInputPressed(FGameplayTag InputTag);
 
+	/** Route a "released" input event. Deactivates any active abilities whose InputTag matches. */
 	UFUNCTION(BlueprintCallable, Category = "Ability System|Input")
 	void AbilityInputReleased(FGameplayTag InputTag);
+
+	/**
+	 * Route a "toggle" input event. For each granted ability whose InputTag
+	 * matches: if the ability is currently Active or Ending it is
+	 * deactivated, otherwise it is activated. Use this when input routing
+	 * should flip an ability's state on a single input event instead of
+	 * requiring a matching release.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Ability System|Input")
+	void AbilityInputToggled(FGameplayTag InputTag);
+
+	// --- Easy Multi Save integration ---
+
+	/**
+	 * Captures per-ability state into SavedAbilityState so EMS can serialize
+	 * it. Fired automatically from ComponentPreSave; exposed for tests and
+	 * for any code path that wants a manual snapshot.
+	 */
+	void CaptureSaveState();
+
+	/**
+	 * Restores per-ability state from SavedAbilityState. Called automatically
+	 * from ComponentLoaded. Safe to call more than once — abilities are
+	 * granted idempotently via GiveAbility().
+	 */
+	void RestoreSaveState();
+
+	// --- IEMSCompSaveInterface ---
+
+	virtual void ComponentPreSave_Implementation() override;
+	virtual void ComponentLoaded_Implementation() override;
 
 protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -186,6 +237,14 @@ protected:
 	UFUNCTION(BlueprintCallable, Category="Ability System")
 	ENexusAbilityActivationResult TryActivateAbilityByClassWithResult(TSubclassOf<UNexusAbility> InAbilityToActivate);
 
+	/**
+	 * Persisted ability state, one entry per granted ability class. Populated
+	 * by CaptureSaveState(), consumed by RestoreSaveState(). EMS writes this
+	 * to disk because of the SaveGame property flag.
+	 */
+	UPROPERTY(SaveGame)
+	TArray<FNexusAbilitySaveEntry> SavedAbilityState;
+	
 private:
 	/**
 	 * Ref-counts per tag. Each AddTags call (from ability activation or
@@ -196,6 +255,19 @@ private:
 	 */
 	TMap<FGameplayTag, int32> TagRefCounts;
 	FGameplayTagContainer OwnedTags;
+
+	/**
+	 * Commits final teardown of an ability: flips state to Idle, removes
+	 * owned tags, fires OnDeactivateAbility, broadcasts, and starts the
+	 * cooldown if applicable. Called by the ability itself via EndAbility()
+	 * when it is ready to actually end, and by DeactivateAbility() when a
+	 * forced or non-deferred deactivation has been requested.
+	 *
+	 * This is an internal path — only UNexusAbility (friend) and the ASC
+	 * itself should call it. Gameplay code should call DeactivateAbility /
+	 * TryDeactivateAbilityByClass instead.
+	 */
+	void CommitAbilityEnd(UNexusAbility* Ability);
 	
 	void AddTags(const FGameplayTagContainer& Tags);
 	void RemoveTags(const FGameplayTagContainer& Tags);

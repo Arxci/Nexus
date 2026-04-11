@@ -39,7 +39,7 @@ void UNexusAbility_LocomotionCrouch::OnActivateAbility()
 	}
 }
 
-bool UNexusAbility_LocomotionCrouch::OnEndAbilityRequested(bool bForce)
+ENexusEndRequestResult UNexusAbility_LocomotionCrouch::OnEndAbilityRequested(bool bForce)
 {
 	if (bForce)
 	{
@@ -51,7 +51,7 @@ bool UNexusAbility_LocomotionCrouch::OnEndAbilityRequested(bool bForce)
 			ASC->OnTagChanged.RemoveDynamic(this, &UNexusAbility_LocomotionCrouch::HandleAscTagChanged);
 		}
 		bAwaitingUncrouch = false;
-		return false;
+		return ENexusEndRequestResult::CommitNow;
 	}
 
 	// Soft request: ask the character to stand up. The CMC will only succeed
@@ -74,11 +74,12 @@ bool UNexusAbility_LocomotionCrouch::OnEndAbilityRequested(bool bForce)
 		{
 			ASC->OnTagChanged.RemoveDynamic(this, &UNexusAbility_LocomotionCrouch::HandleAscTagChanged);
 			bAwaitingUncrouch = false;
-			return false;
+			return ENexusEndRequestResult::CommitNow;
 		}
 	}
 
-	return true; // Defer — HandleAscTagChanged will call EndAbility() when ready.
+	// HandleAscTagChanged will call EndAbility() when the CMC finishes the uncrouch.
+	return ENexusEndRequestResult::DeferUntilEndAbility;
 }
 
 void UNexusAbility_LocomotionCrouch::OnDeactivateAbility()
