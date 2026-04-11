@@ -36,7 +36,7 @@ public:
 
 protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Movement: Run")
-	float MaxWalkSpeedRun = 600.0f;
+	float MaxWalkSpeedRun = 1000.0f;
 
 private:
 	bool bIsRunning = false;

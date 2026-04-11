@@ -257,6 +257,28 @@ private:
 	FGameplayTagContainer OwnedTags;
 
 	/**
+	 * Inputs the user is currently holding down. Populated by
+	 * AbilityInputPressed and cleared by AbilityInputReleased. Used by
+	 * EvaluateHeldInputRetries so that an ability whose activation was
+	 * refused (blocked tags, failed CanActivate, …) automatically fires
+	 * the moment the blocker goes away — without the player having to
+	 * re-press the input.
+	 */
+	FGameplayTagContainer HeldInputTags;
+
+	/** Re-entrancy guard so a tag change inside an ability's activation
+	 *  path cannot recursively kick off another retry pass. */
+	bool bEvaluatingHeldInputRetries = false;
+
+	/**
+	 * Walk HeldInputTags and try activating any Idle ability whose
+	 * InputTag matches. Called whenever a tag leaves OwnedTags, because
+	 * tag drops are the only event that can unblock a previously-refused
+	 * activation.
+	 */
+	void EvaluateHeldInputRetries();
+
+	/**
 	 * Commits final teardown of an ability: flips state to Idle, removes
 	 * owned tags, fires OnDeactivateAbility, broadcasts, and starts the
 	 * cooldown if applicable. Called by the ability itself via EndAbility()

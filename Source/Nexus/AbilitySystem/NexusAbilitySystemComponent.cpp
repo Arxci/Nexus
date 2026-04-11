@@ -132,9 +132,20 @@ ENexusAbilityActivationResult UNexusAbilitySystemComponent::TryActivateAbilityBy
 
     if (!CheckTagRequirements(FoundAbility))
     {
-        UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: tag requirements not met"),
-            *InAbilityToActivate->GetName());
-        return ENexusAbilityActivationResult::TagsBlocked;
+    	UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: tag requirements not met"),
+			*InAbilityToActivate->GetName());
+
+    	// Even though we can't activate right now, give the ability a chance
+    	// to kick its declared blockers into wind-down. They may defer (e.g.
+    	// Crouch waiting on overhead clearance), but the moment their state
+    	// tag drops, EvaluateHeldInputRetries will re-fire us — as long as
+    	// the player is still holding the input.
+    	if (!FoundAbility->CancelAbilitiesWithTags.IsEmpty())
+    	{
+    		CancelAbilitiesWithTags(FoundAbility->CancelAbilitiesWithTags);
+    	}
+
+    	return ENexusAbilityActivationResult::TagsBlocked;
     }
 
     if (!FoundAbility->CanActivateAbility())
@@ -376,6 +387,7 @@ void UNexusAbilitySystemComponent::AddTags(const FGameplayTagContainer& Tags)
 
 void UNexusAbilitySystemComponent::RemoveTags(const FGameplayTagContainer& Tags)
 {
+	bool bAnyRemoved = false;
 	for (const FGameplayTag& Tag : Tags)
 	{
 		if (int32* Count = TagRefCounts.Find(Tag))
@@ -386,8 +398,16 @@ void UNexusAbilitySystemComponent::RemoveTags(const FGameplayTagContainer& Tags)
 				OwnedTags.RemoveTag(Tag);
 				TagRefCounts.Remove(Tag);
 				OnTagChanged.Broadcast(Tag, false);
+				bAnyRemoved = true;
 			}
 		}
+	}
+
+	// One retry pass after the whole container has been processed — not per
+	// tag — so a multi-tag removal only re-evaluates held inputs once.
+	if (bAnyRemoved)
+	{
+		EvaluateHeldInputRetries();
 	}
 }
 
@@ -438,6 +458,7 @@ void UNexusAbilitySystemComponent::RemoveLooseGameplayTag(FGameplayTag Tag)
 			OwnedTags.RemoveTag(Tag);
 			TagRefCounts.Remove(Tag);
 			OnTagChanged.Broadcast(Tag, false);
+			EvaluateHeldInputRetries();
 		}
 	}
 }
@@ -491,11 +512,60 @@ void UNexusAbilitySystemComponent::CancelAbilitiesWithTags(const FGameplayTagCon
 	}
 }
 
+void UNexusAbilitySystemComponent::EvaluateHeldInputRetries()
+{
+	// Re-entrancy guard: activating an ability from inside this function
+	// can synchronously drop tags (via CommitAbilityEnd → RemoveTags), which
+	// would otherwise re-enter us mid-iteration.
+	if (bEvaluatingHeldInputRetries) return;
+	if (HeldInputTags.IsEmpty()) return;
+
+	bEvaluatingHeldInputRetries = true;
+
+	// Snapshot the held inputs. Activation can mutate ASC state, and we
+	// don't want to iterate HeldInputTags directly while that's happening.
+	TArray<FGameplayTag, TInlineAllocator<4>> InputSnapshot;
+	for (const FGameplayTag& Tag : HeldInputTags)
+	{
+		InputSnapshot.Add(Tag);
+	}
+
+	for (const FGameplayTag& InputTag : InputSnapshot)
+	{
+		// Snapshot the candidate classes too — TryActivate can synchronously
+		// deactivate other abilities, and while GrantedAbilities itself is
+		// pool-stable, we'd rather not rely on that invariant here.
+		TArray<TSubclassOf<UNexusAbility>, TInlineAllocator<4>> Candidates;
+		for (const auto& Pair : GrantedAbilities)
+		{
+			const UNexusAbility* Ability = Pair.Value;
+			if (!Ability) continue;
+			if (Ability->InputTag != InputTag) continue;
+			if (!Ability->IsIdle()) continue;      // Already running or ending — don't disturb.
+			if (!Ability->IsEnabled()) continue;
+			Candidates.Add(Pair.Key);
+		}
+
+		for (const TSubclassOf<UNexusAbility>& AbilityClass : Candidates)
+		{
+			TryActivateAbilityByClassWithResult(AbilityClass);
+		}
+	}
+
+	bEvaluatingHeldInputRetries = false;
+}
+
 // Input Routing
 
 void UNexusAbilitySystemComponent::AbilityInputPressed(FGameplayTag InputTag)
 {
 	if (!InputTag.IsValid()) return;
+
+	// Latch the press. Even if none of the matching abilities can activate
+	// right now, EvaluateHeldInputRetries will retry the moment any blocking
+	// tag is removed — which is what lets "hold Run while Crouch is stuck
+	// under a ceiling" auto-start Run the instant the capsule clears.
+	HeldInputTags.AddTag(InputTag);
 
 	for (const auto& Pair : GrantedAbilities)
 	{
@@ -510,6 +580,12 @@ void UNexusAbilitySystemComponent::AbilityInputPressed(FGameplayTag InputTag)
 void UNexusAbilitySystemComponent::AbilityInputReleased(FGameplayTag InputTag)
 {
 	if (!InputTag.IsValid()) return;
+
+	// Drop the latch first — if the retry path runs between here and the
+	// deactivation loop (e.g. because a deactivation synchronously commits
+	// and drops a state tag), we don't want to immediately re-activate the
+	// ability the player just released.
+	HeldInputTags.RemoveTag(InputTag);
 
 	for (const auto& Pair : GrantedAbilities)
 	{

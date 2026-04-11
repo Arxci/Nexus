@@ -16,6 +16,8 @@ UNexusAbility_LocomotionCrouch::UNexusAbility_LocomotionCrouch()
 	// refuse to end (and keep Run blocked) when overhead geometry prevents the
 	// character from standing up.
 	ActivationBlockedTags.AddTag(NexusGameplayTags::Character_State_Locomotion_Run);
+
+	CancelAbilitiesWithTags.AddTag(NexusGameplayTags::Ability_Locomotion_Run);
 	InputTag = NexusGameplayTags::InputTag_Crouch;
 }
 

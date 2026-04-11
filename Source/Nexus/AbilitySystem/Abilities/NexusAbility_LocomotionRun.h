@@ -16,9 +16,12 @@ protected:
 	virtual void OnActivateAbility() override;
 	virtual void OnDeactivateAbility() override;
 	virtual void TickAbility(float DeltaTime) override;
+
+	float BoostThreshold = 0.7f;
 	
 private:
 	bool bIsBoostActive = false;
+
 
 	bool ShouldBoostThisFrame() const;
 	void SetBoostActive(bool bNewActive);
