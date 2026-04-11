@@ -1,0 +1,12 @@
+{
+	"OutputFiles": [
+		"..\\..\\..\\a\\UnrealGame\\Shipping\\EasyMultiSave\\Module.EasyMultiSave.1.cpp.o",
+		"..\\..\\..\\a\\UnrealGame\\Shipping\\EasyMultiSave\\Module.EasyMultiSave.2.cpp.o",
+		"..\\..\\..\\a\\UnrealGame\\Shipping\\EasyMultiSave\\Module.EasyMultiSave.1.cpp.o",
+		"..\\..\\..\\a\\UnrealGame\\Shipping\\EasyMultiSave\\Module.EasyMultiSave.2.cpp.o",
+		"..\\..\\..\\x\\UnrealGame\\Shipping\\EasyMultiSave\\Module.EasyMultiSave.1.cpp.o",
+		"..\\..\\..\\x\\UnrealGame\\Shipping\\EasyMultiSave\\Module.EasyMultiSave.2.cpp.o",
+		"..\\..\\..\\x\\UnrealGame\\Shipping\\EasyMultiSave\\Module.EasyMultiSave.1.cpp.o",
+		"..\\..\\..\\x\\UnrealGame\\Shipping\\EasyMultiSave\\Module.EasyMultiSave.2.cpp.o"
+	]
+}

@@ -17,6 +17,8 @@ ANexusCharacterBase::ANexusCharacterBase(const FObjectInitializer& ObjectInitial
 
 	NexusCharacterMovement = Cast<UNexusCharacterMovementComponent>(GetCharacterMovement());
 	NexusAbilitySystemComponent = CreateDefaultSubobject<UNexusAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
+
+	GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch = true;
 }
 
 UNexusCharacterMovementComponent* ANexusCharacterBase::GetNexusCharacterMovement() const

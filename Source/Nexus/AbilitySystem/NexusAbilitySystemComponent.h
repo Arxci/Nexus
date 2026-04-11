@@ -14,6 +14,19 @@ class UNexusAbility;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAbilityStateChanged, UNexusAbility*, Ability);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnTagChanged, FGameplayTag, Tag, bool, bAdded);
 
+UENUM(BlueprintType)
+enum class ENexusAbilityActivationResult : uint8
+{
+	Success           UMETA(DisplayName = "Success"),
+	InvalidClass      UMETA(DisplayName = "Invalid Class"),
+	NotGranted        UMETA(DisplayName = "Not Granted"),
+	Disabled          UMETA(DisplayName = "Disabled"),
+	AlreadyActive     UMETA(DisplayName = "Already Active"),
+	OnCooldown        UMETA(DisplayName = "On Cooldown"),
+	TagsBlocked       UMETA(DisplayName = "Tags Blocked"),
+	ConditionFailed   UMETA(DisplayName = "Condition Failed"),
+};
+
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class NEXUS_API UNexusAbilitySystemComponent : public UActorComponent
 {
@@ -29,6 +42,12 @@ public:
 
 	// --- Getters ---
 
+	/**
+	 * Avatar == Owner by design. The ASC lives on the Pawn, so ability state
+	 * resets on death/respawn automatically. If you ever want state to outlive
+	 * the Pawn (persistent buffs, XP, cross-respawn cooldowns), move the ASC
+	 * to a PlayerState and split Avatar from Owner here.
+	 */
     UFUNCTION(BlueprintCallable, Category = "Ability System")
     AActor* GetAvatarActor() const { return GetOwner(); }
 
@@ -43,8 +62,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Ability System")
 	bool TryActivateAbilityByClass(TSubclassOf<UNexusAbility> InAbilityToActivate);
 
+	UFUNCTION(BlueprintCallable, Category = "Ability System")
+	bool TryActivateAbilityByTag(FGameplayTag AbilityTag);
+
 	UFUNCTION(BlueprintCallable, Category="Ability System")
 	bool TryDeactivateAbilityByClass(TSubclassOf<UNexusAbility> InAbilityToDeactivate);
+
+	/** Deactivate all active abilities whose AbilityTags contain the given tag */
+	UFUNCTION(BlueprintCallable, Category = "Ability System")
+	bool TryDeactivateAbilityByTag(FGameplayTag AbilityTag);
 
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	void SetAbilityEnabled(TSubclassOf<UNexusAbility> AbilityClass, bool bEnabled);
@@ -53,14 +79,7 @@ public:
 	void DeactivateAllAbilities();
 	
 	void DeactivateAbility(UNexusAbility* Ability);
-
-	UFUNCTION(BlueprintCallable, Category = "Ability System")
-	bool TryActivateAbilityByTag(FGameplayTag AbilityTag);
-
-	/** Deactivate all active abilities whose AbilityTags contain the given tag */
-	UFUNCTION(BlueprintCallable, Category = "Ability System")
-	bool TryDeactivateAbilityByTag(FGameplayTag AbilityTag);
-
+	
 	UFUNCTION(BlueprintCallable, Category="Ability System")
 	bool RemoveAbility(TSubclassOf<UNexusAbility> AbilityClass);
 
@@ -118,6 +137,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	void RemoveLooseGameplayTag(FGameplayTag Tag);
 
+	/**
+	 * Fired when a tag transitions on or off the ASC.
+	 * Only broadcasts on the 0 → 1 add and the 1 → 0 removal.
+	 * Redundant Adds/Removes (ref-count > 1) do NOT broadcast — this is
+	 * intentional so listeners react once per "real" state change.
+	 */
 	UPROPERTY(BlueprintAssignable, Category = "Ability System")
 	FOnTagChanged OnTagChanged;
 
@@ -138,11 +163,20 @@ protected:
 	UPROPERTY()
 	TMap<TSubclassOf<UNexusAbility>, TObjectPtr<UNexusAbility>> GrantedAbilities;
 
+	UFUNCTION(BlueprintCallable, Category="Ability System")
+	ENexusAbilityActivationResult TryActivateAbilityByClassWithResult(TSubclassOf<UNexusAbility> InAbilityToActivate);
+
 private:
+	/**
+	 * Ref-counts per tag. Each AddTags call (from ability activation or
+	 * AddLooseGameplayTag) increments; each RemoveTags decrements. The tag
+	 * only leaves OwnedTags when the count hits zero. This lets two abilities
+	 * apply the same tag simultaneously without one's deactivation stomping
+	 * the other's state.
+	 */
 	TMap<FGameplayTag, int32> TagRefCounts;
 	FGameplayTagContainer OwnedTags;
-
-
+	
 	void AddTags(const FGameplayTagContainer& Tags);
 	void RemoveTags(const FGameplayTagContainer& Tags);
 	bool CheckTagRequirements(const UNexusAbility* Ability) const;

@@ -6,7 +6,6 @@
 
 UNexusAbility::UNexusAbility()
 {
-	ActivationState = ENexusAbilityActivationState::Idle;
 	bIsEnabled = true;
 }
 

@@ -19,5 +19,4 @@ protected:
 	
 	virtual void OnActivateAbility() override;
 	virtual void OnDeactivateAbility() override;
-	virtual bool CanActivateAbility_Implementation() const override;
 };

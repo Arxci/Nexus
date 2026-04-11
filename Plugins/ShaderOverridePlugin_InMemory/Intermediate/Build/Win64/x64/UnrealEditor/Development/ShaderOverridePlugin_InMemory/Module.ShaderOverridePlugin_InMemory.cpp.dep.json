@@ -7,7 +7,9 @@
         "Includes": [
             "c:\\users\\garrett\\documents\\unreal projects\\nexus\\plugins\\shaderoverrideplugin_inmemory\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\shaderoverrideplugin_inmemory\\definitions.shaderoverrideplugin_inmemory.h",
             "c:\\users\\garrett\\documents\\unreal projects\\nexus\\plugins\\shaderoverrideplugin_inmemory\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\shaderoverrideplugin_inmemory\\permoduleinline.gen.cpp",
-            "c:\\program files\\epic games\\ue_5.7\\engine\\source\\runtime\\core\\public\\hal\\permoduleinline.inl"
+            "c:\\program files\\epic games\\ue_5.7\\engine\\source\\runtime\\core\\public\\hal\\permoduleinline.inl",
+            "c:\\users\\garrett\\documents\\unreal projects\\nexus\\plugins\\shaderoverrideplugin_inmemory\\source\\shaderoverrideplugin_inmemory\\private\\shaderoverrideplugin_inmemory.cpp",
+            "c:\\users\\garrett\\documents\\unreal projects\\nexus\\plugins\\shaderoverrideplugin_inmemory\\source\\shaderoverrideplugin_inmemory\\public\\shaderoverrideplugin_inmemory.h"
         ],
         "ImportedModules": [],
         "ImportedHeaderUnits": []

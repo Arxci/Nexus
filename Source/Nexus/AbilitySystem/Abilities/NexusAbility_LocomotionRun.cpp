@@ -11,6 +11,7 @@ UNexusAbility_LocomotionRun::UNexusAbility_LocomotionRun()
 {
 	AbilityTags.AddTag(NexusGameplayTags::Ability_Locomotion_Run);
 	ActivationOwnedTags.AddTag(NexusGameplayTags::Character_State_Locomotion_Run);
+	ActivationBlockedTags.AddTag(NexusGameplayTags::Character_State_Locomotion_Crouch);
 	InputTag = NexusGameplayTags::InputTag_Run;
 	bCanTick = true;
 }

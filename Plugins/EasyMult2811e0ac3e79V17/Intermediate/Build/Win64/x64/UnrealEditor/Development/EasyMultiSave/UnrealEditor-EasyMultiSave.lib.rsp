@@ -1,0 +1,30 @@
+/NOLOGO
+/errorReport:prompt
+/MACHINE:x64
+/SUBSYSTEM:WINDOWS
+/DEF
+/NAME:"UnrealEditor-EasyMultiSave.dll"
+/IGNORE:4221
+/NODEFAULTLIB
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Intermediate/Build/Win64/x64/NexusEditor/Development/UnrealEd/SharedPCH.UnrealEd.Project.ValApi.ValExpApi.Cpp20.InclOrderUnreal5_4.h.obj"
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/Module.EasyMultiSave.1.cpp.obj"
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/Module.EasyMultiSave.2.cpp.obj"
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/EMSActorLoader.cpp.obj"
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/EMSAsyncCheck.cpp.obj"
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/EMSAsyncLoadGame.cpp.obj"
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/EMSAsyncSaveGame.cpp.obj"
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/EMSAsyncStream.cpp.obj"
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/EMSAsyncWait.cpp.obj"
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/EMSFunctionLibrary.cpp.obj"
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/EMSModule.cpp.obj"
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/EMSActors.cpp.obj"
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/EMSData.cpp.obj"
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/EMSLevel.cpp.obj"
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/EMSMisc.cpp.obj"
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/EMSPaths.cpp.obj"
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/EMSVersion.cpp.obj"
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/EMSObject.cpp.obj"
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/EMSObjectAdv.cpp.obj"
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/EMSObjectBase.cpp.obj"
+"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/Default.rc2.res"
+/OUT:"C:/Users/Garrett/Documents/Unreal Projects/Nexus/Plugins/EasyMult2811e0ac3e79V17/Intermediate/Build/Win64/x64/UnrealEditor/Development/EasyMultiSave/UnrealEditor-EasyMultiSave.lib"

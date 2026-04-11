@@ -25,7 +25,7 @@ void UNexusAbilitySystemComponent::TickComponent(float DeltaTime, ELevelTick Tic
 	for (const auto& Pair : GrantedAbilities)
 	{
 		UNexusAbility* Ability = Pair.Value;
-		if (Ability && Ability->bCanTick && Ability->IsActive() && Ability->IsEnabled())
+		if (Ability && Ability->GetCanTick() && Ability->IsActive() && Ability->IsEnabled())
 		{
 			TickList.Add(Ability);
 		}
@@ -94,76 +94,84 @@ bool UNexusAbilitySystemComponent::RemoveAbility(const TSubclassOf<UNexusAbility
 	return true;
 }
 
+ENexusAbilityActivationResult UNexusAbilitySystemComponent::TryActivateAbilityByClassWithResult(const TSubclassOf<UNexusAbility> InAbilityToActivate)
+{
+    if (!InAbilityToActivate)
+    {
+        return ENexusAbilityActivationResult::InvalidClass;
+    }
+
+    UNexusAbility* FoundAbility = GrantedAbilities.FindRef(InAbilityToActivate);
+    if (!FoundAbility)
+    {
+        UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: not granted"),
+            *InAbilityToActivate->GetName());
+        return ENexusAbilityActivationResult::NotGranted;
+    }
+
+    if (!FoundAbility->IsEnabled())
+    {
+        UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: disabled"),
+            *InAbilityToActivate->GetName());
+        return ENexusAbilityActivationResult::Disabled;
+    }
+
+    if (FoundAbility->IsActive())
+    {
+        UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: already active"),
+            *InAbilityToActivate->GetName());
+        return ENexusAbilityActivationResult::AlreadyActive;
+    }
+
+    if (FoundAbility->IsOnCooldown())
+    {
+        UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: on cooldown (%.2fs remaining)"),
+            *InAbilityToActivate->GetName(), FoundAbility->GetCooldownRemaining());
+        return ENexusAbilityActivationResult::OnCooldown;
+    }
+
+    if (!CheckTagRequirements(FoundAbility))
+    {
+        UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: tag requirements not met"),
+            *InAbilityToActivate->GetName());
+        return ENexusAbilityActivationResult::TagsBlocked;
+    }
+
+    if (!FoundAbility->CanActivateAbility())
+    {
+        UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: CanActivateAbility returned false"),
+            *InAbilityToActivate->GetName());
+        return ENexusAbilityActivationResult::ConditionFailed;
+    }
+
+    if (!FoundAbility->CancelAbilitiesWithTags.IsEmpty())
+    {
+        CancelAbilitiesWithTags(FoundAbility->CancelAbilitiesWithTags);
+    }
+
+    if (!FoundAbility->ActivationOwnedTags.IsEmpty())
+    {
+        AddTags(FoundAbility->ActivationOwnedTags);
+    }
+
+    FoundAbility->ActivationState = ENexusAbilityActivationState::Active;
+
+    FoundAbility->OnActivateAbility();
+    OnAbilityActivated.Broadcast(FoundAbility);
+
+    if (!FoundAbility->bStartCooldownOnEnd)
+    {
+        FoundAbility->CommitCooldown();
+    }
+
+    UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] SUCCESS"), *InAbilityToActivate->GetName());
+
+    return ENexusAbilityActivationResult::Success;
+}
+
 bool UNexusAbilitySystemComponent::TryActivateAbilityByClass(const TSubclassOf<UNexusAbility> InAbilityToActivate)
 {
-	if (!InAbilityToActivate) return false;
-
-	UNexusAbility* FoundAbility = GrantedAbilities.FindRef(InAbilityToActivate);
-	if (!FoundAbility)
-	{
-		UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: not granted"),
-			*InAbilityToActivate->GetName());
-		return false;
-	}
-	
-	if (!FoundAbility->IsEnabled())
-	{
-		UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: disabled"),
-			*InAbilityToActivate->GetName());
-		return false;
-	}
-	
-	if (FoundAbility->IsActive())
-	{
-		UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: already active"),
-			*InAbilityToActivate->GetName());
-		return false;
-	}
-
-	if (FoundAbility->IsOnCooldown())
-	{
-		UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: on cooldown (%.2fs remaining)"),
-			*InAbilityToActivate->GetName(), FoundAbility->GetCooldownRemaining());
-		return false;
-	}
-	
-	if (!CheckTagRequirements(FoundAbility))
-	{
-		UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: tag requirements not met"),
-			*InAbilityToActivate->GetName());
-		return false;
-	}
-	
-	if (!FoundAbility->CanActivateAbility())
-	{
-		UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: CanActivateAbility returned false"),
-			*InAbilityToActivate->GetName());
-		return false;
-	}
-	
-	if (!FoundAbility->CancelAbilitiesWithTags.IsEmpty())
-	{
-		CancelAbilitiesWithTags(FoundAbility->CancelAbilitiesWithTags);
-	}
-	
-	if (!FoundAbility->ActivationOwnedTags.IsEmpty())
-	{
-		AddTags(FoundAbility->ActivationOwnedTags);
-	}
-
-	FoundAbility->ActivationState = ENexusAbilityActivationState::Active;
-	
-	FoundAbility->OnActivateAbility();
-	OnAbilityActivated.Broadcast(FoundAbility);
-
-	if (!FoundAbility->bStartCooldownOnEnd)
-	{
-		FoundAbility->CommitCooldown();
-	}
-
-	UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] SUCCESS"), *InAbilityToActivate->GetName());
-
-	return true;
+    return TryActivateAbilityByClassWithResult(InAbilityToActivate) == ENexusAbilityActivationResult::Success;
 }
 
 bool UNexusAbilitySystemComponent::TryDeactivateAbilityByClass(const TSubclassOf<UNexusAbility> InAbilityToDeactivate)

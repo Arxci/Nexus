@@ -7,7 +7,6 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
-#include "Nexus/Nexus.h"
 #include "Nexus/NexusGameplayTags.h"
 
 ANexusHeroCharacter::ANexusHeroCharacter(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
@@ -88,7 +87,7 @@ void ANexusHeroCharacter::OnCrouchInputStarted()
 	{
 
 		if (NexusAbilitySystemComponent->IsAbilityActiveByTag(
-				NexusGameplayTags::InputTag_Crouch))
+				NexusGameplayTags::Ability_Locomotion_Crouch))
 		{
 			NexusAbilitySystemComponent->AbilityInputReleased(NexusGameplayTags::InputTag_Crouch);
 		}

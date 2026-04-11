@@ -43,7 +43,7 @@ public:
 	void EndAbility();
 
 	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
-	class UNexusAbilitySystemComponent* GetNexusAbilitySystemComponent() const;
+	UNexusAbilitySystemComponent* GetNexusAbilitySystemComponent() const;
 
 	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
     AActor* GetAvatarActor() const;
@@ -76,10 +76,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
 	void CommitCooldown();
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Abilities") bool bCanTick = false;
+	bool GetCanTick() const { return bCanTick; }
 	
 protected:
 	virtual void TickAbility(float DeltaTime) {}
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Abilities") bool bCanTick = false;
 	
 	UPROPERTY(BlueprintReadOnly, Category = "Ability System|Abilities")
 	ENexusAbilityActivationState ActivationState = ENexusAbilityActivationState::Idle;

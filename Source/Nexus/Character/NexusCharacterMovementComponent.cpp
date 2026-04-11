@@ -2,7 +2,7 @@
 
 UNexusCharacterMovementComponent::UNexusCharacterMovementComponent()
 {
-	
+
 }
 
 void UNexusCharacterMovementComponent::StartRunning()
