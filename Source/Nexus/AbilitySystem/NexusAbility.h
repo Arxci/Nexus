@@ -29,11 +29,11 @@ public:
 
 	UFUNCTION(BlueprintImplementableEvent, Category = "Ability System|Abilities",
 		meta = (DisplayName = "On Activate Ability", ScriptName = "OnActivateAbility"))
-	void K2_OnActivateAbility();
+	void K2_OnAbilityActivated();
 
 	UFUNCTION(BlueprintImplementableEvent, Category = "Ability System|Abilities",
 		meta = (DisplayName = "On Deactivate Ability", ScriptName = "OnDeactivateAbility"))
-	void K2_OnDeactivateAbility();
+	void K2_OnAbilityDeactivated();
 
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Ability System|Abilities")
 	bool CanActivateAbility() const;

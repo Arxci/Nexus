@@ -26,6 +26,7 @@ void UNexusAbility_LocomotionCrouch::OnActivateAbility()
 void UNexusAbility_LocomotionCrouch::OnDeactivateAbility() 
 {
 	Super::OnDeactivateAbility();
+	
 	if (ACharacter* Char = Cast<ACharacter>(GetAvatarActor()))
 	{
 		Char->UnCrouch();

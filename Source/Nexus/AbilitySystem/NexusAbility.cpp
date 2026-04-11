@@ -11,12 +11,12 @@ UNexusAbility::UNexusAbility()
 
 void UNexusAbility::OnActivateAbility()
 {
-	K2_OnActivateAbility();
+	K2_OnAbilityActivated();
 }
 
 void UNexusAbility::OnDeactivateAbility()
 {
-	K2_OnDeactivateAbility();
+	K2_OnAbilityDeactivated();
 }
 
 bool UNexusAbility::CanActivateAbility_Implementation() const

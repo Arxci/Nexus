@@ -12,6 +12,7 @@ class UInputMappingContext;
 class UInputAction;
 class USceneComponent;
 class USpringArmComponent;
+class UCameraComponent;
 
 UENUM(BlueprintType)
 enum class ERunInputMode : uint8
@@ -36,35 +37,35 @@ public:
 	ANexusHeroCharacter(const FObjectInitializer& ObjectInitializer  = FObjectInitializer::Get());
 
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
-	virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult) override;
 
 protected:
 	virtual void BeginPlay() override;
-	virtual void Tick(float DeltaTime) override;
 
 	//Camera
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Camera")
 	USceneComponent* ViewRoot;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Camera")
 	USpringArmComponent* SpringArm;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Camera")
 	USceneComponent* ViewSource;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Camera")
+	UCameraComponent* FollowCamera;
 
 	//Input
-	UPROPERTY(EditAnywhere, Category = "Input")
+	UPROPERTY(EditAnywhere, Category = "Character|Input")
 	UInputMappingContext* DefaultMappingContext;
-	UPROPERTY(EditAnywhere, Category = "Input|Actions")
+	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions")
 	UInputAction* MoveAction;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input|Actions")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Character|Input|Actions")
 	UInputAction* LookAction;
-	UPROPERTY(EditAnywhere, Category = "Input|Actions")
+	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions")
 	UInputAction* SprintAction;
-	UPROPERTY(EditAnywhere, Category = "Input|Actions")
+	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions")
 	UInputAction* CrouchAction;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input|Sprint")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Character|Input|Sprint")
 	ERunInputMode RunInputMode = ERunInputMode::Hold;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input|Crouch")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Character|Input|Crouch")
 	ECrouchInputMode CrouchInputMode = ECrouchInputMode::Hold;
 
 private:

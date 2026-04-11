@@ -7,29 +7,38 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "Camera/CameraComponent.h"
 #include "Nexus/NexusGameplayTags.h"
 
 ANexusHeroCharacter::ANexusHeroCharacter(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+	GetCapsuleComponent()->InitCapsuleSize(45.0f, 90.0f);
 
 	GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	GetMesh()->SetCollisionProfileName(FName("NoCollision"));
+	GetMesh()->SetCastShadow(false);
+	GetMesh()->SetFirstPersonPrimitiveType(EFirstPersonPrimitiveType::FirstPerson);
 
 	ViewRoot = CreateDefaultSubobject<USceneComponent>(TEXT("ViewRoot"));
-	ViewRoot->SetupAttachment(GetRootComponent());
-	ViewRoot->SetRelativeLocation(FVector(0.f, 0.f, 60.f));
+	ViewRoot->SetupAttachment(GetMesh(), FName("head"));
+	ViewRoot->SetRelativeRotation(FRotator(-90.f, 0.f, 90.f));
 
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
 	SpringArm->SetupAttachment(ViewRoot);
 	SpringArm->TargetArmLength = 0.0f;
-	SpringArm->bUsePawnControlRotation = true;
-	SpringArm->bEnableCameraRotationLag = true;
+	SpringArm->bEnableCameraRotationLag = false;
 	SpringArm->CameraRotationLagSpeed = 25.0f;
 
 	ViewSource = CreateDefaultSubobject<USceneComponent>(TEXT("ViewSource"));
 	ViewSource->SetupAttachment(SpringArm);
+
+	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
+	FollowCamera->SetupAttachment(ViewSource);
+	FollowCamera->SetFirstPersonScale(0.6);
+	FollowCamera->SetEnableFirstPersonFieldOfView(true);
+	FollowCamera->SetEnableFirstPersonScale(true);
 }
 
 void ANexusHeroCharacter::BeginPlay()
@@ -57,19 +66,6 @@ void ANexusHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnRunInputCompleted);
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnCrouchInputStarted);
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnCrouchInputCompleted);
-	}
-}
-
-void ANexusHeroCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
-{
-	if (ViewSource)
-	{
-		OutResult.Location = ViewSource->GetComponentLocation();
-		OutResult.Rotation = ViewSource->GetComponentRotation();
-	}
-	else
-	{
-		Super::CalcCamera(DeltaTime, OutResult);
 	}
 }
 

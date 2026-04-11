@@ -21,17 +21,17 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Character")
 	UNexusCharacterMovementComponent* GetNexusCharacterMovement() const;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Abilities")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
 	UNexusAbilitySystemComponent* NexusAbilitySystemComponent;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
+	TObjectPtr<UNexusCharacterMovementComponent> NexusCharacterMovement;
 
 protected:
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void UnPossessed() override;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Character")
-	TObjectPtr<UNexusCharacterMovementComponent> NexusCharacterMovement;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Abilities")
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
 	TArray<TSubclassOf<UNexusAbility>> DefaultAbilities;
 
 };
