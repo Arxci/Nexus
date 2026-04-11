@@ -5,14 +5,40 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Nexus/Character/NexusCharacterMovementComponent.h"
+#include "Nexus/NexusGameplayTags.h"
 
 UNexusAbility_LocomotionRun::UNexusAbility_LocomotionRun()
 {
-	AbilityTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Locomotion.Run")));
-	ActivationOwnedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Character.State.Locomotion.Run")));
+	AbilityTags.AddTag(NexusGameplayTags::Ability_Locomotion_Run);
+	ActivationOwnedTags.AddTag(NexusGameplayTags::Character_State_Locomotion_Run);
+	InputTag = NexusGameplayTags::InputTag_Run;
+	bCanTick = true;
 }
 
-bool UNexusAbility_LocomotionRun::CanActivateAbility_Implementation() const
+void UNexusAbility_LocomotionRun::OnActivateAbility()
+{
+	bIsBoostActive = false;
+	Super::OnActivateAbility();
+}
+
+void UNexusAbility_LocomotionRun::OnDeactivateAbility()
+{
+	SetBoostActive(false);
+	Super::OnDeactivateAbility();
+}
+
+void UNexusAbility_LocomotionRun::TickAbility(float DeltaTime)
+{
+	Super::TickAbility(DeltaTime);
+
+	const bool bShould = ShouldBoostThisFrame();
+	if (bShould != bIsBoostActive)
+	{
+		SetBoostActive(bShould);
+	}
+}
+
+bool UNexusAbility_LocomotionRun::ShouldBoostThisFrame() const
 {
 	const ACharacter* Char = Cast<ACharacter>(GetAvatarActor());
 	if (!Char) return false;
@@ -27,58 +53,24 @@ bool UNexusAbility_LocomotionRun::CanActivateAbility_Implementation() const
 	return FVector::DotProduct(Forward, InputVector.GetSafeNormal()) > 0.0f;
 }
 
-void UNexusAbility_LocomotionRun::OnActivateAbility()
+void UNexusAbility_LocomotionRun::SetBoostActive(bool bNewActive)
 {
-	if (const ACharacter* Char = Cast<ACharacter>(GetAvatarActor()))
-	{
-		if (UNexusCharacterMovementComponent* MoveComp = Cast<UNexusCharacterMovementComponent>(Char->GetCharacterMovement()))
-		{
-			MoveComp->StartSprinting();
-		}
-	}
-
-	Super::OnActivateAbility();
-}
-
-void UNexusAbility_LocomotionRun::OnDeactivateAbility()
-{
-	if (const ACharacter* Char = Cast<ACharacter>(GetAvatarActor()))
-	{
-		if (UNexusCharacterMovementComponent* MoveComp = Cast<UNexusCharacterMovementComponent>(Char->GetCharacterMovement()))
-		{
-			MoveComp->StopSprinting();
-		}
-	}
-
-	Super::OnDeactivateAbility();
-}
-
-void UNexusAbility_LocomotionRun::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
+	if (bIsBoostActive == bNewActive) return;
 
 	const ACharacter* Char = Cast<ACharacter>(GetAvatarActor());
 	if (!Char) return;
 
-	const UCharacterMovementComponent* MoveComp = Char->GetCharacterMovement();
-	if (!MoveComp || !MoveComp->IsMovingOnGround())
-	{
-		EndAbility();
-		return;
-	}
+	UNexusCharacterMovementComponent* MoveComp =
+		Cast<UNexusCharacterMovementComponent>(Char->GetCharacterMovement());
+	if (!MoveComp) return;
 
-	const FVector InputVector = MoveComp->GetLastInputVector();
-	if (InputVector.IsNearlyZero())
+	bIsBoostActive = bNewActive;
+	if (bNewActive)
 	{
-		EndAbility();
-		return;
+		MoveComp->StartRunning();
 	}
-	
-	const FVector Forward = Char->GetActorForwardVector();
-	const float ForwardDot = FVector::DotProduct(Forward, InputVector.GetSafeNormal());
-	
-	if (ForwardDot <= 0.0f)
+	else
 	{
-		EndAbility();
+		MoveComp->StopRunning();
 	}
 }

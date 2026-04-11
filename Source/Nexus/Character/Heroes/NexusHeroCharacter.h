@@ -13,7 +13,21 @@ class UInputAction;
 class USceneComponent;
 class USpringArmComponent;
 
-UCLASS(PrioritizeCategories = "Abilities|Camera|Input")
+UENUM(BlueprintType)
+enum class ERunInputMode : uint8
+{
+	Hold   UMETA(DisplayName = "Hold to Run"),
+	Toggle UMETA(DisplayName = "Toggle Run"),
+};
+
+UENUM(BlueprintType)
+enum class ECrouchInputMode : uint8
+{
+	Hold   UMETA(DisplayName = "Hold to Crouch"),
+	Toggle UMETA(DisplayName = "Toggle Crouch"),
+};
+
+UCLASS(PrioritizeCategories = ("Abilities","Camera","Input"))
 class NEXUS_API ANexusHeroCharacter : public ANexusCharacterBase
 {
 	GENERATED_BODY()
@@ -44,14 +58,20 @@ protected:
 	UInputAction* LookAction;
 	UPROPERTY(EditAnywhere, Category = "Input")
 	UInputAction* SprintAction;
+	UPROPERTY(EditAnywhere, Category = "Input")
+	UInputAction* CrouchAction;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Abilities")
-	FGameplayTag SprintAbilityTag;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input|Sprint")
+	ERunInputMode RunInputMode = ERunInputMode::Hold;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input|Crouch")
+	ECrouchInputMode CrouchInputMode = ECrouchInputMode::Hold;
 
+private:
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
-	void StartSprint();
-	void StopSprint();
-private:
-	bool bWantsToSprint = false;
+	void OnCrouchInputStarted(); 
+	void OnCrouchInputCompleted();
+	void OnRunInputStarted();
+	void OnRunInputCompleted();
+
 };

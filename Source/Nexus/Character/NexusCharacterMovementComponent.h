@@ -6,7 +6,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "NexusCharacterMovementComponent.generated.h"
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnSprintStateChanged);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRunStateChanged);
 
 UCLASS()
 class NEXUS_API UNexusCharacterMovementComponent : public UCharacterMovementComponent
@@ -16,26 +16,26 @@ class NEXUS_API UNexusCharacterMovementComponent : public UCharacterMovementComp
 public:
 	UNexusCharacterMovementComponent();
 
-	UFUNCTION(BlueprintCallable, Category = "Sprint")
-	void StartSprinting();
+	UFUNCTION(BlueprintCallable, Category = "Character Movement: Run")
+	void StartRunning();
 
-	UFUNCTION(BlueprintCallable, Category = "Sprint")
-	void StopSprinting();
+	UFUNCTION(BlueprintCallable, Category = "Character Movement: Run")
+	void StopRunning();
 
-	UFUNCTION(BlueprintPure, Category = "Sprint")
-	bool IsSprinting() const { return bIsSprinting; }
+	UFUNCTION(BlueprintPure, Category = "Character Movement: Run")
+	bool IsRunning() const { return bIsRunning; }
 
-	UPROPERTY(BlueprintAssignable, Category = "Sprint")
-	FOnSprintStateChanged OnSprintStart;
+	UPROPERTY(BlueprintAssignable, Category = "Character Movement: Run")
+	FOnRunStateChanged OnRunStart;
 
-	UPROPERTY(BlueprintAssignable, Category = "Sprint")
-	FOnSprintStateChanged OnSprintEnd;
+	UPROPERTY(BlueprintAssignable, Category = "Character Movement: Run")
+	FOnRunStateChanged OnRunEnd;
 
 protected:
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sprint")
-	float SprintSpeed = 600.0f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Movement: Run")
+	float MaxWalkSpeedRun = 600.0f;
 
 private:
-	bool bIsSprinting = false;
+	bool bIsRunning = false;
 	float CachedWalkSpeed = 0.0f;
 };

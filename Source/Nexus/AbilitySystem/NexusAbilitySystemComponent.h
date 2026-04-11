@@ -24,6 +24,9 @@ public:
 
 	void InitAbilityActorInfo(AController* InController);
 
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
+	FActorComponentTickFunction* ThisTickFunction) override;
+
 	// --- Getters ---
 
     UFUNCTION(BlueprintCallable, Category = "Ability System")
@@ -58,6 +61,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	bool TryDeactivateAbilityByTag(FGameplayTag AbilityTag);
 
+	UFUNCTION(BlueprintCallable, Category="Ability System")
+	bool RemoveAbility(TSubclassOf<UNexusAbility> AbilityClass);
+
 	// --- Ability Queries ---
 	
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
@@ -65,6 +71,9 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	bool IsAbilityActive(TSubclassOf<UNexusAbility> AbilityClass) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Ability System")
+	bool IsAbilityActiveByTag(FGameplayTag AbilityTag) const;
 	
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	TArray<UNexusAbility*> GetActiveAbilities() const;
@@ -72,10 +81,16 @@ public:
 	// --- Delegates ---
 
 	UPROPERTY(BlueprintAssignable)
-	FOnAbilityStateChanged OnAbilityActivated;
+    FOnAbilityStateChanged OnAbilityActivated;
+
+    UPROPERTY(BlueprintAssignable)
+    FOnAbilityStateChanged OnAbilityDeactivated;
 
 	UPROPERTY(BlueprintAssignable)
-	FOnAbilityStateChanged OnAbilityDeactivated;
+	FOnAbilityStateChanged OnAbilityGiven;
+
+	UPROPERTY(BlueprintAssignable)
+	FOnAbilityStateChanged OnAbilityRemoved;
 
 	// --- Tags ---
 
@@ -106,6 +121,14 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Ability System")
 	FOnTagChanged OnTagChanged;
 
+	// Input Routing
+
+	UFUNCTION(BlueprintCallable, Category = "Ability System|Input")
+	void AbilityInputPressed(FGameplayTag InputTag);
+
+	UFUNCTION(BlueprintCallable, Category = "Ability System|Input")
+	void AbilityInputReleased(FGameplayTag InputTag);
+
 protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -113,7 +136,7 @@ protected:
 	AController* CachedController = nullptr;
 
 	UPROPERTY()
-	TMap<TSubclassOf<UNexusAbility>, UNexusAbility*> GrantedAbilities;
+	TMap<TSubclassOf<UNexusAbility>, TObjectPtr<UNexusAbility>> GrantedAbilities;
 
 private:
 	TMap<FGameplayTag, int32> TagRefCounts;

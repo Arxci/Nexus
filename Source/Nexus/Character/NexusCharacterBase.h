@@ -8,7 +8,7 @@
 #include "Nexus/AbilitySystem/NexusAbilitySystemInterface.h"
 #include "NexusCharacterBase.generated.h"
 
-UCLASS(PrioritizeCategories = "Abilities")
+UCLASS(PrioritizeCategories = ("Abilities"))
 class NEXUS_API ANexusCharacterBase : public ACharacter, public INexusAbilitySystemInterface
 {
 	GENERATED_BODY()
@@ -21,13 +21,14 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Character")
 	UNexusCharacterMovementComponent* GetNexusCharacterMovement() const;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Abilities")
 	UNexusAbilitySystemComponent* NexusAbilitySystemComponent;
 
 protected:
 	virtual void PossessedBy(AController* NewController) override;
+	virtual void UnPossessed() override;
 
-	UPROPERTY(BlueprintReadOnly, Category = "Nexus|Character")
+	UPROPERTY(BlueprintReadOnly, Category = "Character")
 	TObjectPtr<UNexusCharacterMovementComponent> NexusCharacterMovement;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Abilities")

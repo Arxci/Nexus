@@ -2,23 +2,24 @@
 
 UNexusCharacterMovementComponent::UNexusCharacterMovementComponent()
 {
+	
 }
 
-void UNexusCharacterMovementComponent::StartSprinting()
+void UNexusCharacterMovementComponent::StartRunning()
 {
-	if (bIsSprinting) return;
+	if (bIsRunning) return;
 
-	bIsSprinting = true;
+	bIsRunning = true;
 	CachedWalkSpeed = MaxWalkSpeed;
-	MaxWalkSpeed = SprintSpeed;
-	OnSprintStart.Broadcast();
+	MaxWalkSpeed = MaxWalkSpeedRun;
+	OnRunStart.Broadcast();
 }
 
-void UNexusCharacterMovementComponent::StopSprinting()
+void UNexusCharacterMovementComponent::StopRunning()
 {
-	if (!bIsSprinting) return;
+	if (!bIsRunning) return;
 
-	bIsSprinting = false;
+	bIsRunning = false;
 	MaxWalkSpeed = CachedWalkSpeed;
-	OnSprintEnd.Broadcast();
+	OnRunEnd.Broadcast();
 }

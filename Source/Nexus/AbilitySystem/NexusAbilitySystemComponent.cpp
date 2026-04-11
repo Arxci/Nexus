@@ -3,24 +3,39 @@
 
 #include "NexusAbilitySystemComponent.h"
 #include "NexusAbility.h" 
-#include "GameFramework/Character.h" 
 #include "Nexus/Nexus.h"
 
 
 UNexusAbilitySystemComponent::UNexusAbilitySystemComponent()
 {
-	PrimaryComponentTick.bCanEverTick = false;
+	PrimaryComponentTick.bCanEverTick = true;
 }
 
 void UNexusAbilitySystemComponent::InitAbilityActorInfo(AController* InController)
 {
-	CachedController = InController;
+	CachedController = InController; 
+}
 
-	if (!InController)
+void UNexusAbilitySystemComponent::TickComponent(float DeltaTime, ELevelTick TickType,
+	FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	
+	TArray<UNexusAbility*, TInlineAllocator<8>> TickList;
+	for (const auto& Pair : GrantedAbilities)
 	{
-		UE_LOG(LogNexusAbilitySystem, Warning,
-			TEXT("InitAbilityActorInfo called with null controller on [%s]"),
-			*GetNameSafe(GetOwner()));
+		UNexusAbility* Ability = Pair.Value;
+		if (Ability && Ability->bCanTick && Ability->IsActive() && Ability->IsEnabled())
+		{
+			TickList.Add(Ability);
+		}
+	}
+	for (UNexusAbility* Ability : TickList)
+	{
+		if (Ability->IsActive())
+		{
+			Ability->TickAbility(DeltaTime);
+		}
 	}
 }
 
@@ -34,15 +49,49 @@ void UNexusAbilitySystemComponent::EndPlay(const EEndPlayReason::Type EndPlayRea
 
 UNexusAbility* UNexusAbilitySystemComponent::GiveAbility(const TSubclassOf<UNexusAbility> AbilityClass)
 {
-	if (!AbilityClass || GrantedAbilities.Contains(AbilityClass)) return nullptr;	
+	if (!AbilityClass) return nullptr;
 	
+	if (UNexusAbility* Existing = GrantedAbilities.FindRef(AbilityClass))
+	{
+		if (!Existing->IsEnabled())
+		{
+			SetAbilityEnabled(AbilityClass, true);
+			OnAbilityGiven.Broadcast(Existing);
+		}
+		return Existing;
+	}
+
 	if (UNexusAbility* NewAbility = NewObject<UNexusAbility>(this, AbilityClass))
 	{
 		GrantedAbilities.Add(AbilityClass, NewAbility);
+		OnAbilityGiven.Broadcast(NewAbility);
 		return NewAbility;
 	}
-
 	return nullptr;
+}
+
+bool UNexusAbilitySystemComponent::RemoveAbility(const TSubclassOf<UNexusAbility> AbilityClass)
+{
+	if (!AbilityClass) return false;
+
+	UNexusAbility* FoundAbility = GrantedAbilities.FindRef(AbilityClass);
+	if (!FoundAbility)
+	{
+		UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("RemoveAbility [%s] FAILED: not granted"),
+			*AbilityClass->GetName());
+		return false;
+	}
+	if (!FoundAbility->IsEnabled())
+	{
+		return true; 
+	}
+
+	SetAbilityEnabled(AbilityClass, false); 
+	OnAbilityRemoved.Broadcast(FoundAbility);
+
+	UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("RemoveAbility [%s] SUCCESS"),
+		*AbilityClass->GetName());
+	return true;
 }
 
 bool UNexusAbilitySystemComponent::TryActivateAbilityByClass(const TSubclassOf<UNexusAbility> InAbilityToActivate)
@@ -168,11 +217,19 @@ void UNexusAbilitySystemComponent::SetAbilityEnabled(TSubclassOf<UNexusAbility> 
 
 void UNexusAbilitySystemComponent::DeactivateAllAbilities()
 {
+	TArray<UNexusAbility*, TInlineAllocator<8>> ToDeactivate;
 	for (const auto& Pair : GrantedAbilities)
 	{
 		if (Pair.Value && Pair.Value->IsActive())
 		{
-			DeactivateAbility(Pair.Value);
+			ToDeactivate.Add(Pair.Value);
+		}
+	}
+	for (UNexusAbility* Ability : ToDeactivate)
+	{
+		if (Ability->IsActive())
+		{
+			DeactivateAbility(Ability);
 		}
 	}
 }
@@ -239,6 +296,20 @@ TArray<UNexusAbility*> UNexusAbilitySystemComponent::GetActiveAbilities() const
 		}
 	}
 	return Result;
+}
+
+bool UNexusAbilitySystemComponent::IsAbilityActiveByTag(FGameplayTag AbilityTag) const
+{
+	if (!AbilityTag.IsValid()) return false;
+	for (const auto& Pair : GrantedAbilities)
+	{
+		const UNexusAbility* Ability = Pair.Value;
+		if (Ability && Ability->IsActive() && Ability->AbilityTags.HasTag(AbilityTag))
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 // --- Tags ---
@@ -370,3 +441,32 @@ void UNexusAbilitySystemComponent::CancelAbilitiesWithTags(const FGameplayTagCon
 	}
 }
 
+// Input Routing
+
+void UNexusAbilitySystemComponent::AbilityInputPressed(FGameplayTag InputTag)
+{
+	if (!InputTag.IsValid()) return;
+
+	for (const auto& Pair : GrantedAbilities)
+	{
+		UNexusAbility* Ability = Pair.Value;
+		if (Ability && Ability->InputTag == InputTag)
+		{
+			TryActivateAbilityByClass(Pair.Key);
+		}
+	}
+}
+
+void UNexusAbilitySystemComponent::AbilityInputReleased(FGameplayTag InputTag)
+{
+	if (!InputTag.IsValid()) return;
+
+	for (const auto& Pair : GrantedAbilities)
+	{
+		UNexusAbility* Ability = Pair.Value;
+		if (Ability && Ability->IsActive() && Ability->InputTag == InputTag)
+		{
+			DeactivateAbility(Ability);
+		}
+	}
+}

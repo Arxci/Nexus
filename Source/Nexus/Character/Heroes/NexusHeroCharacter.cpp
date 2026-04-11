@@ -7,11 +7,11 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "Nexus/Nexus.h"
+#include "Nexus/NexusGameplayTags.h"
 
 ANexusHeroCharacter::ANexusHeroCharacter(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
-	SprintAbilityTag = FGameplayTag::RequestGameplayTag(FName("GameplayAbility.Locomotion.Run"));
-	
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 
 	GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
@@ -54,8 +54,10 @@ void ANexusHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 	{
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ANexusHeroCharacter::Move);
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ANexusHeroCharacter::Look);
-		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::StartSprint);
-		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::StopSprint);
+		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnRunInputStarted);
+		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnRunInputCompleted);
+		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnCrouchInputStarted);
+		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnCrouchInputCompleted);
 	}
 }
 
@@ -72,46 +74,82 @@ void ANexusHeroCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResul
 	}
 }
 
-void ANexusHeroCharacter::StartSprint()
-{
-	bWantsToSprint = true;
+// Player Input
 
-	if (NexusAbilitySystemComponent && SprintAbilityTag.IsValid())
+void ANexusHeroCharacter::OnCrouchInputStarted()
+{
+	if (!NexusAbilitySystemComponent) return;
+	
+	if (CrouchInputMode == ECrouchInputMode::Hold)
 	{
-		NexusAbilitySystemComponent->TryActivateAbilityByTag(SprintAbilityTag);
+		NexusAbilitySystemComponent->AbilityInputPressed(NexusGameplayTags::InputTag_Crouch);
+	}
+	else 
+	{
+
+		if (NexusAbilitySystemComponent->IsAbilityActiveByTag(
+				NexusGameplayTags::InputTag_Crouch))
+		{
+			NexusAbilitySystemComponent->AbilityInputReleased(NexusGameplayTags::InputTag_Crouch);
+		}
+		else
+		{
+			NexusAbilitySystemComponent->AbilityInputPressed(NexusGameplayTags::InputTag_Crouch);
+		}
 	}
 }
 
-void ANexusHeroCharacter::StopSprint()
+void ANexusHeroCharacter::OnCrouchInputCompleted()
 {
-	bWantsToSprint = false;
+	if (CrouchInputMode != ECrouchInputMode::Hold) return;
+	if (!NexusAbilitySystemComponent) return;
 
-	if (NexusAbilitySystemComponent && SprintAbilityTag.IsValid())
+	NexusAbilitySystemComponent->AbilityInputReleased(NexusGameplayTags::InputTag_Crouch);
+}
+
+void ANexusHeroCharacter::OnRunInputStarted()
+{
+	if (!NexusAbilitySystemComponent) return;
+
+	if (RunInputMode == ERunInputMode::Hold)
 	{
-		NexusAbilitySystemComponent->TryDeactivateAbilityByTag(SprintAbilityTag);
+		NexusAbilitySystemComponent->AbilityInputPressed(NexusGameplayTags::InputTag_Run);
 	}
+	else 
+	{
+
+		if (NexusAbilitySystemComponent->IsAbilityActiveByTag(
+				NexusGameplayTags::Ability_Locomotion_Run))
+		{
+			NexusAbilitySystemComponent->AbilityInputReleased(NexusGameplayTags::InputTag_Run);
+		}
+		else
+		{
+			NexusAbilitySystemComponent->AbilityInputPressed(NexusGameplayTags::InputTag_Run);
+		}
+	}
+}
+
+void ANexusHeroCharacter::OnRunInputCompleted()
+{
+	if (RunInputMode != ERunInputMode::Hold) return;
+	if (!NexusAbilitySystemComponent) return;
+
+	NexusAbilitySystemComponent->AbilityInputReleased(NexusGameplayTags::InputTag_Run);
 }
 
 void ANexusHeroCharacter::Move(const FInputActionValue& Value)
 {
-	FVector2D MovementVector = Value.Get<FVector2D>();
+	const FVector2D MovementVector = Value.Get<FVector2D>();
+	if (Controller == nullptr) return;
 
-	if (Controller != nullptr)
-	{
-		const FRotator Rotation = Controller->GetControlRotation();
-		const FRotator YawRotation(0, Rotation.Yaw, 0);
+	const FRotator Rotation = Controller->GetControlRotation();
+	const FRotator YawRotation(0, Rotation.Yaw, 0);
+	const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+	const FVector RightDirection   = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
-		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
-
-		AddMovementInput(ForwardDirection, MovementVector.Y);
-		AddMovementInput(RightDirection, MovementVector.X);
-		
-		if (bWantsToSprint && NexusAbilitySystemComponent && SprintAbilityTag.IsValid())
-		{
-			NexusAbilitySystemComponent->TryActivateAbilityByTag(SprintAbilityTag);
-		}
-	}
+	AddMovementInput(ForwardDirection, MovementVector.Y);
+	AddMovementInput(RightDirection,   MovementVector.X);
 }
 
 void ANexusHeroCharacter::Look(const FInputActionValue& Value)

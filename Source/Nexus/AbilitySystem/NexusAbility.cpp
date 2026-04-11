@@ -67,23 +67,6 @@ void UNexusAbility::CommitCooldown()
 	}
 }
 
-void UNexusAbility::Tick(float DeltaTime)
-{
-
-}
-
-bool UNexusAbility::IsTickable() const
-{
-	return bIsEnabled
-		&& ActivationState == ENexusAbilityActivationState::Active
-		&& !HasAnyFlags(RF_ClassDefaultObject);
-}
-
-TStatId UNexusAbility::GetStatId() const
-{
-	RETURN_QUICK_DECLARE_CYCLE_STAT(UNexusAbility, STATGROUP_Tickables);
-}
-
 UNexusAbilitySystemComponent* UNexusAbility::GetNexusAbilitySystemComponent() const
 {
 	return Cast<UNexusAbilitySystemComponent>(GetOuter());

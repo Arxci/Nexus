@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Tickable.h"
 #include "GameplayTagContainer.h"
 #include "NexusAbility.generated.h"
 
@@ -16,7 +15,7 @@ enum class ENexusAbilityActivationState : uint8
 };
 
 UCLASS(Blueprintable)
-class NEXUS_API UNexusAbility : public UObject, public FTickableGameObject
+class NEXUS_API UNexusAbility : public UObject
 {
 	GENERATED_BODY()
 
@@ -77,17 +76,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
 	void CommitCooldown();
 
-	virtual void Tick(float DeltaTime) override;
-	virtual bool IsTickable() const override;
-	virtual TStatId GetStatId() const override;
-	virtual bool IsTickableInEditor() const override { return false; }
-
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Abilities") bool bCanTick = false;
+	
 protected:
+	virtual void TickAbility(float DeltaTime) {}
+	
 	UPROPERTY(BlueprintReadOnly, Category = "Ability System|Abilities")
 	ENexusAbilityActivationState ActivationState = ENexusAbilityActivationState::Idle;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Ability System|Abilities")
 	bool bIsEnabled = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Abilities")
+	FGameplayTag InputTag;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Abilities")
 	FGameplayTagContainer AbilityTags;

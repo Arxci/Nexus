@@ -46,3 +46,12 @@ void ANexusCharacterBase::PossessedBy(AController* NewController)
 		}
 	}
 }
+
+void ANexusCharacterBase::UnPossessed()
+{
+	if (NexusAbilitySystemComponent)
+	{
+		NexusAbilitySystemComponent->InitAbilityActorInfo(nullptr);
+	}
+	Super::UnPossessed();
+}

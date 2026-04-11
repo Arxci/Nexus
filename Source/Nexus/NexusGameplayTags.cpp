@@ -1,0 +1,16 @@
+﻿#include "NexusGameplayTags.h"
+
+namespace NexusGameplayTags
+{
+	// Ability identity tags
+	UE_DEFINE_GAMEPLAY_TAG(Ability_Locomotion_Run,         "Ability.Locomotion.Run");
+	UE_DEFINE_GAMEPLAY_TAG(Ability_Locomotion_Crouch,         "Ability.Locomotion.Crouch");
+
+	// Owned state tags (applied to the ASC while the ability is active)
+	UE_DEFINE_GAMEPLAY_TAG(Character_State_Locomotion_Run, "Character.State.Locomotion.Run");
+	UE_DEFINE_GAMEPLAY_TAG(Character_State_Locomotion_Crouch, "Character.State.Locomotion.Crouch");
+
+	//Input-ID tags
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Run,   "Input.Run");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Crouch,   "Input.Crouch");
+}

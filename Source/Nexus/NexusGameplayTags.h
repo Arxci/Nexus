@@ -1,0 +1,18 @@
+﻿#pragma once
+
+#include "NativeGameplayTags.h"
+
+namespace NexusGameplayTags
+{
+
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Locomotion_Run);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Locomotion_Crouch);
+
+	// Owned state tags (applied to the ASC while the ability is active)
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Character_State_Locomotion_Run);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Character_State_Locomotion_Crouch);
+
+	//Input-ID tags
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Run);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Crouch);
+}

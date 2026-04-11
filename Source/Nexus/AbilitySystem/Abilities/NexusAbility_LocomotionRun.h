@@ -15,6 +15,11 @@ protected:
 	
 	virtual void OnActivateAbility() override;
 	virtual void OnDeactivateAbility() override;
-	virtual bool CanActivateAbility_Implementation() const override;
-	virtual void Tick(float DeltaTime) override;
+	virtual void TickAbility(float DeltaTime) override;
+	
+private:
+	bool bIsBoostActive = false;
+
+	bool ShouldBoostThisFrame() const;
+	void SetBoostActive(bool bNewActive);
 };
