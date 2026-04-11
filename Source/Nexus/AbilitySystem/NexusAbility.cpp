@@ -14,6 +14,17 @@ void UNexusAbility::OnActivateAbility()
 	K2_OnAbilityActivated();
 }
 
+bool UNexusAbility::OnEndAbilityRequested(bool bForce)
+{
+	// Default: nothing to wait on. The ASC will commit teardown immediately
+	// after this returns. Subclasses that need to wait on an external event
+	// (animation, physics resize, tag transition, ...) should override this,
+	// kick off whatever they need, and return true. When bForce is true, clean
+	// up synchronously and return false (or anything — the ASC commits anyway).
+	return false;
+}
+
+
 void UNexusAbility::OnDeactivateAbility()
 {
 	K2_OnAbilityDeactivated();
@@ -26,9 +37,14 @@ bool UNexusAbility::CanActivateAbility_Implementation() const
 
 void UNexusAbility::EndAbility()
 {
+	// "I am done" — commit teardown directly. This is the path used both when
+	// an ability naturally finishes and when a deferred wind-down completes
+	// (e.g. a physics state catching up, an animation montage ending).
+	// External "please stop" requests go through ASC::DeactivateAbility instead,
+	// which first calls OnEndAbilityRequested and may wait.
 	if (UNexusAbilitySystemComponent* Comp = GetNexusAbilitySystemComponent())
 	{
-		Comp->DeactivateAbility(this);
+		Comp->CommitAbilityEnd(this);
 	}
 }
 

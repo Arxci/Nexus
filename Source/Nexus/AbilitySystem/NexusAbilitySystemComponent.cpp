@@ -41,7 +41,9 @@ void UNexusAbilitySystemComponent::TickComponent(float DeltaTime, ELevelTick Tic
 
 void UNexusAbilitySystemComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	DeactivateAllAbilities();
+	// Force: the owner is going away. We cannot afford any ability to refuse
+	// to end or defer its wind-down past this point.
+	DeactivateAllAbilities(/*bForce=*/true);
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -116,10 +118,11 @@ ENexusAbilityActivationResult UNexusAbilitySystemComponent::TryActivateAbilityBy
         return ENexusAbilityActivationResult::Disabled;
     }
 
-    if (FoundAbility->IsActive())
+    if (FoundAbility->IsActive() || FoundAbility->IsEnding())
     {
-        UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: already active"),
-            *InAbilityToActivate->GetName());
+        UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("TryActivate [%s] FAILED: already active (state=%s)"),
+            *InAbilityToActivate->GetName(),
+            FoundAbility->IsEnding() ? TEXT("Ending") : TEXT("Active"));
         return ENexusAbilityActivationResult::AlreadyActive;
     }
 
@@ -181,24 +184,61 @@ bool UNexusAbilitySystemComponent::TryDeactivateAbilityByClass(const TSubclassOf
 	UNexusAbility* FoundAbility = GrantedAbilities.FindRef(InAbilityToDeactivate);
 	if (!FoundAbility) return false;
 
-	if (!FoundAbility->IsActive()) return false;
+	// Allow kicking off wind-down even if a previous request is still pending —
+	// the ability's OnEndAbilityRequested won't be re-entered in that case.
+	if (!FoundAbility->IsActive() && !FoundAbility->IsEnding()) return false;
 
 	DeactivateAbility(FoundAbility);
-	
+
 	return true;
 }
 
-void UNexusAbilitySystemComponent::DeactivateAbility(UNexusAbility* Ability)
+void UNexusAbilitySystemComponent::DeactivateAbility(UNexusAbility* Ability, bool bForce)
 {
-	if (!Ability || !Ability->IsActive()) return;
+	if (!Ability) return;
+	if (Ability->IsIdle()) return;
+
+	if (Ability->IsEnding())
+	{
+		// Already winding down. A soft re-cancel is a no-op (the ability is
+		// still waiting on its original deferral). A force upgrades the wait
+		// to an immediate teardown: notify the ability so it can unbind any
+		// listeners, then commit.
+		if (bForce)
+		{
+			Ability->OnEndAbilityRequested(/*bForce=*/true);
+			CommitAbilityEnd(Ability);
+		}
+		return;
+	}
+
+	// First-time transition into Ending. The ability still holds its owned
+	// tags and cannot be re-activated while in this state.
+	Ability->ActivationState = ENexusAbilityActivationState::Ending;
+
+	const bool bDeferCommit = Ability->OnEndAbilityRequested(bForce);
+
+	// A forced deactivation always commits. A soft deactivation commits only
+	// if the ability did not ask to defer. Note that if the ability called
+	// EndAbility() synchronously inside OnEndAbilityRequested, the state is
+	// already Idle and CommitAbilityEnd will early-out.
+	if (bForce || !bDeferCommit)
+	{
+		CommitAbilityEnd(Ability);
+	}
+}
+
+void UNexusAbilitySystemComponent::CommitAbilityEnd(UNexusAbility* Ability)
+{
+	if (!Ability || Ability->IsIdle()) return;
 
 	Ability->ActivationState = ENexusAbilityActivationState::Idle;
-	
+
 	if (!Ability->ActivationOwnedTags.IsEmpty())
 	{
 		RemoveTags(Ability->ActivationOwnedTags);
 	}
-	
+
 	Ability->OnDeactivateAbility();
 	OnAbilityDeactivated.Broadcast(Ability);
 
@@ -215,30 +255,30 @@ void UNexusAbilitySystemComponent::SetAbilityEnabled(TSubclassOf<UNexusAbility> 
 		if (FoundAbility->IsEnabled() == bEnabled) return;
 
 		FoundAbility->bIsEnabled = bEnabled;
-		
-		if (!bEnabled && FoundAbility->IsActive())
+
+		if (!bEnabled && (FoundAbility->IsActive() || FoundAbility->IsEnding()))
 		{
-			DeactivateAbility(FoundAbility);
+			// Disabling an ability must not leave it lingering in an Ending
+			// state that can never commit (the ability is gone — no one is
+			// listening to its wait condition anymore).
+			DeactivateAbility(FoundAbility, /*bForce=*/true);
 		}
 	}
 }
 
-void UNexusAbilitySystemComponent::DeactivateAllAbilities()
+void UNexusAbilitySystemComponent::DeactivateAllAbilities(bool bForce)
 {
 	TArray<UNexusAbility*, TInlineAllocator<8>> ToDeactivate;
 	for (const auto& Pair : GrantedAbilities)
 	{
-		if (Pair.Value && Pair.Value->IsActive())
+		if (Pair.Value && (Pair.Value->IsActive() || Pair.Value->IsEnding()))
 		{
 			ToDeactivate.Add(Pair.Value);
 		}
 	}
 	for (UNexusAbility* Ability : ToDeactivate)
 	{
-		if (Ability->IsActive())
-		{
-			DeactivateAbility(Ability);
-		}
+		DeactivateAbility(Ability, bForce);
 	}
 }
 
@@ -268,7 +308,7 @@ bool UNexusAbilitySystemComponent::TryDeactivateAbilityByTag(FGameplayTag Abilit
 	for (const auto& Pair : GrantedAbilities)
 	{
 		UNexusAbility* Ability = Pair.Value;
-		if (Ability && Ability->IsActive() && Ability->AbilityTags.HasTag(AbilityTag))
+		if (Ability && (Ability->IsActive() || Ability->IsEnding()) && Ability->AbilityTags.HasTag(AbilityTag))
 		{
 			DeactivateAbility(Ability);
 			bDeactivatedAny = true;
@@ -434,7 +474,7 @@ void UNexusAbilitySystemComponent::CancelAbilitiesWithTags(const FGameplayTagCon
 	for (const auto& Pair : GrantedAbilities)
 	{
 		UNexusAbility* Ability = Pair.Value;
-		if (Ability && Ability->IsActive())
+		if (Ability && (Ability->IsActive() || Ability->IsEnding()))
 		{
 			if (Ability->AbilityTags.HasAny(Tags))
 			{
@@ -443,6 +483,11 @@ void UNexusAbilitySystemComponent::CancelAbilitiesWithTags(const FGameplayTagCon
 		}
 	}
 
+	// Soft cancel: the cancelled ability is allowed to defer teardown if it
+	// needs to wait on external state. Callers that depend on the cancelled
+	// ability being *actually* gone before they proceed should not rely on
+	// this alone — gate your activation via ActivationBlockedTags against a
+	// state tag that only drops when the cancelled ability has truly ended.
 	for (UNexusAbility* Ability : AbilitiesToCancel)
 	{
 		DeactivateAbility(Ability);

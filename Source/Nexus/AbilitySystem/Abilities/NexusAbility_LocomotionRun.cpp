@@ -4,13 +4,20 @@
 #include "NexusAbility_LocomotionRun.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "Nexus/Character/NexusCharacterMovementComponent.h"
+#include "Nexus/Character/NexusCharacterBase.h"
 #include "Nexus/NexusGameplayTags.h"
 
 UNexusAbility_LocomotionRun::UNexusAbility_LocomotionRun()
 {
 	AbilityTags.AddTag(NexusGameplayTags::Ability_Locomotion_Run);
-	ActivationOwnedTags.AddTag(NexusGameplayTags::Character_State_Locomotion_Run);
+	// NOTE: Character_State_Locomotion_Run is intentionally NOT in
+	// ActivationOwnedTags. It is driven by NexusCharacterBase from the CMC's
+	// OnRunStart/OnRunEnd delegates, so the tag reflects whether the CMC is
+	// actually boost-running right now — not whether this ability happens to
+	// be Active. ActivationBlockedTags below checks the Crouch state tag,
+	// which is likewise character-driven, so Run cannot activate while the
+	// capsule is physically at crouch height (even if the Crouch ability is
+	// stuck in Ending because overhead geometry is blocking the uncrouch).
 	ActivationBlockedTags.AddTag(NexusGameplayTags::Character_State_Locomotion_Crouch);
 	InputTag = NexusGameplayTags::InputTag_Run;
 	bCanTick = true;
@@ -58,20 +65,19 @@ void UNexusAbility_LocomotionRun::SetBoostActive(bool bNewActive)
 {
 	if (bIsBoostActive == bNewActive) return;
 
-	const ACharacter* Char = Cast<ACharacter>(GetAvatarActor());
+	// Route through the character, mirroring how Crouch goes through
+	// ACharacter::Crouch(). The character forwards to the CMC and owns the
+	// tag mirror via its OnRunStart/OnRunEnd delegate binding.
+	ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetAvatarActor());
 	if (!Char) return;
-
-	UNexusCharacterMovementComponent* MoveComp =
-		Cast<UNexusCharacterMovementComponent>(Char->GetCharacterMovement());
-	if (!MoveComp) return;
 
 	bIsBoostActive = bNewActive;
 	if (bNewActive)
 	{
-		MoveComp->StartRunning();
+		Char->StartRunning();
 	}
 	else
 	{
-		MoveComp->StopRunning();
+		Char->StopRunning();
 	}
 }

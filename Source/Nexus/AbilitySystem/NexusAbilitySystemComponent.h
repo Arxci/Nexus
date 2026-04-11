@@ -76,9 +76,29 @@ public:
 	void SetAbilityEnabled(TSubclassOf<UNexusAbility> AbilityClass, bool bEnabled);
 
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
-	void DeactivateAllAbilities();
+	void DeactivateAllAbilities(bool bForce = false);
 	
-	void DeactivateAbility(UNexusAbility* Ability);
+	/**
+	 * Request deactivation of an ability.
+	 *
+	 * When bForce is false (the default), the ability is given a chance to
+	 * wind down gracefully: it transitions to Ending, OnEndAbilityRequested
+	 * fires, and the commit is deferred if the ability wants to wait on an
+	 * external state. When bForce is true the ability is torn down
+	 * unconditionally — use this for EndPlay, RemoveAbility, death/respawn,
+	 * SetAbilityEnabled(false), and anywhere else you cannot tolerate an
+	 * ability refusing to end.
+	 */
+	void DeactivateAbility(UNexusAbility* Ability, bool bForce = false);
+
+	/**
+	 * Commits final teardown of an ability: flips state to Idle, removes
+	 * owned tags, fires OnDeactivateAbility, broadcasts, and starts the
+	 * cooldown if applicable. Called by the ability itself via EndAbility()
+	 * when it is ready to actually end, and by DeactivateAbility() when a
+	 * forced or non-deferred deactivation has been requested.
+	 */
+	void CommitAbilityEnd(UNexusAbility* Ability);
 	
 	UFUNCTION(BlueprintCallable, Category="Ability System")
 	bool RemoveAbility(TSubclassOf<UNexusAbility> AbilityClass);

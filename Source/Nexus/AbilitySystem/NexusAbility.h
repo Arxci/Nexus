@@ -12,6 +12,7 @@ enum class ENexusAbilityActivationState : uint8
 {
 	Idle    UMETA(DisplayName = "Idle"),
 	Active  UMETA(DisplayName = "Active"),
+	Ending  UMETA(DisplayName = "Ending"),
 };
 
 UCLASS(Blueprintable)
@@ -25,6 +26,25 @@ public:
 	UNexusAbility();
 	
 	virtual void OnActivateAbility();
+
+	/**
+	 * Called when the ability has been asked to wind down (by input release,
+	 * another ability cancelling it, or a forced teardown). Override this to
+	 * defer actual teardown until some external state has caught up — for
+	 * example, waiting for a capsule resize, an animation montage, or a
+	 * gameplay tag transition.
+	 *
+	 * @param bForce  True when the ability is being torn down unconditionally
+	 *                (EndPlay, RemoveAbility, death/respawn, SetAbilityEnabled
+	 *                (false)). Synchronously unbind any listeners and abandon
+	 *                pending waits — the ASC will commit the teardown as soon
+	 *                as this returns, regardless of what you return.
+	 * @return true to defer commit until the ability calls EndAbility() on
+	 *         itself. false to let the ASC commit teardown immediately. When
+	 *         bForce is true the return value is ignored.
+	 */
+	virtual bool OnEndAbilityRequested(bool bForce);
+	
 	virtual void OnDeactivateAbility();
 
 	UFUNCTION(BlueprintImplementableEvent, Category = "Ability System|Abilities",
@@ -61,6 +81,13 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
 	bool IsActive() const { return ActivationState == ENexusAbilityActivationState::Active; }
+
+	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
+	bool IsEnding() const { return ActivationState == ENexusAbilityActivationState::Ending; }
+
+	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
+	bool IsIdle() const { return ActivationState == ENexusAbilityActivationState::Idle; }
+
 
 	UFUNCTION(BlueprintCallable, Category = "Ability System|Abilities")
 	bool IsOnCooldown() const;
