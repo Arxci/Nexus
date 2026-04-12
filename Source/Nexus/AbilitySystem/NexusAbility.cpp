@@ -66,10 +66,6 @@ void UNexusAbility::OnDisableAbility()
 
 bool UNexusAbility::CanActivateAbility_Implementation() const
 {
-	UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent();
-	
-	if (ASC && !ASC->CheckTagRequirements(this)) return false;
-	
 	return IsEnabled();
 }
 

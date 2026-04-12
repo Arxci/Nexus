@@ -11,10 +11,6 @@ ANexusCharacterBase::ANexusCharacterBase(const FObjectInitializer& ObjectInitial
 	: Super(ObjectInitializer.SetDefaultSubobjectClass<UNexusCharacterMovementComponent>(CharacterMovementComponentName))
 {
 	PrimaryActorTick.bCanEverTick = true;
-	
-	UCapsuleComponent* CapsuleComp = GetCapsuleComponent();
-	check(CapsuleComp);
-	CapsuleComp->InitCapsuleSize(40.0f, 90.0f);
 
 	NexusCharacterMovement = Cast<UNexusCharacterMovementComponent>(GetCharacterMovement());
 	NexusAbilitySystemComponent = CreateDefaultSubobject<UNexusAbilitySystemComponent>(TEXT("AbilitySystemComponent"));

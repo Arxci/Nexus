@@ -87,7 +87,10 @@ bool UNexusAbility_LocomotionRun::RequestDeactivateAbility(bool bForce)
 
 	if (UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
 	{
-		ASC->AddLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_Walk);
+		if (!ASC->HasTag(NexusGameplayTags::Ability_Locomotion_Intent_Walk))
+		{
+			ASC->AddLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_Walk);
+		}
 	}
 	
 	return true;

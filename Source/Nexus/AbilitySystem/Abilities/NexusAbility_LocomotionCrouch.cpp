@@ -76,9 +76,14 @@ bool UNexusAbility_LocomotionCrouch::RequestDeactivateAbility(bool bForce)
 	
 	if (UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
 	{
-		ASC->AddLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_UnCrouch);
+		if (!ASC->HasTag(NexusGameplayTags::Ability_Locomotion_Intent_UnCrouch))
+		{
+			ASC->AddLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_UnCrouch);
+		}
 		ASC->RemoveLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_Crouch);
 	}
+
+	if (!Super::RequestDeactivateAbility(bForce)) return false;
 	
 	return true;
 }

@@ -50,7 +50,7 @@ void UNexusAbilitySystemComponent::HandleAbilityActivated(UNexusAbility* InAbili
 		AddTags(InAbility->ActivationOwnedTags);
 	}
 
-	CancelAbilitiesWithTags(InAbility->CancelAbilitiesWithTags);
+	//CancelAbilitiesWithTags(InAbility->CancelAbilitiesWithTags);
 	AddTags(InAbility->AbilityTags);
 	
 	OnAbilityActivated.Broadcast(InAbility);
@@ -59,6 +59,11 @@ void UNexusAbilitySystemComponent::HandleAbilityActivated(UNexusAbility* InAbili
 void UNexusAbilitySystemComponent::HandleAbilityDeactivated(UNexusAbility* InAbility)
 {
 	if (!InAbility) return;
+
+	if (!InAbility->ActivationOwnedTags.IsEmpty())
+	{
+		RemoveTags(InAbility->ActivationOwnedTags);
+	}
 
 	RemoveTags(InAbility->AbilityTags);
 	
@@ -231,8 +236,6 @@ void UNexusAbilitySystemComponent::AddTags(const FGameplayTagContainer& Tags)
 			OwnedTags.AddTag(Tag);
 			OnTagChanged.Broadcast(Tag, true);
 		}
-		OwnedTags.AddTag(Tag);
-		OnTagChanged.Broadcast(Tag, true);
 	}
 }
 

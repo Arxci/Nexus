@@ -26,7 +26,7 @@ public:
 	bool IsRunning() const { return bIsRunning; }
 
 	UFUNCTION(BlueprintPure, Category = "Character Movement: Run")
-	bool IsGrounded() const { return MovementMode == MOVE_NavWalking || MOVE_Walking; }
+	bool IsGrounded() const { return MovementMode == MOVE_Walking || MovementMode == MOVE_NavWalking; }
 	
 	UPROPERTY(BlueprintAssignable, Category = "Character Movement: Run")
 	FOnRunStateChanged OnRunStart;
