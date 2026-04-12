@@ -16,6 +16,8 @@ class NEXUS_API UNexusCharacterMovementComponent : public UCharacterMovementComp
 public:
 	UNexusCharacterMovementComponent();
 
+	virtual void BeginPlay() override;
+
 	UFUNCTION(BlueprintCallable, Category = "Character Movement: Run")
 	void StartRunning();
 
@@ -27,6 +29,12 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Character Movement: Run")
 	bool IsGrounded() const { return MovementMode == MOVE_Walking || MovementMode == MOVE_NavWalking; }
+
+	UFUNCTION(BlueprintPure, Category = "Character Movement")
+	bool IsMovingForward(float Threshold = 0.2f) const;
+
+	UFUNCTION(BlueprintPure, Category = "Character Movement: Crouch")
+	bool CanStand() const;
 	
 	UPROPERTY(BlueprintAssignable, Category = "Character Movement: Run")
 	FOnRunStateChanged OnRunStart;
@@ -40,5 +48,6 @@ protected:
 
 private:
 	bool bIsRunning = false;
+	float StandingHalfHeight = 0.0f;
 	float CachedWalkSpeed = 0.0f;
 };

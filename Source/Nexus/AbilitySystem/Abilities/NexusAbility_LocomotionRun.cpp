@@ -101,9 +101,8 @@ bool UNexusAbility_LocomotionRun::CanCharacterRun() const
 	if (const ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
 	{
 		if (!Char->GetNexusCharacterMovement()->IsGrounded()) return false;
+		if (!Char->GetNexusCharacterMovement()->IsMovingForward(BoostThreshold)) return false;
 	}
-
-	if (!IsMovingForward()) return false;
 	
 	if (const UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
 	{
@@ -130,21 +129,6 @@ bool UNexusAbility_LocomotionRun::CanCharacterWalk() const
 	if (IsActive()) return true;
 
 	return false;
-}
-
-bool UNexusAbility_LocomotionRun::IsMovingForward() const
-{
-	const ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner());
-	if (!Char) return false;
-	
-	const UCharacterMovementComponent* MoveComp = Char->GetCharacterMovement();
-	if (!MoveComp || !MoveComp->IsMovingOnGround()) return false;
-	
-	const FVector InputVector = MoveComp->GetLastInputVector();
-	if (InputVector.IsNearlyZero()) return false;
-
-	const FVector Forward = Char->GetActorForwardVector();
-	return FVector::DotProduct(Forward, InputVector.GetSafeNormal()) > BoostThreshold;
 }
 
 bool UNexusAbility_LocomotionRun::CanTick()

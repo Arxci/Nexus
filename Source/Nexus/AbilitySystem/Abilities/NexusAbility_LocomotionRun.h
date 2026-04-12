@@ -23,5 +23,4 @@ protected:
 private:
 	bool CanCharacterRun() const;
 	bool CanCharacterWalk() const;
-	bool IsMovingForward() const;
 };

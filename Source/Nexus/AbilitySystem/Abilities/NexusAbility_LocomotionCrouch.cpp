@@ -14,11 +14,6 @@ UNexusAbility_LocomotionCrouch::UNexusAbility_LocomotionCrouch()
 {
 	AbilityTags.AddTag(NexusGameplayTags::Ability_Locomotion_Crouch);
 	CancelAbilitiesWithTags.AddTag(NexusGameplayTags::Ability_Locomotion_Run);
-
-	if (const ACharacter* Char = Cast<ACharacter>(GetOwner()))
-	{
-		StandingHalfHeight = Char->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-	}
 }
 
 void UNexusAbility_LocomotionCrouch::TickAbility(float DeltaTime)
@@ -117,43 +112,14 @@ bool UNexusAbility_LocomotionCrouch::CanCharacterUnCrouch() const
 		if (!ASC->HasTag(NexusGameplayTags::Ability_Locomotion_Intent_UnCrouch)) return false;
 	}
 
-	if (IsActive() && CanCharacterStand()) return true;
+	if (const ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
+	{
+		if (!Char->GetNexusCharacterMovement()->CanStand()) return false;
+	}
+
+	if (IsActive()) return true;
 
 	return false;
-}
-
-bool UNexusAbility_LocomotionCrouch::CanCharacterStand() const
-{
-	if (ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
-	{
-		const UCapsuleComponent* Capsule = Char->GetCapsuleComponent();
-		const float Radius = Capsule->GetScaledCapsuleRadius();
-		const FVector Location = Char->GetActorLocation();
-
-		const float CurrentHalfHeight = Capsule->GetScaledCapsuleHalfHeight();
-		const FVector TraceLocation = Location + FVector(0.f, 0.f, StandingHalfHeight - CurrentHalfHeight);
-
-		TArray<FHitResult> Hits;
-		UKismetSystemLibrary::CapsuleTraceMulti(
-			Char->GetWorld(),
-			TraceLocation,
-			TraceLocation,
-			Radius,
-			StandingHalfHeight,
-			UEngineTypes::ConvertToTraceType(ECC_Pawn),
-			false,
-			{Char},
-			EDrawDebugTrace::None,
-			Hits,
-			true,
-			FLinearColor::Green,  
-			FLinearColor::Red,    
-			0.f  
-		);
-
-		return Hits.IsEmpty();
-	}
-	return true;
 }
 
 bool UNexusAbility_LocomotionCrouch::CanTick()

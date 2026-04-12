@@ -20,9 +20,6 @@ protected:
 	virtual bool CanTick() override;
 	
 private:
-	bool CanCharacterStand() const;
 	bool CanCharacterCrouch() const;
 	bool CanCharacterUnCrouch() const;
-
-	float StandingHalfHeight = 0.0f;
 };
