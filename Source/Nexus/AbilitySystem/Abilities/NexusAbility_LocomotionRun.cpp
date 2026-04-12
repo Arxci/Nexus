@@ -2,8 +2,6 @@
 
 
 #include "NexusAbility_LocomotionRun.h"
-#include "GameFramework/Character.h"
-#include "GameFramework/CharacterMovementComponent.h"
 #include "Nexus/Character/NexusCharacterBase.h"
 #include "Nexus/Character/NexusCharacterMovementComponent.h"
 #include "Nexus/NexusGameplayTags.h"
@@ -12,11 +10,14 @@ UNexusAbility_LocomotionRun::UNexusAbility_LocomotionRun()
 {
 	AbilityTags.AddTag(NexusGameplayTags::Ability_Locomotion_Run);
 	CancelAbilitiesWithTags.AddTag(NexusGameplayTags::Ability_Locomotion_Crouch);
+	bCooldownOnDeactivation = false;
 }
 
 void UNexusAbility_LocomotionRun::TickAbility(float DeltaTime)
 {
 	Super::TickAbility(DeltaTime);
+
+	if (IsOnCooldown()) return;
 	
 	if (CanCharacterRun())
 	{

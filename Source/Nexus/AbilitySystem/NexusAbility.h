@@ -6,7 +6,6 @@
 #include "GameplayTagContainer.h"
 #include "NexusAbility.generated.h"
 
-
 UENUM(BlueprintType)
 enum class ENexusAbilityActivationState : uint8
 {
@@ -112,6 +111,40 @@ public:
 	**/
 	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|State")
 	bool IsEnabled() const { return bIsEnabled; }
+
+	
+	// Cooldown
+	/**
+	* Returns true if this ability is currently on cooldown.
+	**/
+	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Cooldown")
+	bool IsOnCooldown() const { return bIsOnCooldown; }
+
+	/**
+	* Returns true if this ability has a cooldown configured (flat duration > 0).
+	**/
+	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Cooldown")
+	bool HasCooldown() const;
+	
+	/**
+	* Returns the total cooldown duration in seconds.
+	* Uses the curve's max time if set, otherwise the flat CooldownDuration.
+	**/
+	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Cooldown")
+	float GetCooldownTotalDuration() const;
+
+	/**
+	* Returns the remaining cooldown time in seconds. 0 if not on cooldown.
+	**/
+	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Cooldown")
+	float GetCooldownTimeRemaining() const;
+
+	/**
+	* Returns normalized cooldown progress from 0.0 (just started) to 1.0 (complete).
+	**/
+	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Cooldown")
+	float GetCooldownProgress() const;
+
 	
 	//Delegates
 	UPROPERTY(BlueprintAssignable)
@@ -158,6 +191,20 @@ protected:
 	/** On activation, cancel any active abilities whose AbilityTags match any of these tags */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Abilities")
 	FGameplayTagContainer CancelAbilitiesWithTags;
+	
+
+	//Cooldown
+	/** Flat cooldown duration in seconds. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Cooldown", meta = (ClampMin = "0.0"))
+	float CooldownDuration = 0.0f;
+
+	/** Start cooldown when the ability activates (CommitAbility). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Cooldown")
+	bool bCooldownOnActivation = false;
+
+	/** Start cooldown when the ability deactivates (CommitAbilityEnd). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Cooldown")
+	bool bCooldownOnDeactivation = true;
 
 	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Lifecycle")
 	void CommitAbility();
@@ -166,4 +213,10 @@ protected:
 
 private:
 	ENexusAbilityActivationState ActivationState = ENexusAbilityActivationState::Idle;
+
+	bool bIsOnCooldown = false;
+	float CooldownElapsed = 0.0f;
+
+	void StartCooldown();
+	void TickCooldown(float DeltaTime);
 };

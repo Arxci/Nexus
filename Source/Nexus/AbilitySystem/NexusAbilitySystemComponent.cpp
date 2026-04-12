@@ -24,14 +24,21 @@ void UNexusAbilitySystemComponent::TickComponent(float DeltaTime, ELevelTick Tic
 	for (const auto& Pair : GrantedAbilities)
 	{
 		UNexusAbility* Ability = Pair.Value;
-		if (Ability && Ability->CanTick() && Ability->IsEnabled())
+		if (Ability && Ability->IsEnabled())
 		{
 			TickList.Add(Ability);
 		}
 	}
 	for (UNexusAbility* Ability : TickList)
 	{
-		Ability->TickAbility(DeltaTime);
+		if (Ability->HasCooldown())
+		{
+			Ability->TickCooldown(DeltaTime);
+		}
+		if (Ability->CanTick())
+		{
+			Ability->TickAbility(DeltaTime);
+		}
 	}
 }
 

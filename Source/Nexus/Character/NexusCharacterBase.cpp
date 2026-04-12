@@ -3,7 +3,6 @@
 
 #include "NexusCharacterBase.h"
 #include "NexusCharacterMovementComponent.h"
-#include "Components/CapsuleComponent.h"
 #include "Nexus/AbilitySystem/NexusAbility.h"
 #include "Nexus/NexusGameplayTags.h"
 

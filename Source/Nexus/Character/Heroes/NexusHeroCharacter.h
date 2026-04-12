@@ -68,4 +68,6 @@ private:
 	void OnCrouchInputCompleted();
 	void OnRunInputStarted();
 	void OnRunInputCompleted();
+
+	void HandleToggleAbilityInput(FGameplayTag AbilityTag, FGameplayTag DeactivateIntentTag);
 };

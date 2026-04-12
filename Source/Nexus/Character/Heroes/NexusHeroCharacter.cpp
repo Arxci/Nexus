@@ -74,21 +74,14 @@ void ANexusHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 void ANexusHeroCharacter::OnCrouchInputStarted()
 {
 	if (!NexusAbilitySystemComponent) return;
-
 	if (CrouchInputMode == EInputMode::Hold)
 	{
 		NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Crouch);
 		return;
 	}
-	if (NexusAbilitySystemComponent->IsAbilityActiveByTag(NexusGameplayTags::Ability_Locomotion_Crouch))
-	{
-		NexusAbilitySystemComponent->TryDeactivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Crouch);
-	}
-	else
-	{
-		NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Crouch);
-	}
+	HandleToggleAbilityInput(NexusGameplayTags::Ability_Locomotion_Crouch, NexusGameplayTags::Ability_Locomotion_Intent_UnCrouch);
 }
+
 
 void ANexusHeroCharacter::OnCrouchInputCompleted()
 {
@@ -101,20 +94,12 @@ void ANexusHeroCharacter::OnCrouchInputCompleted()
 void ANexusHeroCharacter::OnRunInputStarted()
 {
 	if (!NexusAbilitySystemComponent) return;
-
 	if (RunInputMode == EInputMode::Hold)
 	{
 		NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Run);
 		return;
 	}
-	if (NexusAbilitySystemComponent->IsAbilityActiveByTag(NexusGameplayTags::Ability_Locomotion_Run))
-	{
-		NexusAbilitySystemComponent->TryDeactivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Run);
-	}
-	else
-	{
-		NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Run);
-	}
+	HandleToggleAbilityInput(NexusGameplayTags::Ability_Locomotion_Run, NexusGameplayTags::Ability_Locomotion_Intent_Walk);
 }
 
 void ANexusHeroCharacter::OnRunInputCompleted()
@@ -147,5 +132,21 @@ void ANexusHeroCharacter::Look(const FInputActionValue& Value)
 	{
 		AddControllerYawInput(LookAxisVector.X);
 		AddControllerPitchInput(LookAxisVector.Y);
+	}
+}
+
+void ANexusHeroCharacter::HandleToggleAbilityInput(FGameplayTag AbilityTag, FGameplayTag DeactivateIntentTag)
+{
+	if (NexusAbilitySystemComponent->HasTag(DeactivateIntentTag))
+	{
+		NexusAbilitySystemComponent->RemoveLooseGameplayTag(DeactivateIntentTag);
+	}
+	else if (NexusAbilitySystemComponent->IsAbilityActiveByTag(AbilityTag))
+	{
+		NexusAbilitySystemComponent->TryDeactivateAbilityByTag(AbilityTag);
+	}
+	else
+	{
+		NexusAbilitySystemComponent->TryActivateAbilityByTag(AbilityTag);
 	}
 }

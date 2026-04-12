@@ -3,8 +3,6 @@
 
 #include "NexusAbility_LocomotionCrouch.h"
 #include "GameFramework/Character.h"
-#include "Components/CapsuleComponent.h"
-#include "Kismet/KismetSystemLibrary.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 #include "Nexus/NexusGameplayTags.h"
 #include "Nexus/Character/NexusCharacterBase.h"
@@ -14,11 +12,15 @@ UNexusAbility_LocomotionCrouch::UNexusAbility_LocomotionCrouch()
 {
 	AbilityTags.AddTag(NexusGameplayTags::Ability_Locomotion_Crouch);
 	CancelAbilitiesWithTags.AddTag(NexusGameplayTags::Ability_Locomotion_Run);
+	bCooldownOnActivation = true;
+	bCooldownOnDeactivation = true;
 }
 
 void UNexusAbility_LocomotionCrouch::TickAbility(float DeltaTime)
 {
 	Super::TickAbility(DeltaTime);
+	
+	if (IsOnCooldown()) return;
 	
 	if (CanCharacterCrouch())
 	{
@@ -77,8 +79,6 @@ bool UNexusAbility_LocomotionCrouch::RequestDeactivateAbility(bool bForce)
 		}
 		ASC->RemoveLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_Crouch);
 	}
-
-	if (!Super::RequestDeactivateAbility(bForce)) return false;
 	
 	return true;
 }

@@ -15,6 +15,7 @@ void UNexusAbility::CommitAbility()
 	{
 		ActivationState = ENexusAbilityActivationState::Active;
 		OnActivated.Broadcast(this);
+		if (bCooldownOnActivation) StartCooldown();
 	}
 }
 
@@ -24,11 +25,13 @@ void UNexusAbility::CommitAbilityEnd()
 	{
 		ActivationState = ENexusAbilityActivationState::Idle;
 		OnDeactivated.Broadcast(this);
+		if (bCooldownOnDeactivation) StartCooldown();
 	}
 }
 
 bool UNexusAbility::RequestActivateAbility()
 {
+	if (IsOnCooldown()) return false;
 	if (!CanActivateAbility_Implementation()) return false;
 	
 	K2_OnAbilityActivate();
@@ -92,4 +95,52 @@ AController* UNexusAbility::GetController() const
 		return Comp->GetController(); 
 	}
 	return nullptr;
+}
+
+
+// Cooldown
+bool UNexusAbility::HasCooldown() const
+{
+	return CooldownDuration > 0.0f;
+}
+
+float UNexusAbility::GetCooldownTotalDuration() const
+{
+	return FMath::Max(0.0f, CooldownDuration);
+}
+
+float UNexusAbility::GetCooldownTimeRemaining() const
+{
+	if (!bIsOnCooldown) return 0.0f;
+	return FMath::Max(0.0f, GetCooldownTotalDuration() - CooldownElapsed);
+}
+
+float UNexusAbility::GetCooldownProgress() const
+{
+	if (!bIsOnCooldown) return 0.0f;
+	const float Total = GetCooldownTotalDuration();
+	if (Total <= 0.0f) return 0.0f;
+	return FMath::Clamp(CooldownElapsed / Total, 0.0f, 1.0f);
+}
+
+void UNexusAbility::StartCooldown()
+{
+	const float Duration = GetCooldownTotalDuration();
+	if (Duration > 0.0f)
+	{
+		bIsOnCooldown = true;
+		CooldownElapsed = 0.0f;
+	}
+}
+
+void UNexusAbility::TickCooldown(float DeltaTime)
+{
+	if (!bIsOnCooldown) return;
+
+	CooldownElapsed += DeltaTime;
+	if (CooldownElapsed >= GetCooldownTotalDuration())
+	{
+		bIsOnCooldown = false;
+		CooldownElapsed = 0.0f;
+	}
 }
