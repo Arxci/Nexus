@@ -4,13 +4,12 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
-#include "EMSActorSaveInterface.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemInterface.h"
 #include "NexusCharacterBase.generated.h"
 
 UCLASS(PrioritizeCategories = ("Abilities"))
-class NEXUS_API ANexusCharacterBase : public ACharacter, public INexusAbilitySystemInterface, public IEMSActorSaveInterface
+class NEXUS_API ANexusCharacterBase : public ACharacter, public INexusAbilitySystemInterface
 {
 	GENERATED_BODY()
 
@@ -30,29 +29,15 @@ public:
 
 	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
-
-	/**
-	 * Request that the character start boost-running. Thin wrapper around the
-	 * CMC's StartRunning(), modelled on ACharacter::Crouch() so gameplay code
-	 * has a single entry point on the pawn. Abilities should prefer this over
-	 * talking to the CMC directly.
-	 */
+	UFUNCTION()
+	void OnStartRun();
+	UFUNCTION()
+	void OnEndRun();
+	
 	UFUNCTION(BlueprintCallable, Category = "Character")
 	void StartRunning();
-
-	/** Companion to StartRunning(). Mirrors ACharacter::UnCrouch(). */
 	UFUNCTION(BlueprintCallable, Category = "Character")
 	void StopRunning();
-
-	// --- IEMSActorSaveInterface ---
-
-	/**
-	 * Hand EMS the list of components it should serialize alongside this
-	 * actor. The ASC is the only persistent gameplay state on the pawn — the
-	 * CMC and the camera rig reconstruct themselves on load — so it's the
-	 * only component we surface here.
-	 */
-	virtual void ComponentsToSave_Implementation(TArray<UActorComponent*>& Components) override;
 
 protected:
 	virtual void BeginPlay() override;
@@ -62,13 +47,4 @@ protected:
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
 	TArray<TSubclassOf<UNexusAbility>> DefaultAbilities;
-	
-private:
-	/** Bound to NexusCharacterMovement::OnRunStart; mirrors run state as a loose ASC tag. */
-	UFUNCTION()
-	void OnStartRun();
-
-	/** Bound to NexusCharacterMovement::OnRunEnd; mirrors run state as a loose ASC tag. */
-	UFUNCTION()
-	void OnEndRun();
 };

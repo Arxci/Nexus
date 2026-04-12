@@ -15,17 +15,10 @@ class USpringArmComponent;
 class UCameraComponent;
 
 UENUM(BlueprintType)
-enum class ERunInputMode : uint8
+enum class EInputMode : uint8
 {
-	Hold   UMETA(DisplayName = "Hold to Run"),
-	Toggle UMETA(DisplayName = "Toggle Run"),
-};
-
-UENUM(BlueprintType)
-enum class ECrouchInputMode : uint8
-{
-	Hold   UMETA(DisplayName = "Hold to Crouch"),
-	Toggle UMETA(DisplayName = "Toggle Crouch"),
+	Hold   UMETA(DisplayName = "Hold"),
+	Toggle UMETA(DisplayName = "Toggle"),
 };
 
 UCLASS(PrioritizeCategories = ("Abilities","Camera","Input"))
@@ -64,9 +57,9 @@ protected:
 	UInputAction* CrouchAction;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Character|Input|Sprint")
-	ERunInputMode RunInputMode = ERunInputMode::Hold;
+	EInputMode RunInputMode = EInputMode::Hold;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Character|Input|Crouch")
-	ECrouchInputMode CrouchInputMode = ECrouchInputMode::Hold;
+	EInputMode CrouchInputMode = EInputMode::Hold;
 
 private:
 	void Move(const FInputActionValue& Value);
