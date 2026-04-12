@@ -29,34 +29,9 @@ public:
 	//Ability life cycle
 	virtual bool RequestActivateAbility();
 	virtual bool RequestDeactivateAbility(bool bForce=false);
-	/**
-	* Called once an ability activation request has been received from ASC. Expects CommitAbility to be called.
-	**/
-	UFUNCTION(BlueprintImplementableEvent, Category = "Nexus Ability|Lifecycle",
-		meta = (DisplayName = "On Ability Activate", ScriptName = "OnAbilityActivate"))
-	void K2_OnAbilityActivate();
-	/**
-	* Called once an ability deactivation request has been received from ASC. Expects CommitAbilityEnd to be called.
-	**/
-	UFUNCTION(BlueprintImplementableEvent, Category = "Nexus Ability|Lifecycle",
-		meta = (DisplayName = "On Ability Deactivate", ScriptName = "OnAbilityDeactivate"))
-	void K2_OnAbilityDeactivate();
-
+	
 	virtual void OnEnableAbility();
 	virtual void OnDisableAbility();
-	/**
-	* Called once an ability has been enabled.
-	**/
-	UFUNCTION(BlueprintImplementableEvent, Category = "Nexus Ability|Lifecycle",
-		meta = (DisplayName = "On Ability Enabled", ScriptName = "OnActivateEnabled"))
-	void K2_OnAbilityEnabled();
-
-	/**
-	* Called once an ability has been disabled.
-	**/
-	UFUNCTION(BlueprintImplementableEvent, Category = "Nexus Ability|Lifecycle",
-		meta = (DisplayName = "On Ability Disabled", ScriptName = "OnDeactivateDisabled"))
-	void K2_OnAbilityDisabled();
 
 	/**
 	* Override if you need custom activation checks. EX: checking if ammo is greater than 0.
@@ -170,9 +145,56 @@ protected:
 		meta = (DisplayName = "On Tick Ability", ScriptName = "OnTickAbility"))
 	void K2_OnTickAbility();
 
+	//Ability life cycle
+	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Lifecycle")
+	void CommitAbility();
+	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Lifecycle")
+	void CommitAbilityEnd();
+	
+	/**
+	* Called once the ability has committed and is now active (state changed to Active).
+	**/
+	UFUNCTION(BlueprintImplementableEvent, Category = "Nexus Ability|Lifecycle",
+	meta = (DisplayName = "On Ability Committed", ScriptName = "OnAbilityCommitted"))
+	void K2_OnAbilityCommitted();
+	/**
+	* Called once the ability has ended and is now idle (state changed to Idle).
+	**/
+	UFUNCTION(BlueprintImplementableEvent, Category = "Nexus Ability|Lifecycle",
+		meta = (DisplayName = "On Ability Ended", ScriptName = "OnAbilityEnded"))
+	void K2_OnAbilityEnded();
+
+	/**
+	* Called once an ability activation request has been received from ASC. Expects CommitAbility to be called.
+	**/
+	UFUNCTION(BlueprintImplementableEvent, Category = "Nexus Ability|Lifecycle",
+	meta = (DisplayName = "On Ability Activate", ScriptName = "OnAbilityActivate"))
+	void K2_OnAbilityActivate();
+	/**
+	* Called once an ability deactivation request has been received from ASC. Expects CommitAbilityEnd to be called.
+	**/
+	UFUNCTION(BlueprintImplementableEvent, Category = "Nexus Ability|Lifecycle",
+		meta = (DisplayName = "On Ability Deactivate", ScriptName = "OnAbilityDeactivate"))
+	void K2_OnAbilityDeactivate();
+
+	/**
+	* Called once an ability has been enabled.
+	**/
+	UFUNCTION(BlueprintImplementableEvent, Category = "Nexus Ability|Lifecycle",
+		meta = (DisplayName = "On Ability Enabled", ScriptName = "OnActivateEnabled"))
+	void K2_OnAbilityEnabled();
+	/**
+	* Called once an ability has been disabled.
+	**/
+	UFUNCTION(BlueprintImplementableEvent, Category = "Nexus Ability|Lifecycle",
+		meta = (DisplayName = "On Ability Disabled", ScriptName = "OnDeactivateDisabled"))
+	void K2_OnAbilityDisabled();
+
 	UPROPERTY(BlueprintReadOnly, Category = "Ability System|Abilities")
 	bool bIsEnabled = true;
+
 	
+	//Tags
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Abilities")
 	FGameplayTagContainer AbilityTags;
 
@@ -205,11 +227,6 @@ protected:
 	/** Start cooldown when the ability deactivates (CommitAbilityEnd). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Cooldown")
 	bool bCooldownOnDeactivation = true;
-
-	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Lifecycle")
-	void CommitAbility();
-	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Lifecycle")
-	void CommitAbilityEnd();
 
 private:
 	ENexusAbilityActivationState ActivationState = ENexusAbilityActivationState::Idle;

@@ -15,6 +15,7 @@ void UNexusAbility::CommitAbility()
 	{
 		ActivationState = ENexusAbilityActivationState::Active;
 		OnActivated.Broadcast(this);
+		K2_OnAbilityCommitted();
 		if (bCooldownOnActivation) StartCooldown();
 	}
 }
@@ -25,6 +26,7 @@ void UNexusAbility::CommitAbilityEnd()
 	{
 		ActivationState = ENexusAbilityActivationState::Idle;
 		OnDeactivated.Broadcast(this);
+		K2_OnAbilityEnded();
 		if (bCooldownOnDeactivation) StartCooldown();
 	}
 }
