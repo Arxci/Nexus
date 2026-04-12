@@ -3,7 +3,6 @@
 
 #include "NexusAbilitySystemComponent.h"
 #include "NexusAbility.h" 
-#include "Nexus/Nexus.h"
 
 
 UNexusAbilitySystemComponent::UNexusAbilitySystemComponent()
@@ -25,7 +24,7 @@ void UNexusAbilitySystemComponent::TickComponent(float DeltaTime, ELevelTick Tic
 	for (const auto& Pair : GrantedAbilities)
 	{
 		UNexusAbility* Ability = Pair.Value;
-		if (Ability && Ability->GetCanTick() && Ability->IsActive() && Ability->IsEnabled())
+		if (Ability && Ability->CanTick() && Ability->IsEnabled())
 		{
 			TickList.Add(Ability);
 		}
@@ -45,26 +44,24 @@ void UNexusAbilitySystemComponent::EndPlay(const EEndPlayReason::Type EndPlayRea
 void UNexusAbilitySystemComponent::HandleAbilityActivated(UNexusAbility* InAbility)
 {
 	if (!InAbility) return;
-	
-	if (!InAbility->CancelAbilitiesWithTags.IsEmpty())
-	{
-		for (const auto& tag : InAbility->CancelAbilitiesWithTags)
-		{
-			TryDeactivateAbilityByTag(tag);
-		}
-	}
-	
+
 	if (!InAbility->ActivationOwnedTags.IsEmpty())
 	{
 		AddTags(InAbility->ActivationOwnedTags);
 	}
 
-	AddTag(InAbility->AbilityTag);
+	CancelAbilitiesWithTags(InAbility->CancelAbilitiesWithTags);
+	AddTags(InAbility->AbilityTags);
+	
 	OnAbilityActivated.Broadcast(InAbility);
 }
 
 void UNexusAbilitySystemComponent::HandleAbilityDeactivated(UNexusAbility* InAbility)
 {
+	if (!InAbility) return;
+
+	RemoveTags(InAbility->AbilityTags);
+	
 	OnAbilityDeactivated.Broadcast(InAbility);
 }
 
@@ -114,11 +111,18 @@ bool UNexusAbilitySystemComponent::RemoveAbility(const TSubclassOf<UNexusAbility
 bool UNexusAbilitySystemComponent::TryActivateAbilityByClass(const TSubclassOf<UNexusAbility> InAbilityToActivate)
 {
 	if (!InAbilityToActivate) return false;
-
+	
 	UNexusAbility* FoundAbility = GrantedAbilities.FindRef(InAbilityToActivate);
 	if (!FoundAbility) return false;
 	
-    return FoundAbility->OnRequestActivateAbility();
+	if (!CheckTagRequirements(FoundAbility)) return false;
+	
+    if (!FoundAbility->RequestActivateAbility()) return false;
+
+	//Attempt to cancel abilities
+	CancelAbilitiesWithTags(FoundAbility->CancelAbilitiesWithTags);
+	
+	return true;
 }
 
 bool UNexusAbilitySystemComponent::TryDeactivateAbilityByClass(const TSubclassOf<UNexusAbility> InAbilityToDeactivate)
@@ -128,7 +132,7 @@ bool UNexusAbilitySystemComponent::TryDeactivateAbilityByClass(const TSubclassOf
 	UNexusAbility* FoundAbility = GrantedAbilities.FindRef(InAbilityToDeactivate);
 	if (!FoundAbility) return false;
 
-	return FoundAbility->OnRequestDeactivateAbility();
+	return FoundAbility->RequestDeactivateAbility();
 }
 
 bool UNexusAbilitySystemComponent::TryActivateAbilityByTag(FGameplayTag InAbilityTag)
@@ -138,7 +142,7 @@ bool UNexusAbilitySystemComponent::TryActivateAbilityByTag(FGameplayTag InAbilit
 	for (const auto& Pair : GrantedAbilities)
 	{
 		UNexusAbility* Ability = Pair.Value;
-		if (Ability && Ability->AbilityTag == InAbilityTag)
+		if (Ability && Ability->AbilityTags.HasTag(InAbilityTag))
 		{
 			return TryActivateAbilityByClass(Pair.Key);
 		}
@@ -153,7 +157,7 @@ bool UNexusAbilitySystemComponent::TryDeactivateAbilityByTag(FGameplayTag InAbil
 	for (const auto& Pair : GrantedAbilities)
 	{
 		UNexusAbility* Ability = Pair.Value;
-		if (Ability && Ability->AbilityTag == InAbilityTag)
+		if (Ability && Ability->AbilityTags.HasTag(InAbilityTag))
 		{
 			return TryDeactivateAbilityByClass(Pair.Key);
 		}
@@ -165,9 +169,9 @@ void UNexusAbilitySystemComponent::DeactivateAllAbilities()
 {
 	for (const auto& Pair : GrantedAbilities)
 	{
-		if (UNexusAbility* Ability = Pair.Value)
+		if (Pair.Value)
 		{
-			TryActivateAbilityByClass(Pair.Key);
+			TryDeactivateAbilityByClass(Pair.Key);
 		}
 	}
 }
@@ -206,7 +210,7 @@ bool UNexusAbilitySystemComponent::IsAbilityActiveByTag(FGameplayTag AbilityTag)
 	for (const auto& Pair : GrantedAbilities)
 	{
 		const UNexusAbility* Ability = Pair.Value;
-		if (Ability && Ability->IsActive() && Ability->AbilityTag == AbilityTag)
+		if (Ability && Ability->IsActive() && Ability->AbilityTags.HasTag(AbilityTag))
 		{
 			return true;
 		}
@@ -220,23 +224,32 @@ void UNexusAbilitySystemComponent::AddTags(const FGameplayTagContainer& Tags)
 {
 	for (const FGameplayTag& Tag : Tags)
 	{
+		int32& Count = TagRefCounts.FindOrAdd(Tag, 0);
+		Count++;
+		if (Count == 1)
+		{
+			OwnedTags.AddTag(Tag);
+			OnTagChanged.Broadcast(Tag, true);
+		}
 		OwnedTags.AddTag(Tag);
 		OnTagChanged.Broadcast(Tag, true);
 	}
-}
-
-void UNexusAbilitySystemComponent::AddTag(const FGameplayTag& Tag)
-{
-	OwnedTags.AddTag(Tag);
-	OnTagChanged.Broadcast(Tag, true);
 }
 
 void UNexusAbilitySystemComponent::RemoveTags(const FGameplayTagContainer& Tags)
 {
 	for (const FGameplayTag& Tag : Tags)
 	{
-		OwnedTags.RemoveTag(Tag);
-		OnTagChanged.Broadcast(Tag, false);
+		if (int32* Count = TagRefCounts.Find(Tag))
+		{
+			(*Count)--;
+			if (*Count <= 0)
+			{
+				OwnedTags.RemoveTag(Tag);
+				TagRefCounts.Remove(Tag);
+				OnTagChanged.Broadcast(Tag, false);
+			}
+		}
 	}
 }
 
@@ -262,17 +275,32 @@ FGameplayTagContainer UNexusAbilitySystemComponent::GetOwnedTags() const
 
 void UNexusAbilitySystemComponent::AddLooseGameplayTag(FGameplayTag Tag)
 {
-	OwnedTags.AddTag(Tag);
-	OnTagChanged.Broadcast(Tag, true);
-}
+	if (!Tag.IsValid()) return;
 
+	int32& Count = TagRefCounts.FindOrAdd(Tag, 0);
+	Count++;
+	if (Count == 1)
+	{
+		OwnedTags.AddTag(Tag);
+		OnTagChanged.Broadcast(Tag, true);
+	}
+}
 
 void UNexusAbilitySystemComponent::RemoveLooseGameplayTag(FGameplayTag Tag)
 {
-	OwnedTags.RemoveTag(Tag);
-	OnTagChanged.Broadcast(Tag, false);
-}
+	if (!Tag.IsValid()) return;
 
+	if (int32* Count = TagRefCounts.Find(Tag))
+	{
+		(*Count)--;
+		if (*Count <= 0)
+		{
+			OwnedTags.RemoveTag(Tag);
+			TagRefCounts.Remove(Tag);
+			OnTagChanged.Broadcast(Tag, false);
+		}
+	}
+}
 
 bool UNexusAbilitySystemComponent::CheckTagRequirements(const UNexusAbility* Ability) const
 {
@@ -293,6 +321,14 @@ bool UNexusAbilitySystemComponent::CheckTagRequirements(const UNexusAbility* Abi
 	}
 
 	return true;
+}
+
+void UNexusAbilitySystemComponent::CancelAbilitiesWithTags(const FGameplayTagContainer& Tags)
+{
+	for (const auto& tag : Tags)
+	{
+		TryDeactivateAbilityByTag(tag);
+	}
 }
 
 

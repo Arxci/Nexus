@@ -10,21 +10,19 @@ UCLASS()
 class NEXUS_API UNexusAbility_LocomotionCrouch : public UNexusAbility
 {
 	GENERATED_BODY()
-	
 
 protected:
 	UNexusAbility_LocomotionCrouch();
 	
-	virtual bool OnRequestActivateAbility() override;
-	virtual bool OnRequestDeactivateAbility(bool bForce) override;
-	virtual bool CanActivateAbility_Implementation() const override;
-	virtual void HandleAbilityStart() override;
-	virtual void HandleAbilityStop() override;
-	virtual void HandleAbilityProgress() override;
+	virtual bool RequestActivateAbility() override;
+	virtual bool RequestDeactivateAbility(bool bForce) override;
+	virtual void TickAbility(float DeltaTime) override;
+	virtual bool CanTick() override;
 	
 private:
-	
-	bool CanCharacterStand();
+	bool CanCharacterStand() const;
+	bool CanCharacterCrouch() const;
+	bool CanCharacterUnCrouch() const;
 
-
+	float StandingHalfHeight = 0.0f;
 };

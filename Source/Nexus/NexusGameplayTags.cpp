@@ -6,7 +6,9 @@ namespace NexusGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(Ability_Locomotion_Run,         "Ability.Locomotion.Run");
 	UE_DEFINE_GAMEPLAY_TAG(Ability_Locomotion_Crouch,         "Ability.Locomotion.Crouch");
 	UE_DEFINE_GAMEPLAY_TAG(Ability_Locomotion_Intent_Crouch,         "Ability.Locomotion.Intent.Crouch");
+	UE_DEFINE_GAMEPLAY_TAG(Ability_Locomotion_Intent_UnCrouch,         "Ability.Locomotion.Intent.UnCrouch");
 	UE_DEFINE_GAMEPLAY_TAG(Ability_Locomotion_Intent_Run,         "Ability.Locomotion.Intent.Run");
+	UE_DEFINE_GAMEPLAY_TAG(Ability_Locomotion_Intent_Walk,         "Ability.Locomotion.Intent.Walk");
 
 	// Owned state tags (applied to the ASC while the ability is active)
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Locomotion_Run, "Character.State.Locomotion.Run");

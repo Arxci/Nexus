@@ -28,20 +28,20 @@ public:
 	UNexusAbility();
 
 	//Ability life cycle
-	virtual bool OnRequestActivateAbility();
-	virtual bool OnRequestDeactivateAbility(bool bForce=false);
+	virtual bool RequestActivateAbility();
+	virtual bool RequestDeactivateAbility(bool bForce=false);
 	/**
-	* Called once an ability has been activated.
+	* Called once an ability activation request has been received from ASC. Expects CommitAbility to be called.
 	**/
 	UFUNCTION(BlueprintImplementableEvent, Category = "Nexus Ability|Lifecycle",
-		meta = (DisplayName = "On Ability Activated", ScriptName = "OnAbilityActivated"))
-	void K2_OnAbilityActivated();
+		meta = (DisplayName = "On Ability Activate", ScriptName = "OnAbilityActivate"))
+	void K2_OnAbilityActivate();
 	/**
-	* Called once an ability has been deactivated.
+	* Called once an ability deactivation request has been received from ASC. Expects CommitAbilityEnd to be called.
 	**/
 	UFUNCTION(BlueprintImplementableEvent, Category = "Nexus Ability|Lifecycle",
-		meta = (DisplayName = "On Ability Deactivated", ScriptName = "OnAbilityDeactivated"))
-	void K2_OnAbilityDeactivated();
+		meta = (DisplayName = "On Ability Deactivate", ScriptName = "OnAbilityDeactivate"))
+	void K2_OnAbilityDeactivate();
 
 	virtual void OnEnableAbility();
 	virtual void OnDisableAbility();
@@ -112,14 +112,7 @@ public:
 	**/
 	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|State")
 	bool IsEnabled() const { return bIsEnabled; }
-
-	/**
-	* Returns whether this ability can or uses tick.
-	**/
-	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|State")
-	bool GetCanTick() const { return bCanTick; }
-
-
+	
 	//Delegates
 	UPROPERTY(BlueprintAssignable)
 	FActivationStateChanged OnActivated;
@@ -134,12 +127,11 @@ public:
 	FEnabledStateChanged OnAbilityEnabled;
 	
 protected:
-	void TickAbility(float DeltaTime);
-	virtual void HandleAbilityStart() {};
-	virtual void HandleAbilityStop() {};
-	virtual void HandleAbilityProgress() {};
+	virtual void TickAbility(float DeltaTime) { K2_OnTickAbility(); }
+	virtual bool CanTick() { return false; }
+	
 	/**
-	* Called if bCanTick is true
+	* Called if an ability is enabled and active
 	**/
 	UFUNCTION(BlueprintImplementableEvent, Category = "Nexus Ability",
 		meta = (DisplayName = "On Tick Ability", ScriptName = "OnTickAbility"))
@@ -149,7 +141,7 @@ protected:
 	bool bIsEnabled = true;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Abilities")
-	FGameplayTag AbilityTag;
+	FGameplayTagContainer AbilityTags;
 
 	/** Tags applied to the owning actor while this ability is active */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Abilities")
@@ -167,7 +159,11 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Abilities")
 	FGameplayTagContainer CancelAbilitiesWithTags;
 
+	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Lifecycle")
+	void CommitAbility();
+	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Lifecycle")
+	void CommitAbilityEnd();
+
 private:
 	ENexusAbilityActivationState ActivationState = ENexusAbilityActivationState::Idle;
-	bool bCanTick = true;
 };

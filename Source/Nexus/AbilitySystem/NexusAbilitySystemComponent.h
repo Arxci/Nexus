@@ -157,15 +157,26 @@ protected:
 
 	UPROPERTY()
 	TMap<TSubclassOf<UNexusAbility>, TObjectPtr<UNexusAbility>> GrantedAbilities;
+
+	UFUNCTION()
+	void HandleAbilityActivated(UNexusAbility* InAbility);
+	UFUNCTION()
+	void HandleAbilityDeactivated(UNexusAbility* InAbility);
 	
 private:
+	/**
+	 * Ref-counts per tag. Each AddTags call (from ability activation or
+	 * AddLooseGameplayTag) increments; each RemoveTags decrements. The tag
+	 * only leaves OwnedTags when the count hits zero. This lets two abilities
+	 * apply the same tag simultaneously without one's deactivation stomping
+	 * the other's state.
+	 */
+	TMap<FGameplayTag, int32> TagRefCounts;
 	FGameplayTagContainer OwnedTags;
-	
+
+	void CancelAbilitiesWithTags(const FGameplayTagContainer& Tags);
 	void AddTags(const FGameplayTagContainer& Tags);
-	void AddTag(const FGameplayTag& Tag);
 	void RemoveTags(const FGameplayTagContainer& Tags);
 	bool CheckTagRequirements(const UNexusAbility* Ability) const;
-
-	void HandleAbilityActivated(UNexusAbility* InAbility);
-	void HandleAbilityDeactivated(UNexusAbility* InAbility);
+	
 };

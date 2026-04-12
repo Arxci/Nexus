@@ -13,17 +13,15 @@ class NEXUS_API UNexusAbility_LocomotionRun : public UNexusAbility
 protected:
 	UNexusAbility_LocomotionRun();
 	
-	virtual bool OnRequestActivateAbility() override;
-	virtual bool OnRequestDeactivateAbility(bool bForce) override;
-	virtual void HandleAbilityStart() override;
-	virtual void HandleAbilityStop() override;
-	virtual void HandleAbilityProgress() override;
+	virtual bool RequestActivateAbility() override;
+	virtual bool RequestDeactivateAbility(bool bForce) override;
+	virtual void TickAbility(float DeltaTime) override;
+	virtual bool CanTick() override;
 
 	float BoostThreshold = 0.2f;
 	
 private:
-	bool bIsBoostActive = false;
-	
-	bool ShouldBoostThisFrame() const;
-	void SetBoostActive(bool bNewActive);
+	bool CanCharacterRun() const;
+	bool CanCharacterWalk() const;
+	bool IsMovingForward() const;
 };

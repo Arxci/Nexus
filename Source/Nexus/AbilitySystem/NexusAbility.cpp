@@ -7,46 +7,48 @@
 UNexusAbility::UNexusAbility()
 {
 	bIsEnabled = true;
-	bCanTick = true;
 }
 
-void  UNexusAbility::TickAbility(float DeltaTime)
+void UNexusAbility::CommitAbility()
 {
-	HandleAbilityProgress();
+	if (!IsActive())
+	{
+		ActivationState = ENexusAbilityActivationState::Active;
+		OnActivated.Broadcast(this);
+	}
 }
 
-bool UNexusAbility::OnRequestActivateAbility()
+void UNexusAbility::CommitAbilityEnd()
 {
-	if (!CanActivateAbility_Implementation() || IsActive() || !IsEnabled()) return false;
+	if (IsActive())
+	{
+		ActivationState = ENexusAbilityActivationState::Idle;
+		OnDeactivated.Broadcast(this);
+	}
+}
 
-	UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent();
-	if (!ASC || !ASC->CheckTagRequirements(this)) return false;
+bool UNexusAbility::RequestActivateAbility()
+{
+	if (!CanActivateAbility_Implementation()) return false;
 	
-	ActivationState = ENexusAbilityActivationState::Active;
-	OnActivated.Broadcast(this);
-
-	K2_OnAbilityActivated();
+	K2_OnAbilityActivate();
 	return true;
 }
 
-bool UNexusAbility::OnRequestDeactivateAbility(bool bForce)
+bool UNexusAbility::RequestDeactivateAbility(bool bForce)
 {
 	if (!bForce)
 	{
 		if (!IsActive()) return false;
 	}
 	
-	ActivationState = ENexusAbilityActivationState::Idle;
-	OnDeactivated.Broadcast(this);
-	
-	K2_OnAbilityDeactivated();
+	K2_OnAbilityDeactivate();
 	return true;
 }
 
 void UNexusAbility::OnEnableAbility()
 {
 	bIsEnabled = true;
-	bCanTick = true;
 	OnAbilityEnabled.Broadcast();
 	
 	K2_OnAbilityEnabled();
@@ -54,9 +56,8 @@ void UNexusAbility::OnEnableAbility()
 
 void UNexusAbility::OnDisableAbility()
 {
-	OnRequestDeactivateAbility(true);
+	RequestDeactivateAbility(true);
 	bIsEnabled = false;
-	bCanTick = false;
 	OnAbilityDisabled.Broadcast();
 	
 	K2_OnAbilityDisabled();
@@ -65,7 +66,11 @@ void UNexusAbility::OnDisableAbility()
 
 bool UNexusAbility::CanActivateAbility_Implementation() const
 {
-	return true;
+	UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent();
+	
+	if (ASC && !ASC->CheckTagRequirements(this)) return false;
+	
+	return IsEnabled();
 }
 
 

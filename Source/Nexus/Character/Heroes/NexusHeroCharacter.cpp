@@ -77,17 +77,16 @@ void ANexusHeroCharacter::OnCrouchInputStarted()
 
 	if (CrouchInputMode == EInputMode::Hold)
 	{
-		NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Intent_Crouch);
+		NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Crouch);
 		return;
 	}
-
-	if (NexusAbilitySystemComponent->IsAbilityActiveByTag(NexusGameplayTags::Ability_Locomotion_Intent_Crouch))
+	if (NexusAbilitySystemComponent->IsAbilityActiveByTag(NexusGameplayTags::Ability_Locomotion_Crouch))
 	{
-		NexusAbilitySystemComponent->TryDeactivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Intent_Crouch);
+		NexusAbilitySystemComponent->TryDeactivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Crouch);
 	}
 	else
 	{
-		NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Intent_Crouch);
+		NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Crouch);
 	}
 }
 
@@ -96,7 +95,7 @@ void ANexusHeroCharacter::OnCrouchInputCompleted()
 	if (CrouchInputMode != EInputMode::Hold) return;
 	if (!NexusAbilitySystemComponent) return;
 
-	NexusAbilitySystemComponent->TryDeactivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Intent_Crouch);
+	NexusAbilitySystemComponent->TryDeactivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Crouch);
 }
 
 void ANexusHeroCharacter::OnRunInputStarted()
@@ -105,17 +104,16 @@ void ANexusHeroCharacter::OnRunInputStarted()
 
 	if (RunInputMode == EInputMode::Hold)
 	{
-		NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Intent_Run);
+		NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Run);
 		return;
 	}
-
-	if (NexusAbilitySystemComponent->IsAbilityActiveByTag(NexusGameplayTags::Ability_Locomotion_Intent_Run))
+	if (NexusAbilitySystemComponent->IsAbilityActiveByTag(NexusGameplayTags::Ability_Locomotion_Run))
 	{
-		NexusAbilitySystemComponent->TryDeactivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Intent_Run);
+		NexusAbilitySystemComponent->TryDeactivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Run);
 	}
 	else
 	{
-		NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Intent_Run);
+		NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Run);
 	}
 }
 

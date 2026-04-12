@@ -5,56 +5,138 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Nexus/Character/NexusCharacterBase.h"
+#include "Nexus/Character/NexusCharacterMovementComponent.h"
 #include "Nexus/NexusGameplayTags.h"
 
 UNexusAbility_LocomotionRun::UNexusAbility_LocomotionRun()
 {
-	AbilityTag = NexusGameplayTags::Ability_Locomotion_Intent_Run;
-	ActivationBlockedTags.AddTag(NexusGameplayTags::Character_State_Locomotion_Crouch);
+	AbilityTags.AddTag(NexusGameplayTags::Ability_Locomotion_Run);
 	CancelAbilitiesWithTags.AddTag(NexusGameplayTags::Ability_Locomotion_Crouch);
 }
 
-bool UNexusAbility_LocomotionRun::OnRequestActivateAbility()
+void UNexusAbility_LocomotionRun::TickAbility(float DeltaTime)
 {
-	bIsBoostActive = false;
-	return Super::OnRequestActivateAbility();
-}
-
-bool UNexusAbility_LocomotionRun::OnRequestDeactivateAbility(bool bForce)
-{
-	SetBoostActive(false);
-	return Super::OnRequestDeactivateAbility(bForce);
-}
-
-void UNexusAbility_LocomotionRun::HandleAbilityProgress()
-{
-	Super::HandleAbilityProgress();
-
-	const bool bShould = ShouldBoostThisFrame();
-	if (bShould != bIsBoostActive)
+	Super::TickAbility(DeltaTime);
+	
+	if (CanCharacterRun())
 	{
-		SetBoostActive(bShould);
+		if (!IsActive())
+		{
+			if (ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
+			{
+				Char->StartRunning();
+			}
+			if (UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
+			{
+				ASC->RemoveLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_Run);
+			}
+			CommitAbility();
+		}
+	}
+	else if (CanCharacterWalk())
+	{
+		if (IsActive())
+		{
+			if (ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
+			{
+				Char->StopRunning();
+			}
+			if (UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
+			{
+				ASC->RemoveLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_Walk);
+			}
+			CommitAbilityEnd();
+		}
+	}
+	else if (IsActive())
+	{
+		if (ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
+		{
+			Char->StopRunning();
+		}
+		if (UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
+		{
+			ASC->AddLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_Run);
+		}
+		CommitAbilityEnd();
 	}
 }
 
-void UNexusAbility_LocomotionRun::HandleAbilityStart()
+bool UNexusAbility_LocomotionRun::RequestActivateAbility()
 {
+	if (!Super::RequestActivateAbility()) return false;
 	
+	if (UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
+	{
+		ASC->AddLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_Run);
+		ASC->RemoveLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_Walk);
+	}
+	
+	return true;
 }
 
-void UNexusAbility_LocomotionRun::HandleAbilityStop()
+bool UNexusAbility_LocomotionRun::RequestDeactivateAbility(bool bForce)
 {
+	//Always clear run intent due to possibility of partially active  due to IsMovingForward logic checks.
+	if (UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
+	{
+		ASC->RemoveLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_Run);
+	}
 	
+	if (!Super::RequestDeactivateAbility(bForce)) return false;
+
+	if (UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
+	{
+		ASC->AddLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_Walk);
+	}
+	
+	return true;
 }
 
-bool UNexusAbility_LocomotionRun::ShouldBoostThisFrame() const
+bool UNexusAbility_LocomotionRun::CanCharacterRun() const
 {
-	const ACharacter* Char = Cast<ACharacter>(GetOwner());
+	if (const ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
+	{
+		if (!Char->GetNexusCharacterMovement()->IsGrounded()) return false;
+	}
+
+	if (!IsMovingForward()) return false;
+	
+	if (const UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
+	{
+		const bool bRunningOrIntending =
+			ASC->HasTag(NexusGameplayTags::Ability_Locomotion_Run) ||
+			ASC->HasTag(NexusGameplayTags::Ability_Locomotion_Intent_Run);
+
+		const bool bCancelTagSnapshot = ASC->HasAnyTags(CancelAbilitiesWithTags);
+		const bool bWantingWalk = ASC->HasTag(NexusGameplayTags::Ability_Locomotion_Intent_Walk);
+
+		if (!bRunningOrIntending || bCancelTagSnapshot || bWantingWalk) return false;
+	}
+
+	return true;
+}
+
+bool UNexusAbility_LocomotionRun::CanCharacterWalk() const
+{
+	if (const UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
+	{
+		if (!ASC->HasTag(NexusGameplayTags::Ability_Locomotion_Intent_Walk)) return false;
+	}
+
+	if (IsActive()) return true;
+
+	return false;
+}
+
+bool UNexusAbility_LocomotionRun::IsMovingForward() const
+{
+	const ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner());
 	if (!Char) return false;
-
+	
 	const UCharacterMovementComponent* MoveComp = Char->GetCharacterMovement();
 	if (!MoveComp || !MoveComp->IsMovingOnGround()) return false;
-
+	
 	const FVector InputVector = MoveComp->GetLastInputVector();
 	if (InputVector.IsNearlyZero()) return false;
 
@@ -62,20 +144,12 @@ bool UNexusAbility_LocomotionRun::ShouldBoostThisFrame() const
 	return FVector::DotProduct(Forward, InputVector.GetSafeNormal()) > BoostThreshold;
 }
 
-void UNexusAbility_LocomotionRun::SetBoostActive(bool bNewActive)
+bool UNexusAbility_LocomotionRun::CanTick()
 {
-	if (bIsBoostActive == bNewActive) return;
-	
-	ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner());
-	if (!Char) return;
-
-	bIsBoostActive = bNewActive;
-	if (bNewActive)
+	bool bCanTick = false;
+	if (const UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
 	{
-		Char->StartRunning();
+		bCanTick = ASC->HasTag(NexusGameplayTags::Ability_Locomotion_Intent_Run) || ASC->HasTag(NexusGameplayTags::Ability_Locomotion_Intent_Walk) || IsActive();
 	}
-	else
-	{
-		Char->StopRunning();
-	}
+	return bCanTick;
 }
