@@ -5,7 +5,6 @@
 #include "CoreMinimal.h"
 #include "Nexus/Character/NexusCharacterBase.h"
 #include "InputActionValue.h"
-
 #include "NexusHeroCharacter.generated.h"
 
 class UInputMappingContext;
@@ -30,6 +29,19 @@ public:
 	ANexusHeroCharacter(const FObjectInitializer& ObjectInitializer  = FObjectInitializer::Get());
 
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
+
+	//Utility
+	UFUNCTION(BlueprintPure)
+	bool GetIsCrouched() const;
+	UFUNCTION(BlueprintPure)
+	bool GetIsGrounded() const;
+	UFUNCTION(BlueprintPure)
+	bool GetIsTurning() const;
+	
+	UFUNCTION(BlueprintPure)
+	FVector2D GetLookInput() const;
+	UFUNCTION(BlueprintPure)
+	FVector2D GetMoveInput() const;
 
 protected:
 	virtual void BeginPlay() override;
@@ -61,7 +73,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Character|Input|Crouch")
 	EInputMode CrouchInputMode = EInputMode::Hold;
 
+	//Utility
+	UEnhancedInputComponent* GetEnhancedInputComponent() const { return EnhancedInputComponent; }
+
 private:
+	UPROPERTY()
+	TObjectPtr<UEnhancedInputComponent> EnhancedInputComponent;
+	
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 	void OnCrouchInputStarted(); 

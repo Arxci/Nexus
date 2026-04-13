@@ -9,6 +9,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "Camera/CameraComponent.h"
 #include "Nexus/NexusGameplayTags.h"
+#include "Nexus/Character/NexusCharacterMovementComponent.h"
 
 ANexusHeroCharacter::ANexusHeroCharacter(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
@@ -58,8 +59,9 @@ void ANexusHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 	
-	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
+	if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
+		EnhancedInputComponent = EIC;
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ANexusHeroCharacter::Move);
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ANexusHeroCharacter::Look);
 		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnRunInputStarted);
@@ -67,6 +69,57 @@ void ANexusHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnCrouchInputStarted);
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnCrouchInputCompleted);
 	}
+}
+
+
+//Utility
+bool ANexusHeroCharacter::GetIsCrouched() const
+{
+	if (NexusCharacterMovement)
+	{
+		return NexusCharacterMovement->IsCrouching();
+	}
+	return false;	
+}
+
+bool ANexusHeroCharacter::GetIsGrounded() const
+{
+	if (NexusCharacterMovement)
+	{
+		return NexusCharacterMovement->IsGrounded();
+	}
+	return true;	
+}
+
+bool ANexusHeroCharacter::GetIsTurning() const
+{
+	return GetLookInput().X != 0;	
+}
+
+FVector2D ANexusHeroCharacter::GetLookInput() const
+{
+	if (EnhancedInputComponent)
+	{
+		const FInputActionValue Value = EnhancedInputComponent->GetBoundActionValue(LookAction);
+		const FVector2D LookValue = Value.Get<FVector2D>();
+
+		return LookValue;
+	}
+
+	return {0, 0};
+}
+
+FVector2D ANexusHeroCharacter::GetMoveInput() const
+{
+	if (EnhancedInputComponent)
+	{
+		const FInputActionValue Value = EnhancedInputComponent->GetBoundActionValue(MoveAction);
+		const FVector2D MoveValue = Value.Get<FVector2D>();
+
+		return MoveValue;
+	}
+
+	return {0, 0};
 }
 
 
