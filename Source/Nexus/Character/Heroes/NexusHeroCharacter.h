@@ -5,7 +5,6 @@
 #include "CoreMinimal.h"
 #include "Nexus/Character/NexusCharacterBase.h"
 #include "InputActionValue.h"
-#include "Curves/CurveVector.h"
 #include "NexusHeroCharacter.generated.h"
 
 class UInputMappingContext;
@@ -42,8 +41,7 @@ public:
 	FVector GetRelativeAcceleration() const;
 	UFUNCTION(BlueprintPure)
 	FVector GetAcceleration() const;
-	UFUNCTION(BlueprintPure)
-	float GetSpeed() const;
+
 	
 	UFUNCTION(BlueprintPure)
 	FVector2D GetLookInput() const;
@@ -52,7 +50,6 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
-	virtual void TickActor(float DeltaTime, ELevelTick TickType, FActorTickFunction& ThisTickFunction) override;
 
 	//Camera
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Camera")
@@ -84,8 +81,7 @@ protected:
 	//Utility
 	UEnhancedInputComponent* GetEnhancedInputComponent() const { return EnhancedInputComponent; }
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Character|Movement")
-	TObjectPtr<UCurveVector> AccelerationCurve;
+
 
 private:
 	UPROPERTY()
@@ -99,7 +95,4 @@ private:
 	void OnRunInputCompleted();
 
 	void HandleToggleAbilityInput(FGameplayTag AbilityTag, FGameplayTag DeactivateIntentTag);
-
-	void UpdateMovementVariables();
-	float GetMappedSpeed() const;
 };

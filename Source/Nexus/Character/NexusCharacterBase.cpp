@@ -2,6 +2,7 @@
 
 
 #include "NexusCharacterBase.h"
+#include "Components/CapsuleComponent.h"
 #include "NexusCharacterMovementComponent.h"
 #include "Nexus/AbilitySystem/NexusAbility.h"
 #include "Nexus/NexusGameplayTags.h"
@@ -125,5 +126,24 @@ void ANexusCharacterBase::OnEndRun()
 	if (NexusAbilitySystemComponent)
 	{
 		NexusAbilitySystemComponent->RemoveLooseGameplayTag(NexusGameplayTags::Character_State_Locomotion_Run);
+	}
+}
+
+void ANexusCharacterBase::ActorPreLoad_Implementation()
+{
+	OnGameLoaded.Broadcast();
+}
+
+void ANexusCharacterBase::ActorPreSave_Implementation()
+{
+	SavedPawnPosition = GetActorLocation();
+	SavedPawnRotation = GetActorRotation();
+}
+
+void ANexusCharacterBase::ActorLoaded_Implementation()
+{
+	if (!SavedPawnPosition.IsNearlyZero())
+	{
+		SetActorLocationAndRotation(SavedPawnPosition, SavedPawnRotation, false, nullptr, ETeleportType::TeleportPhysics);
 	}
 }

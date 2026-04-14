@@ -131,3 +131,44 @@ bool UNexusAbility_LocomotionCrouch::CanTick()
 	}
 	return bCanTick;
 }
+
+
+// Save/Restore
+void UNexusAbility_LocomotionCrouch::CaptureSaveState(FNexusAbilitySaveData& OutData) const
+{
+	Super::CaptureSaveState(OutData);
+
+	if (const UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
+	{
+		if (ASC->HasTag(NexusGameplayTags::Ability_Locomotion_Intent_Crouch))
+		{
+			OutData.CustomTags.AddTag(NexusGameplayTags::Ability_Locomotion_Intent_Crouch);
+		}
+		if (ASC->HasTag(NexusGameplayTags::Ability_Locomotion_Intent_UnCrouch))
+		{
+			OutData.CustomTags.AddTag(NexusGameplayTags::Ability_Locomotion_Intent_UnCrouch);
+		}
+	}
+}
+
+void UNexusAbility_LocomotionCrouch::ApplySaveState(const FNexusAbilitySaveData& InData)
+{
+	if (UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
+	{
+		for (const FGameplayTag& Tag : InData.CustomTags)
+		{
+			ASC->AddLooseGameplayTag(Tag);
+		}
+	}
+}
+
+void UNexusAbility_LocomotionCrouch::OnSaveStateRestored()
+{
+	if (IsActive())
+	{
+		if (ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
+		{
+			Char->Crouch();
+		}
+	}
+}

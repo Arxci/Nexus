@@ -4,14 +4,17 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "EMSActorSaveInterface.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemInterface.h"
 #include "NexusCharacterBase.generated.h"
 
 class UNexusCharacterMovementComponent;
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnGameLoaded);
+
 UCLASS(PrioritizeCategories = ("Abilities"))
-class NEXUS_API ANexusCharacterBase : public ACharacter, public INexusAbilitySystemInterface
+class NEXUS_API ANexusCharacterBase : public ACharacter, public INexusAbilitySystemInterface, public IEMSActorSaveInterface
 {
 	GENERATED_BODY()
 
@@ -41,12 +44,25 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Character")
 	void StopRunning();
 
+	UPROPERTY(BlueprintAssignable)
+	FEnabledStateChanged OnGameLoaded;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void UnPossessed() override;
+
+	virtual void ActorPreLoad_Implementation() override;
+	virtual void ActorPreSave_Implementation() override;
+	virtual void ActorLoaded_Implementation() override;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
 	TArray<TSubclassOf<UNexusAbility>> DefaultAbilities;
+
+private:
+	UPROPERTY(SaveGame)
+	FVector SavedPawnPosition;
+	UPROPERTY(SaveGame)
+	FRotator SavedPawnRotation;
 };

@@ -2,6 +2,7 @@
 
 
 #include "NexusAbilitySystemComponent.h"
+#include "NexusAbilitySaveData.h"
 #include "NexusAbility.h" 
 
 
@@ -342,3 +343,130 @@ void UNexusAbilitySystemComponent::CancelAbilitiesWithTags(const FGameplayTagCon
 }
 
 
+// EMS Component Save Interface
+void UNexusAbilitySystemComponent::ComponentPreSave_Implementation()
+{
+	SavedAbilityState.Reset();
+	SavedAbilityState.Reserve(GrantedAbilities.Num());
+
+	for (const auto& Pair : GrantedAbilities)
+	{
+		const UNexusAbility* Ability = Pair.Value;
+		if (!Ability) continue;
+
+		FNexusAbilitySaveData Data;
+		Ability->CaptureSaveState(Data);
+		SavedAbilityState.Add(MoveTemp(Data));
+	}
+}
+
+void UNexusAbilitySystemComponent::ComponentLoaded_Implementation()
+{
+	// Phase 0: Reset current ability state to prevent tag ref-count double-counting.
+	// On a mid-session load, abilities may already be active with their tags on the
+	// ASC from normal gameplay. Without this cleanup, Phase 1 would AddTags again,
+	// pushing the ref count to 2. A single deactivation would only decrement once,
+	// leaving the tag stuck (e.g. Ability.Locomotion.Crouch can never be removed).
+	for (const auto& Pair : GrantedAbilities)
+	{
+		UNexusAbility* Ability = Pair.Value;
+		if (!Ability) continue;
+
+		if (Ability->IsActive())
+		{
+			RemoveTags(Ability->AbilityTags);
+			if (!Ability->ActivationOwnedTags.IsEmpty())
+			{
+				RemoveTags(Ability->ActivationOwnedTags);
+			}
+		}
+
+		Ability->ActivationState = ENexusAbilityActivationState::Idle;
+		Ability->bIsOnCooldown = false;
+		Ability->CooldownElapsed = 0.0f;
+	}
+
+	// Also clear any loose tags (e.g. intents) that will be re-added by ApplySaveState
+	for (const FNexusAbilitySaveData& Data : SavedAbilityState)
+	{
+		for (const FGameplayTag& Tag : Data.CustomTags)
+		{
+			RemoveLooseGameplayTag(Tag);
+		}
+	}
+
+	// Phase 1: Restore base state + custom state on each ability
+	for (const FNexusAbilitySaveData& Data : SavedAbilityState)
+	{
+		if (!Data.AbilityClass) continue;
+
+		UNexusAbility* Ability = GrantedAbilities.FindRef(Data.AbilityClass);
+		if (!Ability)
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("NexusASC: Saved ability class '%s' not found in GrantedAbilities. Skipping."),
+				*Data.AbilityClass->GetName());
+			continue;
+		}
+
+		RestoreAbilityState(Ability, Data);
+	}
+
+	// Phase 2: Side effects (after all abilities and tags are consistent)
+	for (const FNexusAbilitySaveData& Data : SavedAbilityState)
+	{
+		if (!Data.AbilityClass) continue;
+
+		if (UNexusAbility* Ability = GrantedAbilities.FindRef(Data.AbilityClass))
+		{
+			Ability->OnSaveStateRestored();
+		}
+	}
+
+	SavedAbilityState.Reset();
+}
+
+void UNexusAbilitySystemComponent::RestoreAbilityState(UNexusAbility* Ability, const FNexusAbilitySaveData& Data)
+{
+	// 1. Restore enabled state
+	Ability->bIsEnabled = Data.bIsEnabled;
+
+	// 2. Restore cooldown with expiry check
+	if (Data.bIsOnCooldown)
+	{
+		const float Remaining = Data.CooldownTotalDuration - Data.CooldownElapsed;
+		if (Remaining > KINDA_SMALL_NUMBER)
+		{
+			Ability->bIsOnCooldown = true;
+			Ability->CooldownElapsed = Data.CooldownElapsed;
+		}
+		else
+		{
+			Ability->bIsOnCooldown = false;
+			Ability->CooldownElapsed = 0.0f;
+		}
+	}
+	else
+	{
+		Ability->bIsOnCooldown = false;
+		Ability->CooldownElapsed = 0.0f;
+	}
+
+	// 3. Restore activation state directly (bypass CommitAbility to avoid replaying events)
+	Ability->ActivationState = Data.ActivationState;
+
+	// 4. If the ability was active, replicate what HandleAbilityActivated does:
+	//    add its tags to the ASC's ref-counted tag system.
+	if (Data.ActivationState == ENexusAbilityActivationState::Active)
+	{
+		AddTags(Ability->AbilityTags);
+
+		if (!Ability->ActivationOwnedTags.IsEmpty())
+		{
+			AddTags(Ability->ActivationOwnedTags);
+		}
+	}
+
+	// 5. Let the subclass restore its custom state (intent tags, etc.)
+	Ability->ApplySaveState(Data);
+}

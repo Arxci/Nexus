@@ -22,6 +22,8 @@ void UNexusCharacterMovementComponent::TickComponent(float DeltaTime, ELevelTick
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	
 	UpdateMovementVariables();
+	UpdateGroundedAcceleration();
+	
 	UpdateCachedVariables();
 }
 
@@ -104,7 +106,23 @@ void UNexusCharacterMovementComponent::UpdateCachedVariables()
 void UNexusCharacterMovementComponent::UpdateMovementVariables()
 {
 	RelativeAcceleration = CalculateRelativeAcceleration();
+	UpdateGroundedAcceleration();
+
 }
+
+void UNexusCharacterMovementComponent::UpdateGroundedAcceleration()
+{
+	if (AccelerationCurve && IsGrounded())
+	{
+		const float MappedSpeed = GetMappedSpeed();
+		const FVector Value = AccelerationCurve->GetVectorValue(MappedSpeed);
+
+		MaxAcceleration = Value.X;
+		BrakingDecelerationWalking = Value.Y;
+		GroundFriction = Value.Z;
+	}
+}
+
 
 FVector UNexusCharacterMovementComponent::CalculateRelativeAcceleration() const
 {
@@ -128,4 +146,25 @@ FVector UNexusCharacterMovementComponent::GetAcceleration() const
 	if (DT < SMALL_NUMBER) return FVector::ZeroVector;
 
 	return (Velocity - CachedVelocity) / DT;
+}
+
+float UNexusCharacterMovementComponent::GetMappedSpeed() const
+{
+	const float Speed = GetSpeed();
+	const float WalkSpeed = MaxWalkSpeed;
+	const float RunSpeed = MaxWalkSpeedRun;
+
+	if (Speed <= WalkSpeed)
+	{
+		return FMath::GetMappedRangeValueClamped(
+			FVector2D(0.f, WalkSpeed), FVector2D(0.f, 1.f), Speed);
+	}
+
+	return FMath::GetMappedRangeValueClamped(
+		FVector2D(WalkSpeed, RunSpeed), FVector2D(1.f, 2.f), Speed);
+}
+
+float UNexusCharacterMovementComponent::GetSpeed() const
+{
+	return Velocity.Length();
 }

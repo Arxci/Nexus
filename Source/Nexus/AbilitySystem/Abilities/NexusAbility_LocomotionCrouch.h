@@ -18,6 +18,11 @@ protected:
 	virtual bool RequestDeactivateAbility(bool bForce) override;
 	virtual void TickAbility(float DeltaTime) override;
 	virtual bool CanTick() override;
+
+	// Save/Restore
+	virtual void CaptureSaveState(FNexusAbilitySaveData& OutData) const override;
+	virtual void ApplySaveState(const FNexusAbilitySaveData& InData) override;
+	virtual void OnSaveStateRestored() override;
 	
 private:
 	bool CanCharacterCrouch() const;

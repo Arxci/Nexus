@@ -3,12 +3,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "EMSActorSaveInterface.h"
 #include "GameFramework/PlayerController.h"
 #include "NexusPlayerController.generated.h"
 
 
 UCLASS()
-class NEXUS_API ANexusPlayerController : public APlayerController
+class NEXUS_API ANexusPlayerController : public APlayerController, public IEMSActorSaveInterface
 {
 	GENERATED_BODY()
 

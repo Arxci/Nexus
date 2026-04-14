@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Curves/CurveVector.h"
 #include "NexusCharacterMovementComponent.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRunStateChanged);
@@ -39,6 +40,13 @@ public:
 	bool IsAccelerating() const;
 
 	UFUNCTION(BlueprintPure, Category = "Character Movement")
+	float GetSpeed() const;
+	
+	UFUNCTION(BlueprintPure, Category = "Character Movement")
+	float GetMappedSpeed() const;
+	
+
+	UFUNCTION(BlueprintPure, Category = "Character Movement")
 	FVector GetRelativeAcceleration() const { return RelativeAcceleration; }
 	UFUNCTION(BlueprintPure, Category = "Character Movement")
 	FVector GetAcceleration() const;
@@ -52,12 +60,16 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Movement: Run")
 	float MaxWalkSpeedRun = 1000.0f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Character|Movement")
+	TObjectPtr<UCurveVector> AccelerationCurve;
+
 private:
 	bool bIsRunning = false;
 	float StandingHalfHeight = 0.0f;
 	float CachedWalkSpeed = 0.0f;
 
 	void UpdateMovementVariables();
+	void UpdateGroundedAcceleration();
 	void UpdateCachedVariables();
 	
 	FVector RelativeAcceleration;

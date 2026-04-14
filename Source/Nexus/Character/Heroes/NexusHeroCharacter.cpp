@@ -55,13 +55,6 @@ void ANexusHeroCharacter::BeginPlay()
 	}
 }
 
-void ANexusHeroCharacter::TickActor(float DeltaTime, ELevelTick TickType, FActorTickFunction& ThisTickFunction)
-{
-	Super::TickActor(DeltaTime, TickType, ThisTickFunction);
-	
-	UpdateMovementVariables();
-}
-
 void ANexusHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
@@ -230,42 +223,6 @@ void ANexusHeroCharacter::HandleToggleAbilityInput(FGameplayTag AbilityTag, FGam
 	}
 }
 
-void ANexusHeroCharacter::UpdateMovementVariables()
-{
-	if (AccelerationCurve && NexusCharacterMovement)
-	{
-		const float MappedSpeed = GetMappedSpeed();
-		const FVector Value = AccelerationCurve->GetVectorValue(MappedSpeed);
 
-		NexusCharacterMovement->MaxAcceleration = Value.X;
-		NexusCharacterMovement->BrakingDecelerationWalking = Value.Y;
-		NexusCharacterMovement->GroundFriction = Value.Z;
-	}
-}
-
-float ANexusHeroCharacter::GetMappedSpeed() const
-{
-	if (!NexusCharacterMovement) return 0.f;
-
-	const float Speed = GetSpeed();
-	const float WalkSpeed = NexusCharacterMovement->MaxWalkSpeed;
-	const float RunSpeed = NexusCharacterMovement->MaxWalkSpeedRun;
-
-	if (Speed <= WalkSpeed)
-	{
-		return FMath::GetMappedRangeValueClamped(
-			FVector2D(0.f, WalkSpeed), FVector2D(0.f, 1.f), Speed);
-	}
-
-	return FMath::GetMappedRangeValueClamped(
-		FVector2D(WalkSpeed, RunSpeed), FVector2D(1.f, 2.f), Speed);
-}
-
-float ANexusHeroCharacter::GetSpeed() const
-{
-	if (!NexusCharacterMovement) return 0.f;
-	
-	return NexusCharacterMovement->Velocity.Length();
-}
 
 

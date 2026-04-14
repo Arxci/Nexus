@@ -6,6 +6,8 @@
 #include "GameplayTagContainer.h"
 #include "NexusAbility.generated.h"
 
+struct FNexusAbilitySaveData;
+
 UENUM(BlueprintType)
 enum class ENexusAbilityActivationState : uint8
 {
@@ -227,6 +229,31 @@ protected:
 	/** Start cooldown when the ability deactivates (CommitAbilityEnd). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Cooldown")
 	bool bCooldownOnDeactivation = true;
+
+	
+	//Save/Restore
+	/**
+	 * Populates OutData with this ability's current state.
+	 * Base implementation fills ActivationState, bIsEnabled, bIsOnCooldown,
+	 * CooldownElapsed, and CooldownTotalDuration.
+	 * Subclasses override to append custom state to OutData.CustomTags.
+	 */
+	virtual void CaptureSaveState(FNexusAbilitySaveData& OutData) const;
+
+	/**
+	 * Restores custom per-ability state from saved data.
+	 * Called by the ASC after it has already restored base state
+	 * (ActivationState, bIsEnabled, cooldown).
+	 * Subclasses override to restore intent tags or other custom state.
+	 */
+	virtual void ApplySaveState(const FNexusAbilitySaveData& InData);
+
+	/**
+	 * Called after all abilities have had their state restored and ASC tags
+	 * are consistent. Subclasses override to apply physical side effects
+	 * (e.g. calling Char->Crouch()).
+	 */
+	virtual void OnSaveStateRestored();
 
 private:
 	ENexusAbilityActivationState ActivationState = ENexusAbilityActivationState::Idle;
