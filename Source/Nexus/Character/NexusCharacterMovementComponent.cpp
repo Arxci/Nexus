@@ -4,10 +4,6 @@
 #include "Components/CapsuleComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
 
-UNexusCharacterMovementComponent::UNexusCharacterMovementComponent()
-{
-
-}
 
 void UNexusCharacterMovementComponent::BeginPlay()
 {
@@ -17,6 +13,16 @@ void UNexusCharacterMovementComponent::BeginPlay()
 	{
 		StandingHalfHeight = Char->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
 	}
+
+	CachedVelocity = Velocity;
+}
+
+void UNexusCharacterMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	
+	UpdateMovementVariables();
+	UpdateCachedVariables();
 }
 
 void UNexusCharacterMovementComponent::StartRunning()
@@ -47,6 +53,13 @@ bool UNexusCharacterMovementComponent::IsMovingForward(float Threshold) const
 
 	const FVector Forward = GetOwner()->GetActorForwardVector();
 	return FVector::DotProduct(Forward, InputVector.GetSafeNormal()) > Threshold;
+}
+
+bool UNexusCharacterMovementComponent::IsAccelerating() const
+{
+	const FVector Accel = GetAcceleration();
+	
+	return FVector::DotProduct(Acceleration, Velocity) > 0;
 }
 
 bool UNexusCharacterMovementComponent::CanStand() const
@@ -81,4 +94,38 @@ bool UNexusCharacterMovementComponent::CanStand() const
 		return Hits.IsEmpty();
 	}
 	return true;
+}
+
+void UNexusCharacterMovementComponent::UpdateCachedVariables()
+{
+	CachedVelocity = Velocity;
+}
+
+void UNexusCharacterMovementComponent::UpdateMovementVariables()
+{
+	RelativeAcceleration = CalculateRelativeAcceleration();
+}
+
+FVector UNexusCharacterMovementComponent::CalculateRelativeAcceleration() const
+{
+	const FVector Accel = GetAcceleration();
+
+	if (const ACharacter* Char = GetCharacterOwner())
+	{
+		const bool bAccelerating = FVector::DotProduct(Accel, Velocity) > 0;
+		const float MaxMag = bAccelerating ? GetMaxAcceleration() : GetMaxBrakingDeceleration();
+
+		return Char->GetActorRotation().UnrotateVector(
+			Accel.GetClampedToMaxSize(MaxMag) / MaxMag);
+	}
+
+	return FVector::ZeroVector;
+}
+
+FVector UNexusCharacterMovementComponent::GetAcceleration() const
+{
+	const float DT = GetWorld()->GetDeltaSeconds();
+	if (DT < SMALL_NUMBER) return FVector::ZeroVector;
+
+	return (Velocity - CachedVelocity) / DT;
 }

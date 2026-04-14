@@ -29,8 +29,8 @@ ANexusHeroCharacter::ANexusHeroCharacter(const FObjectInitializer& ObjectInitial
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
 	SpringArm->SetupAttachment(ViewRoot);
 	SpringArm->TargetArmLength = 0.0f;
-	SpringArm->bEnableCameraRotationLag = false;
-	SpringArm->CameraRotationLagSpeed = 25.0f;
+	SpringArm->bEnableCameraRotationLag = true;
+	SpringArm->CameraRotationLagSpeed = 15.0f;
 
 	ViewSource = CreateDefaultSubobject<USceneComponent>(TEXT("ViewSource"));
 	ViewSource->SetupAttachment(SpringArm);
@@ -53,6 +53,13 @@ void ANexusHeroCharacter::BeginPlay()
 			Subsystem->AddMappingContext(DefaultMappingContext, 0); 
 		}
 	}
+}
+
+void ANexusHeroCharacter::TickActor(float DeltaTime, ELevelTick TickType, FActorTickFunction& ThisTickFunction)
+{
+	Super::TickActor(DeltaTime, TickType, ThisTickFunction);
+	
+	UpdateMovementVariables();
 }
 
 void ANexusHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -91,21 +98,40 @@ bool ANexusHeroCharacter::GetIsGrounded() const
 	return true;	
 }
 
+FVector ANexusHeroCharacter::GetRelativeAcceleration() const
+{
+	if (NexusCharacterMovement)
+	{
+		return NexusCharacterMovement->GetRelativeAcceleration();
+	}
+	return {0, 0, 0};	
+}
+
+FVector ANexusHeroCharacter::GetAcceleration() const
+{
+	if (NexusCharacterMovement)
+	{
+		return NexusCharacterMovement->GetAcceleration();
+	}
+	return {0, 0, 0};	
+}
+
 bool ANexusHeroCharacter::GetIsTurning() const
 {
 	return GetLookInput().X != 0;	
 }
 
+
 FVector2D ANexusHeroCharacter::GetLookInput() const
 {
 	if (EnhancedInputComponent)
 	{
-		const FInputActionValue Value = EnhancedInputComponent->GetBoundActionValue(LookAction);
-		const FVector2D LookValue = Value.Get<FVector2D>();
-
-		return LookValue;
+		const FEnhancedInputActionValueBinding LookActionBinding = EnhancedInputComponent->BindActionValue(LookAction);
+		const FVector2D LookInput = LookActionBinding.GetValue().Get<FVector2D>();
+		
+		return LookInput;
 	}
-
+	
 	return {0, 0};
 }
 
@@ -113,12 +139,12 @@ FVector2D ANexusHeroCharacter::GetMoveInput() const
 {
 	if (EnhancedInputComponent)
 	{
-		const FInputActionValue Value = EnhancedInputComponent->GetBoundActionValue(MoveAction);
-		const FVector2D MoveValue = Value.Get<FVector2D>();
-
-		return MoveValue;
+		const FEnhancedInputActionValueBinding MoveActionBinding = EnhancedInputComponent->BindActionValue(MoveAction);
+		const FVector2D MoveInput = MoveActionBinding.GetValue().Get<FVector2D>();
+		
+		return MoveInput;
 	}
-
+	
 	return {0, 0};
 }
 
@@ -203,3 +229,43 @@ void ANexusHeroCharacter::HandleToggleAbilityInput(FGameplayTag AbilityTag, FGam
 		NexusAbilitySystemComponent->TryActivateAbilityByTag(AbilityTag);
 	}
 }
+
+void ANexusHeroCharacter::UpdateMovementVariables()
+{
+	if (AccelerationCurve && NexusCharacterMovement)
+	{
+		const float MappedSpeed = GetMappedSpeed();
+		const FVector Value = AccelerationCurve->GetVectorValue(MappedSpeed);
+
+		NexusCharacterMovement->MaxAcceleration = Value.X;
+		NexusCharacterMovement->BrakingDecelerationWalking = Value.Y;
+		NexusCharacterMovement->GroundFriction = Value.Z;
+	}
+}
+
+float ANexusHeroCharacter::GetMappedSpeed() const
+{
+	if (!NexusCharacterMovement) return 0.f;
+
+	const float Speed = GetSpeed();
+	const float WalkSpeed = NexusCharacterMovement->MaxWalkSpeed;
+	const float RunSpeed = NexusCharacterMovement->MaxWalkSpeedRun;
+
+	if (Speed <= WalkSpeed)
+	{
+		return FMath::GetMappedRangeValueClamped(
+			FVector2D(0.f, WalkSpeed), FVector2D(0.f, 1.f), Speed);
+	}
+
+	return FMath::GetMappedRangeValueClamped(
+		FVector2D(WalkSpeed, RunSpeed), FVector2D(1.f, 2.f), Speed);
+}
+
+float ANexusHeroCharacter::GetSpeed() const
+{
+	if (!NexusCharacterMovement) return 0.f;
+	
+	return NexusCharacterMovement->Velocity.Length();
+}
+
+

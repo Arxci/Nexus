@@ -8,7 +8,7 @@ ANexusPlayerCameraManager::ANexusPlayerCameraManager(const FObjectInitializer& O
 {
 	ViewPitchMin = -80.0f;
 	ViewPitchMax = 80.0f;
-	DefaultFOV = 80.0f;
+	DefaultFOV = 70.0f;
 }
 
 void ANexusPlayerCameraManager::UpdateCamera(float DeltaTime)

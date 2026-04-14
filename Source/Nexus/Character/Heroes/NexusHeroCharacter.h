@@ -1,10 +1,11 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+﻿
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Nexus/Character/NexusCharacterBase.h"
 #include "InputActionValue.h"
+#include "Curves/CurveVector.h"
 #include "NexusHeroCharacter.generated.h"
 
 class UInputMappingContext;
@@ -37,6 +38,12 @@ public:
 	bool GetIsGrounded() const;
 	UFUNCTION(BlueprintPure)
 	bool GetIsTurning() const;
+	UFUNCTION(BlueprintPure)
+	FVector GetRelativeAcceleration() const;
+	UFUNCTION(BlueprintPure)
+	FVector GetAcceleration() const;
+	UFUNCTION(BlueprintPure)
+	float GetSpeed() const;
 	
 	UFUNCTION(BlueprintPure)
 	FVector2D GetLookInput() const;
@@ -45,28 +52,29 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void TickActor(float DeltaTime, ELevelTick TickType, FActorTickFunction& ThisTickFunction) override;
 
 	//Camera
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Camera")
-	USceneComponent* ViewRoot;
+	TObjectPtr<USceneComponent> ViewRoot;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Camera")
-	USpringArmComponent* SpringArm;
+	TObjectPtr<USpringArmComponent> SpringArm;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Camera")
-	USceneComponent* ViewSource;
+	TObjectPtr<USceneComponent> ViewSource;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Camera")
-	UCameraComponent* FollowCamera;
+	TObjectPtr<UCameraComponent> FollowCamera;
 
 	//Input
 	UPROPERTY(EditAnywhere, Category = "Character|Input")
-	UInputMappingContext* DefaultMappingContext;
+	TObjectPtr<UInputMappingContext> DefaultMappingContext;
 	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions")
-	UInputAction* MoveAction;
+	TObjectPtr<UInputAction> MoveAction;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Character|Input|Actions")
-	UInputAction* LookAction;
+	TObjectPtr<UInputAction> LookAction;
 	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions")
-	UInputAction* SprintAction;
+	TObjectPtr<UInputAction> SprintAction;
 	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions")
-	UInputAction* CrouchAction;
+	TObjectPtr<UInputAction> CrouchAction;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Character|Input|Sprint")
 	EInputMode RunInputMode = EInputMode::Hold;
@@ -75,6 +83,9 @@ protected:
 
 	//Utility
 	UEnhancedInputComponent* GetEnhancedInputComponent() const { return EnhancedInputComponent; }
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Character|Movement")
+	TObjectPtr<UCurveVector> AccelerationCurve;
 
 private:
 	UPROPERTY()
@@ -88,4 +99,7 @@ private:
 	void OnRunInputCompleted();
 
 	void HandleToggleAbilityInput(FGameplayTag AbilityTag, FGameplayTag DeactivateIntentTag);
+
+	void UpdateMovementVariables();
+	float GetMappedSpeed() const;
 };

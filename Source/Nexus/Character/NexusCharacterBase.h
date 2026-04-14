@@ -8,6 +8,8 @@
 #include "Nexus/AbilitySystem/NexusAbilitySystemInterface.h"
 #include "NexusCharacterBase.generated.h"
 
+class UNexusCharacterMovementComponent;
+
 UCLASS(PrioritizeCategories = ("Abilities"))
 class NEXUS_API ANexusCharacterBase : public ACharacter, public INexusAbilitySystemInterface
 {
@@ -22,7 +24,7 @@ public:
 	UNexusCharacterMovementComponent* GetNexusCharacterMovement() const;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
-	UNexusAbilitySystemComponent* NexusAbilitySystemComponent;
+	TObjectPtr<UNexusAbilitySystemComponent> NexusAbilitySystemComponent;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
 	TObjectPtr<UNexusCharacterMovementComponent> NexusCharacterMovement;
