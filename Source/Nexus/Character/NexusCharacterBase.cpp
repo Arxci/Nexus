@@ -96,42 +96,21 @@ void ANexusCharacterBase::StopRunning()
 void ANexusCharacterBase::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
 	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
-	
-	if (NexusAbilitySystemComponent)
-	{
-		NexusAbilitySystemComponent->AddLooseGameplayTag(NexusGameplayTags::Character_State_Locomotion_Crouch);
-	}
 }
 
 void ANexusCharacterBase::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
 	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
-
-	if (NexusAbilitySystemComponent)
-	{
-		NexusAbilitySystemComponent->RemoveLooseGameplayTag(NexusGameplayTags::Character_State_Locomotion_Crouch);
-	}
 }
 
 void ANexusCharacterBase::OnStartRun()
 {
-	if (NexusAbilitySystemComponent)
-	{
-		NexusAbilitySystemComponent->AddLooseGameplayTag(NexusGameplayTags::Character_State_Locomotion_Run);
-	}
+
 }
 
 void ANexusCharacterBase::OnEndRun()
 {
-	if (NexusAbilitySystemComponent)
-	{
-		NexusAbilitySystemComponent->RemoveLooseGameplayTag(NexusGameplayTags::Character_State_Locomotion_Run);
-	}
-}
 
-void ANexusCharacterBase::ActorPreLoad_Implementation()
-{
-	OnGameLoaded.Broadcast();
 }
 
 void ANexusCharacterBase::ActorPreSave_Implementation()
@@ -146,4 +125,7 @@ void ANexusCharacterBase::ActorLoaded_Implementation()
 	{
 		SetActorLocationAndRotation(SavedPawnPosition, SavedPawnRotation, false, nullptr, ETeleportType::TeleportPhysics);
 	}
+	
+	OnGameLoaded.Broadcast();
+	
 }

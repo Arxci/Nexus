@@ -19,9 +19,9 @@ struct NEXUS_API FNexusAbilitySaveData
 {
 	GENERATED_BODY()
 
-	/** The class of the ability this data belongs to. Used as a key to match on load. */
+	/** The soft reference of the ability this data belongs to. Recreated by EMS on load. */
 	UPROPERTY(SaveGame)
-	TSubclassOf<UNexusAbility> AbilityClass;
+	TSoftObjectPtr<UNexusAbility> Ability;
 
 	/** Activation state at time of save. */
 	UPROPERTY(SaveGame)

@@ -31,6 +31,13 @@ public:
 	//Ability life cycle
 	virtual bool RequestActivateAbility();
 	virtual bool RequestDeactivateAbility(bool bForce=false);
+	/**
+	 * Authoritative C++ end. Bypasses the K2 deactivate event (which subclass
+	 * blueprints may not wire up) by invoking CommitAbilityEnd directly. Subclasses
+	 * override to also clear their intent tags and push character side effects.
+	 * Used by load-time reconciliation — do NOT use for normal input-driven flow.
+	 */
+	virtual void ForceEndAbility();
 	
 	virtual void OnEnableAbility();
 	virtual void OnDisableAbility();
@@ -149,9 +156,9 @@ protected:
 
 	//Ability life cycle
 	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Lifecycle")
-	void CommitAbility();
+	virtual void CommitAbility();
 	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Lifecycle")
-	void CommitAbilityEnd();
+	virtual void CommitAbilityEnd();
 	
 	/**
 	* Called once the ability has committed and is now active (state changed to Active).
@@ -239,15 +246,7 @@ protected:
 	 * Subclasses override to append custom state to OutData.CustomTags.
 	 */
 	virtual void CaptureSaveState(FNexusAbilitySaveData& OutData) const;
-
-	/**
-	 * Restores custom per-ability state from saved data.
-	 * Called by the ASC after it has already restored base state
-	 * (ActivationState, bIsEnabled, cooldown).
-	 * Subclasses override to restore intent tags or other custom state.
-	 */
-	virtual void ApplySaveState(const FNexusAbilitySaveData& InData);
-
+	
 	/**
 	 * Called after all abilities have had their state restored and ASC tags
 	 * are consistent. Subclasses override to apply physical side effects
@@ -255,8 +254,10 @@ protected:
 	 */
 	virtual void OnSaveStateRestored();
 
-private:
 	ENexusAbilityActivationState ActivationState = ENexusAbilityActivationState::Idle;
+
+private:
+	
 
 	bool bIsOnCooldown = false;
 	float CooldownElapsed = 0.0f;

@@ -47,7 +47,11 @@ public:
 	FVector2D GetLookInput() const;
 	UFUNCTION(BlueprintPure)
 	FVector2D GetMoveInput() const;
-
+	UFUNCTION(BlueprintPure)
+	bool GetRunInput() const;
+	UFUNCTION(BlueprintPure)
+	bool GetCrouchInput() const;
+	
 protected:
 	virtual void BeginPlay() override;
 
@@ -69,7 +73,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Character|Input|Actions")
 	TObjectPtr<UInputAction> LookAction;
 	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions")
-	TObjectPtr<UInputAction> SprintAction;
+	TObjectPtr<UInputAction> RunAction;
 	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions")
 	TObjectPtr<UInputAction> CrouchAction;
 
@@ -80,9 +84,10 @@ protected:
 
 	//Utility
 	UEnhancedInputComponent* GetEnhancedInputComponent() const { return EnhancedInputComponent; }
-
-
-
+	
+	
+	virtual void ActorLoaded_Implementation() override;
+	
 private:
 	UPROPERTY()
 	TObjectPtr<UEnhancedInputComponent> EnhancedInputComponent;
@@ -93,6 +98,5 @@ private:
 	void OnCrouchInputCompleted();
 	void OnRunInputStarted();
 	void OnRunInputCompleted();
-
-	void HandleToggleAbilityInput(FGameplayTag AbilityTag, FGameplayTag DeactivateIntentTag);
+	void HandleToggleAbilityInput(const FGameplayTag AbilityTag, const FGameplayTag DeactivateIntentTag);
 };

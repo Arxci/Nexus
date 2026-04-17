@@ -32,6 +32,14 @@ void UNexusAbility::CommitAbilityEnd()
 	}
 }
 
+void UNexusAbility::ForceEndAbility()
+{
+	if (IsActive())
+	{
+		CommitAbilityEnd();
+	}
+}
+
 bool UNexusAbility::RequestActivateAbility()
 {
 	if (IsOnCooldown()) return false;
@@ -152,16 +160,12 @@ void UNexusAbility::TickCooldown(float DeltaTime)
 // Save/Restore
 void UNexusAbility::CaptureSaveState(FNexusAbilitySaveData& OutData) const
 {
-	OutData.AbilityClass = GetClass();
+	OutData.Ability = TSoftObjectPtr<UNexusAbility>(FSoftObjectPath(this));;
 	OutData.ActivationState = ActivationState;
 	OutData.bIsEnabled = bIsEnabled;
 	OutData.bIsOnCooldown = bIsOnCooldown;
 	OutData.CooldownElapsed = CooldownElapsed;
 	OutData.CooldownTotalDuration = GetCooldownTotalDuration();
-}
-
-void UNexusAbility::ApplySaveState(const FNexusAbilitySaveData& InData)
-{
 }
 
 void UNexusAbility::OnSaveStateRestored()

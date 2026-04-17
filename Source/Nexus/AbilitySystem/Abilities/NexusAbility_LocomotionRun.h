@@ -15,10 +15,16 @@ protected:
 	
 	virtual bool RequestActivateAbility() override;
 	virtual bool RequestDeactivateAbility(bool bForce) override;
+	virtual void ForceEndAbility() override;
+	
 	virtual void TickAbility(float DeltaTime) override;
 	virtual bool CanTick() override;
 
 	float BoostThreshold = 0.2f;
+	
+	// Save/Restore
+	virtual void CaptureSaveState(FNexusAbilitySaveData& OutData) const override;
+	virtual void OnSaveStateRestored() override;
 	
 private:
 	bool CanCharacterRun() const;

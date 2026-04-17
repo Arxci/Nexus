@@ -47,6 +47,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	bool RemoveAbility(TSubclassOf<UNexusAbility> AbilityClass);
 
+	UFUNCTION(BlueprintCallable, Category = "Ability System")
+	void ClearAbilities();
+
 	/**
 	* Activate a granted ability using the abilities class reference
 	* @param InAbilityToActivate the class reference for the NexusAbility to activate
@@ -84,6 +87,14 @@ public:
 	**/
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	void DeactivateAllAbilities();
+
+	/**
+	 * Force-end an active ability by tag via CommitAbilityEnd (not Request flow).
+	 * Intended for load-time reconciliation where we need a guaranteed synchronous end.
+	 * * @param InAbilityTag the tag reference for the NexusAbility to end.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Ability System")
+	bool ForceEndAbilityByTag(FGameplayTag InAbilityTag);
 	
 
 	//Utility
@@ -104,6 +115,9 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	TArray<UNexusAbility*> GetActiveAbilities() const;
+
+	UFUNCTION(BlueprintCallable, Category = "Ability System")
+	TArray<UNexusAbility*> GetGivenAbilities() const;
 
 	
 	//Delegates
@@ -154,6 +168,7 @@ protected:
 
 	// EMS Component Save Interface
 	virtual void ComponentPreSave_Implementation() override;
+	virtual void ComponentPreLoad_Implementation() override;
 	virtual void ComponentLoaded_Implementation() override;
 
 	UPROPERTY(Transient)

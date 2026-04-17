@@ -64,8 +64,8 @@ void ANexusHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 		EnhancedInputComponent = EIC;
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ANexusHeroCharacter::Move);
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ANexusHeroCharacter::Look);
-		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnRunInputStarted);
-		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnRunInputCompleted);
+		EnhancedInputComponent->BindAction(RunAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnRunInputStarted);
+		EnhancedInputComponent->BindAction(RunAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnRunInputCompleted);
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnCrouchInputStarted);
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnCrouchInputCompleted);
 	}
@@ -117,7 +117,7 @@ bool ANexusHeroCharacter::GetIsTurning() const
 
 FVector2D ANexusHeroCharacter::GetLookInput() const
 {
-	if (EnhancedInputComponent)
+	if (EnhancedInputComponent && LookAction)
 	{
 		const FEnhancedInputActionValueBinding LookActionBinding = EnhancedInputComponent->BindActionValue(LookAction);
 		const FVector2D LookInput = LookActionBinding.GetValue().Get<FVector2D>();
@@ -130,7 +130,7 @@ FVector2D ANexusHeroCharacter::GetLookInput() const
 
 FVector2D ANexusHeroCharacter::GetMoveInput() const
 {
-	if (EnhancedInputComponent)
+	if (EnhancedInputComponent && MoveAction)
 	{
 		const FEnhancedInputActionValueBinding MoveActionBinding = EnhancedInputComponent->BindActionValue(MoveAction);
 		const FVector2D MoveInput = MoveActionBinding.GetValue().Get<FVector2D>();
@@ -139,6 +139,32 @@ FVector2D ANexusHeroCharacter::GetMoveInput() const
 	}
 	
 	return {0, 0};
+}
+
+bool ANexusHeroCharacter::GetRunInput() const
+{
+	if (EnhancedInputComponent && RunAction)
+	{
+		const FEnhancedInputActionValueBinding RunActionBinding = EnhancedInputComponent->BindActionValue(RunAction);
+		const bool RunInput = RunActionBinding.GetValue().Get<bool>();
+		
+		return RunInput;
+	}
+	
+	return false;
+}
+
+bool ANexusHeroCharacter::GetCrouchInput() const
+{
+	if (EnhancedInputComponent && CrouchAction)
+	{
+		const FEnhancedInputActionValueBinding CrouchActionBinding = EnhancedInputComponent->BindActionValue(CrouchAction);
+		const bool CrouchInput = CrouchActionBinding.GetValue().Get<bool>();
+		
+		return CrouchInput;
+	}
+	
+	return false;
 }
 
 
@@ -198,7 +224,7 @@ void ANexusHeroCharacter::Move(const FInputActionValue& Value)
 
 void ANexusHeroCharacter::Look(const FInputActionValue& Value)
 {
-	FVector2D LookAxisVector = Value.Get<FVector2D>();
+	const FVector2D LookAxisVector = Value.Get<FVector2D>();
 
 	if (Controller != nullptr)
 	{
@@ -207,7 +233,7 @@ void ANexusHeroCharacter::Look(const FInputActionValue& Value)
 	}
 }
 
-void ANexusHeroCharacter::HandleToggleAbilityInput(FGameplayTag AbilityTag, FGameplayTag DeactivateIntentTag)
+void ANexusHeroCharacter::HandleToggleAbilityInput(const FGameplayTag AbilityTag, const FGameplayTag DeactivateIntentTag)
 {
 	if (NexusAbilitySystemComponent->HasTag(DeactivateIntentTag))
 	{
@@ -224,5 +250,17 @@ void ANexusHeroCharacter::HandleToggleAbilityInput(FGameplayTag AbilityTag, FGam
 }
 
 
+// Save/restore
+void ANexusHeroCharacter::ActorLoaded_Implementation()
+{
+	Super::ActorLoaded_Implementation();
 
+	if (!NexusAbilitySystemComponent) return;
 
+	//Flush out intent for hold input modes
+	if (RunInputMode == EInputMode::Hold && !GetRunInput()) NexusAbilitySystemComponent->ForceEndAbilityByTag(
+			NexusGameplayTags::Ability_Locomotion_Run);
+
+	if (CrouchInputMode == EInputMode::Hold && !GetCrouchInput()) NexusAbilitySystemComponent->ForceEndAbilityByTag(
+			NexusGameplayTags::Ability_Locomotion_Crouch);
+}

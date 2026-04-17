@@ -10,6 +10,7 @@ UNexusAbility_LocomotionRun::UNexusAbility_LocomotionRun()
 {
 	AbilityTags.AddTag(NexusGameplayTags::Ability_Locomotion_Run);
 	CancelAbilitiesWithTags.AddTag(NexusGameplayTags::Ability_Locomotion_Crouch);
+	ActivationOwnedTags.AddTag(NexusGameplayTags::Character_State_Locomotion_Run);
 	bCooldownOnDeactivation = false;
 }
 
@@ -78,7 +79,7 @@ bool UNexusAbility_LocomotionRun::RequestActivateAbility()
 
 bool UNexusAbility_LocomotionRun::RequestDeactivateAbility(bool bForce)
 {
-	//Always clear run intent due to possibility of partially active  due to IsMovingForward logic checks.
+	//Always clear run intent due to possibility of partially active due to IsMovingForward logic checks.
 	if (UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
 	{
 		ASC->RemoveLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_Run);
@@ -140,4 +141,47 @@ bool UNexusAbility_LocomotionRun::CanTick()
 		bCanTick = ASC->HasTag(NexusGameplayTags::Ability_Locomotion_Intent_Run) || ASC->HasTag(NexusGameplayTags::Ability_Locomotion_Intent_Walk) || IsActive();
 	}
 	return bCanTick;
+}
+
+void UNexusAbility_LocomotionRun::ForceEndAbility()
+{
+	Super::ForceEndAbility();
+	if (UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
+	{
+		ASC->RemoveLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_Run);
+		ASC->RemoveLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_Walk);
+	}
+
+	if (ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
+	{
+		Char->StopRunning();
+	}
+}
+
+void UNexusAbility_LocomotionRun::CaptureSaveState(FNexusAbilitySaveData& OutData) const
+{
+	Super::CaptureSaveState(OutData);
+
+	if (const UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
+	{
+		if (ASC->HasTag(NexusGameplayTags::Ability_Locomotion_Intent_Run))
+		{
+			OutData.CustomTags.AddTag(NexusGameplayTags::Ability_Locomotion_Intent_Run);
+		}
+		if (ASC->HasTag(NexusGameplayTags::Ability_Locomotion_Intent_Walk))
+		{
+			OutData.CustomTags.AddTag(NexusGameplayTags::Ability_Locomotion_Intent_Walk);
+		}
+	}
+}
+
+void UNexusAbility_LocomotionRun::OnSaveStateRestored()
+{
+	if (IsActive())
+	{
+		if (ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
+		{
+			Char->StartRunning();
+		}
+	}
 }
