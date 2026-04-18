@@ -77,7 +77,7 @@ void ANexusCharacterBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-void ANexusCharacterBase::StartRunning()
+void ANexusCharacterBase::Run() const
 {
 	if (NexusCharacterMovement)
 	{
@@ -85,22 +85,12 @@ void ANexusCharacterBase::StartRunning()
 	}
 }
 
-void ANexusCharacterBase::StopRunning()
+void ANexusCharacterBase::StopRunning() const
 {
 	if (NexusCharacterMovement)
 	{
 		NexusCharacterMovement->StopRunning();
 	}
-}
-
-void ANexusCharacterBase::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
-{
-	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
-}
-
-void ANexusCharacterBase::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
-{
-	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
 }
 
 void ANexusCharacterBase::OnStartRun()
@@ -121,11 +111,21 @@ void ANexusCharacterBase::ActorPreSave_Implementation()
 
 void ANexusCharacterBase::ActorLoaded_Implementation()
 {
+	GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
+	{
+		if (IsCrouched())
+		{
+			UnCrouch();
+		}
+	}));
+	
+	
 	if (!SavedPawnPosition.IsNearlyZero())
 	{
 		SetActorLocationAndRotation(SavedPawnPosition, SavedPawnRotation, false, nullptr, ETeleportType::TeleportPhysics);
 	}
 	
-	OnGameLoaded.Broadcast();
-	
+	OnCharacterLoaded.Broadcast();
 }
+
+

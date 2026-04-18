@@ -26,7 +26,7 @@ void UNexusAbility_LocomotionRun::TickAbility(float DeltaTime)
 		{
 			if (ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
 			{
-				Char->StartRunning();
+				Char->Run();
 			}
 			if (UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
 			{
@@ -158,30 +158,13 @@ void UNexusAbility_LocomotionRun::ForceEndAbility()
 	}
 }
 
-void UNexusAbility_LocomotionRun::CaptureSaveState(FNexusAbilitySaveData& OutData) const
-{
-	Super::CaptureSaveState(OutData);
-
-	if (const UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
-	{
-		if (ASC->HasTag(NexusGameplayTags::Ability_Locomotion_Intent_Run))
-		{
-			OutData.CustomTags.AddTag(NexusGameplayTags::Ability_Locomotion_Intent_Run);
-		}
-		if (ASC->HasTag(NexusGameplayTags::Ability_Locomotion_Intent_Walk))
-		{
-			OutData.CustomTags.AddTag(NexusGameplayTags::Ability_Locomotion_Intent_Walk);
-		}
-	}
-}
-
 void UNexusAbility_LocomotionRun::OnSaveStateRestored()
 {
 	if (IsActive())
 	{
-		if (ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
+		if (const ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
 		{
-			Char->StartRunning();
+			Char->Run();
 		}
 	}
 }

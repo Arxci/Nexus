@@ -11,7 +11,7 @@
 
 class UNexusCharacterMovementComponent;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnGameLoaded);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCharacterLoaded);
 
 UCLASS(PrioritizeCategories = ("Abilities"))
 class NEXUS_API ANexusCharacterBase : public ACharacter, public INexusAbilitySystemInterface, public IEMSActorSaveInterface
@@ -32,20 +32,18 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
 	TObjectPtr<UNexusCharacterMovementComponent> NexusCharacterMovement;
 
-	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
-	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	UFUNCTION()
 	void OnStartRun();
 	UFUNCTION()
 	void OnEndRun();
 	
 	UFUNCTION(BlueprintCallable, Category = "Character")
-	void StartRunning();
+	void Run() const;
 	UFUNCTION(BlueprintCallable, Category = "Character")
-	void StopRunning();
+	void StopRunning() const;
 
 	UPROPERTY(BlueprintAssignable)
-	FEnabledStateChanged OnGameLoaded;
+	FOnCharacterLoaded OnCharacterLoaded;
 
 protected:
 	virtual void BeginPlay() override;

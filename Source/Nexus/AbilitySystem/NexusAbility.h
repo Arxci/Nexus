@@ -6,8 +6,6 @@
 #include "GameplayTagContainer.h"
 #include "NexusAbility.generated.h"
 
-struct FNexusAbilitySaveData;
-
 UENUM(BlueprintType)
 enum class ENexusAbilityActivationState : uint8
 {
@@ -199,8 +197,11 @@ protected:
 		meta = (DisplayName = "On Ability Disabled", ScriptName = "OnDeactivateDisabled"))
 	void K2_OnAbilityDisabled();
 
-	UPROPERTY(BlueprintReadOnly, Category = "Ability System|Abilities")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Ability System|Abilities")
 	bool bIsEnabled = true;
+
+	UPROPERTY(SaveGame)
+	ENexusAbilityActivationState ActivationState = ENexusAbilityActivationState::Idle;
 
 	
 	//Tags
@@ -226,7 +227,7 @@ protected:
 
 	//Cooldown
 	/** Flat cooldown duration in seconds. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Cooldown", meta = (ClampMin = "0.0"))
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Ability System|Cooldown", meta = (ClampMin = "0.0"))
 	float CooldownDuration = 0.0f;
 
 	/** Start cooldown when the ability activates (CommitAbility). */
@@ -239,13 +240,6 @@ protected:
 
 	
 	//Save/Restore
-	/**
-	 * Populates OutData with this ability's current state.
-	 * Base implementation fills ActivationState, bIsEnabled, bIsOnCooldown,
-	 * CooldownElapsed, and CooldownTotalDuration.
-	 * Subclasses override to append custom state to OutData.CustomTags.
-	 */
-	virtual void CaptureSaveState(FNexusAbilitySaveData& OutData) const;
 	
 	/**
 	 * Called after all abilities have had their state restored and ASC tags
@@ -254,12 +248,11 @@ protected:
 	 */
 	virtual void OnSaveStateRestored();
 
-	ENexusAbilityActivationState ActivationState = ENexusAbilityActivationState::Idle;
-
 private:
 	
-
+	UPROPERTY(SaveGame)
 	bool bIsOnCooldown = false;
+	UPROPERTY(SaveGame)
 	float CooldownElapsed = 0.0f;
 
 	void StartCooldown();

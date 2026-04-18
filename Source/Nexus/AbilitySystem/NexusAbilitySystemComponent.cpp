@@ -2,6 +2,9 @@
 
 
 #include "NexusAbilitySystemComponent.h"
+
+#include "EMSData.h"
+#include "EMSFunctionLibrary.h"
 #include "NexusAbilitySaveData.h"
 #include "NexusAbility.h" 
 
@@ -124,7 +127,6 @@ void UNexusAbilitySystemComponent::ClearAbilities()
 		{
 			Ability->OnActivated.Clear();
 			Ability->OnDeactivated.Clear();
-			Ability->ForceEndAbility();
 		}
 	}
 	GrantedAbilities.Empty();
@@ -384,95 +386,33 @@ void UNexusAbilitySystemComponent::CancelAbilitiesWithTags(const FGameplayTagCon
 // EMS Component Save Interface
 void UNexusAbilitySystemComponent::ComponentPreSave_Implementation()
 {
-	SavedAbilityState.Reset();
-	SavedAbilityState.Reserve(GrantedAbilities.Num());
 
+}
+
+void UNexusAbilitySystemComponent::ComponentSaved_Implementation()
+{
 	for (const auto& Pair : GrantedAbilities)
 	{
-		const UNexusAbility* Ability = Pair.Value;
+		UNexusAbility* Ability = Pair.Value;
 		if (!Ability) continue;
 
-		FNexusAbilitySaveData Data;
-		Ability->CaptureSaveState(Data);
-		SavedAbilityState.Add(MoveTemp(Data));
+		UEMSFunctionLibrary::SaveRawObject(GetOwner(), FRawObjectSaveData { Ability, Ability->GetClass()->GetName()});
 	}
 }
 
 void UNexusAbilitySystemComponent::ComponentPreLoad_Implementation()
 {
-	OwnedTags.Reset();
-	TagRefCounts.Empty();
-	UE_LOG(LogTemp, Error, TEXT("Granted abilities pre clear:"));
-	for (const auto& Pair : GrantedAbilities)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Ability: %s"), *Pair.Value->GetName());
-	}
-	ClearAbilities();
-	UE_LOG(LogTemp, Error, TEXT("Granted abilities post clear:"));
-	for (const auto& Pair : GrantedAbilities)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Ability: %s"), *Pair.Value->GetName());
-	}
-}
 
+}
 
 void UNexusAbilitySystemComponent::ComponentLoaded_Implementation()
 {
-	UE_LOG(LogTemp, Error, TEXT("Loaded abilities (Expect: %d):"), SavedAbilityState.Num());
-	for (const FNexusAbilitySaveData& Data : SavedAbilityState)
+	for (const auto& Pair : GrantedAbilities)
 	{
-		UNexusAbility* LoadedAbility = Data.Ability.Get();
-		if (!LoadedAbility) continue;
+		UNexusAbility* Ability = Pair.Value;
+		if (!Ability) continue;
+		UEMSFunctionLibrary::LoadRawObject(GetOwner(), FRawObjectSaveData { Ability, Ability->GetClass()->GetName()});
 		
-		UE_LOG(LogTemp, Warning, TEXT("Ability: %s"), *LoadedAbility->GetName());
-		GrantedAbilities.Add(LoadedAbility->GetClass(), LoadedAbility);
-		LoadedAbility->OnActivated.AddDynamic(this, &UNexusAbilitySystemComponent::HandleAbilityActivated);
-		LoadedAbility->OnDeactivated.AddDynamic(this, &UNexusAbilitySystemComponent::HandleAbilityDeactivated);
-
-		RestoreAbilityState(LoadedAbility, Data);
+		Ability->OnSaveStateRestored();
 	}
-	UE_LOG(LogTemp, Error, TEXT("Owned tags:"));
-	for (const FGameplayTag& Tag : OwnedTags)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Tag: %s"), *Tag.ToString());
-	}
-	SavedAbilityState.Reset();
-}
-
-void UNexusAbilitySystemComponent::RestoreAbilityState(UNexusAbility* Ability, const FNexusAbilitySaveData& Data)
-{
-	if (Data.bIsOnCooldown)
-	{
-		if (Data.CooldownTotalDuration - Data.CooldownElapsed > KINDA_SMALL_NUMBER)
-		{
-			Ability->bIsOnCooldown = true;
-			Ability->CooldownElapsed = Data.CooldownElapsed;
-		}
-		else
-		{
-			Ability->bIsOnCooldown = false;
-			Ability->CooldownElapsed = 0.0f;
-		}
-	}
-	else
-	{
-		Ability->bIsOnCooldown = false;
-		Ability->CooldownElapsed = 0.0f;
-	}
-
-	Ability->bIsEnabled = Data.bIsEnabled;
-	Ability->ActivationState = Data.ActivationState;
-	
-	if (Data.ActivationState == ENexusAbilityActivationState::Active)
-	{
-		AddTags(Ability->ActivationOwnedTags);
-		AddTags(Ability->AbilityTags);
-	}
-
-	for (const FGameplayTag& Tag : Data.CustomTags)
-	{
-		AddLooseGameplayTag(Tag);
-	}
-
-	Ability->OnSaveStateRestored();
 }

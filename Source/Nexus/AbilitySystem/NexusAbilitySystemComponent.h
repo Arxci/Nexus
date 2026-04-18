@@ -6,7 +6,6 @@
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
 #include "EMSCompSaveInterface.h"
-#include "NexusAbilitySaveData.h"
 #include "NexusAbilitySystemComponent.generated.h"
 
 class ACharacter;
@@ -15,6 +14,7 @@ class UNexusAbility;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAbilityStateChanged, UNexusAbility*, Ability);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnTagChanged, FGameplayTag, Tag, bool, bAdded);
+
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class NEXUS_API UNexusAbilitySystemComponent : public UActorComponent, public IEMSCompSaveInterface
@@ -168,13 +168,14 @@ protected:
 
 	// EMS Component Save Interface
 	virtual void ComponentPreSave_Implementation() override;
+	virtual void ComponentSaved_Implementation() override;
 	virtual void ComponentPreLoad_Implementation() override;
 	virtual void ComponentLoaded_Implementation() override;
 
 	UPROPERTY(Transient)
 	AController* CachedController = nullptr;
 
-	UPROPERTY()
+	UPROPERTY(SaveGame)
 	TMap<TSubclassOf<UNexusAbility>, TObjectPtr<UNexusAbility>> GrantedAbilities;
 
 	UFUNCTION()
@@ -190,18 +191,13 @@ private:
 	 * apply the same tag simultaneously without one's deactivation stomping
 	 * the other's state.
 	 */
+	UPROPERTY(SaveGame)
 	TMap<FGameplayTag, int32> TagRefCounts;
+	UPROPERTY(SaveGame)
 	FGameplayTagContainer OwnedTags;
 
 	void CancelAbilitiesWithTags(const FGameplayTagContainer& Tags);
 	void AddTags(const FGameplayTagContainer& Tags);
 	void RemoveTags(const FGameplayTagContainer& Tags);
 	bool CheckTagRequirements(const UNexusAbility* Ability) const;
-
-	/** Staging array: populated by ComponentPreSave, consumed by ComponentLoaded. */
-	UPROPERTY(SaveGame)
-	TArray<FNexusAbilitySaveData> SavedAbilityState;
-
-	void RestoreAbilityState(UNexusAbility* Ability, const FNexusAbilitySaveData& Data);
-	
 };

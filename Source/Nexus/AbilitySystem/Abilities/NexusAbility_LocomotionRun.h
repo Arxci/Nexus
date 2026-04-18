@@ -23,7 +23,6 @@ protected:
 	float BoostThreshold = 0.2f;
 	
 	// Save/Restore
-	virtual void CaptureSaveState(FNexusAbilitySaveData& OutData) const override;
 	virtual void OnSaveStateRestored() override;
 	
 private:

@@ -24,7 +24,6 @@ protected:
 	virtual bool CanTick() override;
 
 	// Save/Restore
-	virtual void CaptureSaveState(FNexusAbilitySaveData& OutData) const override;
 	virtual void OnSaveStateRestored() override;
 	
 private:

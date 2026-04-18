@@ -8,6 +8,7 @@
 #include "Nexus/Character/NexusCharacterBase.h"
 #include "Nexus/Character/NexusCharacterMovementComponent.h"
 
+
 UNexusAbility_LocomotionCrouch::UNexusAbility_LocomotionCrouch()
 {
 	AbilityTags.AddTag(NexusGameplayTags::Ability_Locomotion_Crouch);
@@ -151,7 +152,6 @@ void UNexusAbility_LocomotionCrouch::ForceEndAbility()
 {
 	if (IsActive())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Force end: %s"), *this->GetName());
 		ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner());
 		UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent();
 		const bool bCanStand = Char && Char->GetNexusCharacterMovement()
@@ -176,31 +176,10 @@ void UNexusAbility_LocomotionCrouch::ForceEndAbility()
 
 
 // Save/Restore
-void UNexusAbility_LocomotionCrouch::CaptureSaveState(FNexusAbilitySaveData& OutData) const
-{
-	Super::CaptureSaveState(OutData);
-
-	if (const UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
-	{
-		if (ASC->HasTag(NexusGameplayTags::Ability_Locomotion_Intent_Crouch))
-		{
-			OutData.CustomTags.AddTag(NexusGameplayTags::Ability_Locomotion_Intent_Crouch);
-		}
-		if (ASC->HasTag(NexusGameplayTags::Ability_Locomotion_Intent_UnCrouch))
-		{
-			OutData.CustomTags.AddTag(NexusGameplayTags::Ability_Locomotion_Intent_UnCrouch);
-		}
-	}
-}
-
 void UNexusAbility_LocomotionCrouch::OnSaveStateRestored()
 {
-	UE_LOG(LogTemp, Error, TEXT("Crouch Restore:"));
-	UE_LOG(LogTemp, Warning, TEXT("Is active: %s"), IsActive() ? TEXT("true") : TEXT("false"));
-	UE_LOG(LogTemp, Warning, TEXT("Is enabled: %s"), IsEnabled() ? TEXT("true") : TEXT("false"));
 	if (IsActive())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Reactivate from load: %s"), *this->GetName());
 		if (ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
 		{
 			Char->Crouch();

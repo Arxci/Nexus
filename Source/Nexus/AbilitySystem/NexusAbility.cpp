@@ -2,7 +2,6 @@
 
 
 #include "NexusAbility.h"
-#include "NexusAbilitySaveData.h"
 #include "NexusAbilitySystemComponent.h"
 
 UNexusAbility::UNexusAbility()
@@ -158,16 +157,6 @@ void UNexusAbility::TickCooldown(float DeltaTime)
 
 
 // Save/Restore
-void UNexusAbility::CaptureSaveState(FNexusAbilitySaveData& OutData) const
-{
-	OutData.Ability = TSoftObjectPtr<UNexusAbility>(FSoftObjectPath(this));;
-	OutData.ActivationState = ActivationState;
-	OutData.bIsEnabled = bIsEnabled;
-	OutData.bIsOnCooldown = bIsOnCooldown;
-	OutData.CooldownElapsed = CooldownElapsed;
-	OutData.CooldownTotalDuration = GetCooldownTotalDuration();
-}
-
 void UNexusAbility::OnSaveStateRestored()
 {
 }
