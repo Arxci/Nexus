@@ -113,13 +113,12 @@ void ANexusCharacterBase::ActorLoaded_Implementation()
 {
 	GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
 	{
-		if (IsCrouched())
+		if (IsCrouched() && NexusAbilitySystemComponent && !NexusAbilitySystemComponent->HasTag(NexusGameplayTags::Ability_Locomotion_Crouch))
 		{
 			UnCrouch();
 		}
 	}));
-	
-	
+
 	if (!SavedPawnPosition.IsNearlyZero())
 	{
 		SetActorLocationAndRotation(SavedPawnPosition, SavedPawnRotation, false, nullptr, ETeleportType::TeleportPhysics);

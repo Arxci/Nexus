@@ -10,6 +10,7 @@
 #include "Camera/CameraComponent.h"
 #include "Nexus/NexusGameplayTags.h"
 #include "Nexus/Character/NexusCharacterMovementComponent.h"
+#include "Nexus/Player/NexusPlayerCameraManager.h"
 
 ANexusHeroCharacter::ANexusHeroCharacter(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
@@ -254,6 +255,21 @@ void ANexusHeroCharacter::HandleToggleAbilityInput(const FGameplayTag AbilityTag
 void ANexusHeroCharacter::ActorLoaded_Implementation()
 {
 	Super::ActorLoaded_Implementation();
+
+	if (const APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		
+		if (ANexusPlayerCameraManager* CManager = Cast<ANexusPlayerCameraManager>(PC->PlayerCameraManager))
+		{
+			CManager->StartCameraFadeWithHold(
+				0.01f,
+				1.0f,
+				0.5f,               
+				FLinearColor::Black, 
+				true
+			);
+		}
+	}
 
 	if (!NexusAbilitySystemComponent) return;
 
