@@ -156,6 +156,18 @@ void UNexusAbility::TickCooldown(float DeltaTime)
 }
 
 
+UWorld* UNexusAbility::GetWorld() const
+{
+	// If we are a subobject of an Actor (or Component), use their World
+	if (const AActor* Owner = Cast<AActor>(GetOwner()))
+	{
+		return Owner->GetWorld();
+	}
+
+	return nullptr;
+}
+
+
 // Save/Restore
 void UNexusAbility::OnSaveStateRestored()
 {

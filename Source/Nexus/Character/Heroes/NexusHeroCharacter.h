@@ -3,8 +3,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "EnhancedInputComponent.h"
 #include "Nexus/Character/NexusCharacterBase.h"
 #include "InputActionValue.h"
+#include "GameplayTagContainer.h"
 #include "NexusHeroCharacter.generated.h"
 
 class UInputMappingContext;
@@ -95,4 +97,9 @@ private:
 	void OnRunInputStarted();
 	void OnRunInputCompleted();
 	void HandleToggleAbilityInput(const FGameplayTag AbilityTag, const FGameplayTag DeactivateIntentTag);
+
+	const FEnhancedInputActionValueBinding* LookBinding   = nullptr;
+	const FEnhancedInputActionValueBinding* MoveBinding   = nullptr;
+	const FEnhancedInputActionValueBinding* RunBinding    = nullptr;
+	const FEnhancedInputActionValueBinding* CrouchBinding = nullptr;
 };

@@ -4,7 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "Nexus/AbilitySystem/NexusAbility.h"
-#include "Nexus/Interaction/NexusInteractableComponent.h"
 #include "NexusAbility_Interaction.generated.h"
 
 
@@ -16,14 +15,18 @@ class NEXUS_API UNexusAbility_Interaction : public UNexusAbility
 protected:
 	UNexusAbility_Interaction();
 
+	virtual void InitializeAbility() override;
 	virtual void TickAbility(float DeltaTime) override;
 	virtual bool CanTick() override;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	float InteractionTraceDistance;
+	float FocusReachDistance;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	float InteractionRadius;
-	
+	float AwarenessRadius;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	float AwarenessUpdateInterval;
+
+	FTimerHandle TimerHandle_UpdateInteractables;
 
 private:
 	UPROPERTY()

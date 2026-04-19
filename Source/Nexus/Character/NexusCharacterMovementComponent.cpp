@@ -22,7 +22,6 @@ void UNexusCharacterMovementComponent::TickComponent(float DeltaTime, ELevelTick
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	
 	UpdateMovementVariables();
-	UpdateGroundedAcceleration();
 	
 	UpdateCachedVariables();
 }
@@ -61,7 +60,7 @@ bool UNexusCharacterMovementComponent::IsAccelerating() const
 {
 	const FVector Accel = GetAcceleration();
 	
-	return FVector::DotProduct(Acceleration, Velocity) > 0;
+	return FVector::DotProduct(Accel, Velocity) > 0;
 }
 
 bool UNexusCharacterMovementComponent::CanStand() const
@@ -107,7 +106,6 @@ void UNexusCharacterMovementComponent::UpdateMovementVariables()
 {
 	RelativeAcceleration = CalculateRelativeAcceleration();
 	UpdateGroundedAcceleration();
-
 }
 
 void UNexusCharacterMovementComponent::UpdateGroundedAcceleration()

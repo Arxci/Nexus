@@ -73,7 +73,6 @@ private:
 	void UpdateCachedVariables();
 	
 	FVector RelativeAcceleration;
-	FVector Acceleration;
 	FVector CachedVelocity;
 	
 	FVector CalculateRelativeAcceleration() const;

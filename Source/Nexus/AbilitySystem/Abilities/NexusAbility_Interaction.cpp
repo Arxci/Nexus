@@ -2,7 +2,7 @@
 
 
 #include "NexusAbility_Interaction.h"
-
+#include "Nexus/Interaction/NexusInteractableComponent.h"
 #include "Nexus/NexusCollisionChannels.h"
 #include "Nexus/Util/NexusHeroPlayerUtility.h"
 #include "Nexus/Character/NexusCharacterBase.h"
@@ -10,9 +10,25 @@
 
 UNexusAbility_Interaction::UNexusAbility_Interaction()
 {
-	InteractionTraceDistance = 150.0f;
-	InteractionRadius = 750.0f;
+	FocusReachDistance = 150.0f;
+	AwarenessRadius = 750.0f;
+	AwarenessUpdateInterval= 0.1f;
 }
+
+void UNexusAbility_Interaction::InitializeAbility()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(
+			TimerHandle_UpdateInteractables, 
+			this, 
+			&UNexusAbility_Interaction::UpdateNearbyInteractables, 
+			AwarenessUpdateInterval, 
+			true
+		);
+	}
+}
+
 
 void UNexusAbility_Interaction::TickAbility(float DeltaTime)
 {
@@ -21,7 +37,7 @@ void UNexusAbility_Interaction::TickAbility(float DeltaTime)
 	if (const ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
 	{
 		FHitResult Hit;
-		if (UNexusHeroPlayerUtility::CameraForwardTrace(Char, 5000.f, UEngineTypes::ConvertToTraceType(NexusCollisionChannels::Interaction), Hit, EDrawDebugTrace::ForDuration, 0.0f))
+		if (UNexusHeroPlayerUtility::CameraForwardTrace(Char, FocusReachDistance, UEngineTypes::ConvertToTraceType(NexusCollisionChannels::Interaction), Hit, EDrawDebugTrace::ForDuration, 0.0f))
 		{
 			// ...
 		}
@@ -45,7 +61,7 @@ void UNexusAbility_Interaction::UpdateNearbyInteractables()
 	UKismetSystemLibrary::SphereOverlapActors(
 		Owner,
 		Owner->GetActorLocation(),
-		InteractionRadius,
+		AwarenessRadius,
 		{ UEngineTypes::ConvertToObjectType(NexusCollisionChannels::Interaction) },
 		AActor::StaticClass(),
 		ActorsToIgnore,
@@ -74,6 +90,8 @@ void UNexusAbility_Interaction::UpdateNearbyInteractables()
 		if (IsValid(Actor))
 		{
 			NewNearbyInteractables.Add(Actor);
+			
+			DrawDebugPoint(GetWorld(), Actor->GetActorLocation(), 10.f, FColor::Cyan, false, -1.f);
 			
 			if (!NearbyInteractables.Contains(Actor))
 			{

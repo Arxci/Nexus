@@ -95,6 +95,7 @@ UNexusAbility* UNexusAbilitySystemComponent::GiveAbility(const TSubclassOf<UNexu
 		OnAbilityGiven.Broadcast(NewAbility);
 		NewAbility->OnActivated.AddDynamic(this, &UNexusAbilitySystemComponent::HandleAbilityActivated);
 		NewAbility->OnDeactivated.AddDynamic(this, &UNexusAbilitySystemComponent::HandleAbilityDeactivated);
+		NewAbility->InitializeAbility();
 		return NewAbility;
 	}
 	
@@ -194,7 +195,10 @@ void UNexusAbilitySystemComponent::DeactivateAllAbilities()
 	{
 		if (Pair.Value)
 		{
-			TryDeactivateAbilityByClass(Pair.Key);
+			UNexusAbility* FoundAbility = GrantedAbilities.FindRef(Pair.Key);
+			if (!FoundAbility) return;
+
+			FoundAbility->RequestDeactivateAbility();
 		}
 	}
 }

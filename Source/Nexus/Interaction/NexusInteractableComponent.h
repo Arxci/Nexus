@@ -7,8 +7,10 @@
 #include "Components/ActorComponent.h"
 #include "ComponentPicker.h"
 #include "GameplayTagContainer.h"
-#include "Components/WidgetComponent.h"
 #include "NexusInteractableComponent.generated.h"
+
+class UWidgetComponent;
+class UUserWidget;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInteractionProgressed, float, ElapsedTime);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInteractionStarted);

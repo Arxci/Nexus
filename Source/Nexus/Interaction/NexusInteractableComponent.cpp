@@ -2,7 +2,7 @@
 
 
 #include "NexusInteractableComponent.h"
-
+#include "Components/WidgetComponent.h"
 #include "Nexus/NexusGameplayTags.h"
 
 
@@ -32,8 +32,6 @@ void UNexusInteractableComponent::TickComponent(float DeltaTime, ELevelTick Tick
 void UNexusInteractableComponent::InitializeComponent()
 {
 	Super::InitializeComponent();
-
-	
 }
 
 float UNexusInteractableComponent::GetElapsedTime() const
@@ -124,8 +122,6 @@ void UNexusInteractableComponent::InitializeIndicatorWidget()
 	if (!IndicatorWidget) return;
 
 	IndicatorWidget->AttachToComponent(IndicatorTarget, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-
-	IndicatorWidget->SetupAttachment(IndicatorTarget);
 	IndicatorWidget->SetWidgetSpace(EWidgetSpace::Screen);
 	IndicatorWidget->SetDrawAtDesiredSize(true);
 	IndicatorWidget->SetCollisionEnabled(ECollisionEnabled::NoCollision);

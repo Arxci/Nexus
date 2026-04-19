@@ -2,7 +2,7 @@
 
 
 #include "NexusCharacterBase.h"
-#include "Components/CapsuleComponent.h"
+#include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 #include "NexusCharacterMovementComponent.h"
 #include "Nexus/AbilitySystem/NexusAbility.h"
 #include "Nexus/NexusGameplayTags.h"
@@ -139,7 +139,7 @@ void ANexusCharacterBase::ActorPreSave_Implementation()
 
 void ANexusCharacterBase::ActorLoaded_Implementation()
 {
-	GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
+	GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]
 	{
 		if (GetIsCrouched() && NexusAbilitySystemComponent && !NexusAbilitySystemComponent->HasTag(NexusGameplayTags::Ability_Locomotion_Crouch))
 		{

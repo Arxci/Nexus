@@ -5,9 +5,11 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "EMSActorSaveInterface.h"
-#include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemInterface.h"
 #include "NexusCharacterBase.generated.h"
+
+class UNexusAbilitySystemComponent;
+class UNexusAbility;
 
 class UNexusCharacterMovementComponent;
 

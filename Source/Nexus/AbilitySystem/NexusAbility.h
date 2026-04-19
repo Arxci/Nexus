@@ -144,6 +144,7 @@ public:
 protected:
 	virtual void TickAbility(float DeltaTime) { K2_OnTickAbility(); }
 	virtual bool CanTick() { return false; }
+	virtual void InitializeAbility() { K2_OnInitializeAbility(); };
 	
 	/**
 	* Called if an ability is enabled and active
@@ -151,6 +152,13 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Nexus Ability",
 		meta = (DisplayName = "On Tick Ability", ScriptName = "OnTickAbility"))
 	void K2_OnTickAbility();
+
+	/**
+	* Called the first time an ability is given.
+	**/
+	UFUNCTION(BlueprintImplementableEvent, Category = "Nexus Ability",
+	meta = (DisplayName = "On Initialize Ability", ScriptName = "OnInitializeAbility"))
+	void K2_OnInitializeAbility();
 
 	//Ability life cycle
 	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Lifecycle")
@@ -238,6 +246,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability System|Cooldown")
 	bool bCooldownOnDeactivation = true;
 
+	virtual class UWorld* GetWorld() const override;
 	
 	//Save/Restore
 	

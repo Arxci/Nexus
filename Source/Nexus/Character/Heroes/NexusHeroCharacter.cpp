@@ -11,6 +11,7 @@
 #include "Nexus/NexusGameplayTags.h"
 #include "Nexus/Character/NexusCharacterMovementComponent.h"
 #include "Nexus/Player/NexusPlayerCameraManager.h"
+#include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 
 ANexusHeroCharacter::ANexusHeroCharacter(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
@@ -69,6 +70,11 @@ void ANexusHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 		EnhancedInputComponent->BindAction(RunAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnRunInputCompleted);
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnCrouchInputStarted);
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnCrouchInputCompleted);
+		
+		if (LookAction)   LookBinding   = &EIC->BindActionValue(LookAction);
+		if (MoveAction)   MoveBinding   = &EIC->BindActionValue(MoveAction);
+		if (RunAction)    RunBinding    = &EIC->BindActionValue(RunAction);
+		if (CrouchAction) CrouchBinding = &EIC->BindActionValue(CrouchAction);
 	}
 }
 
@@ -97,57 +103,24 @@ bool ANexusHeroCharacter::GetIsTurning() const
 	return GetLookInput().X != 0;	
 }
 
-
 FVector2D ANexusHeroCharacter::GetLookInput() const
 {
-	if (EnhancedInputComponent && LookAction)
-	{
-		const FEnhancedInputActionValueBinding LookActionBinding = EnhancedInputComponent->BindActionValue(LookAction);
-		const FVector2D LookInput = LookActionBinding.GetValue().Get<FVector2D>();
-		
-		return LookInput;
-	}
-	
-	return {0, 0};
+	return LookBinding ? LookBinding->GetValue().Get<FVector2D>() : FVector2D::ZeroVector;
 }
 
 FVector2D ANexusHeroCharacter::GetMoveInput() const
 {
-	if (EnhancedInputComponent && MoveAction)
-	{
-		const FEnhancedInputActionValueBinding MoveActionBinding = EnhancedInputComponent->BindActionValue(MoveAction);
-		const FVector2D MoveInput = MoveActionBinding.GetValue().Get<FVector2D>();
-		
-		return MoveInput;
-	}
-	
-	return {0, 0};
+	return MoveBinding ? MoveBinding->GetValue().Get<FVector2D>() : FVector2D::ZeroVector;
 }
 
 bool ANexusHeroCharacter::GetRunInput() const
 {
-	if (EnhancedInputComponent && RunAction)
-	{
-		const FEnhancedInputActionValueBinding RunActionBinding = EnhancedInputComponent->BindActionValue(RunAction);
-		const bool RunInput = RunActionBinding.GetValue().Get<bool>();
-		
-		return RunInput;
-	}
-	
-	return false;
+	return RunBinding ? RunBinding->GetValue().Get<bool>() : false;
 }
 
 bool ANexusHeroCharacter::GetCrouchInput() const
 {
-	if (EnhancedInputComponent && CrouchAction)
-	{
-		const FEnhancedInputActionValueBinding CrouchActionBinding = EnhancedInputComponent->BindActionValue(CrouchAction);
-		const bool CrouchInput = CrouchActionBinding.GetValue().Get<bool>();
-		
-		return CrouchInput;
-	}
-	
-	return false;
+	return CrouchBinding ? CrouchBinding->GetValue().Get<bool>() : false;
 }
 
 

@@ -2,14 +2,3 @@
 
 
 #include "NexusInteractableInterface.h"
-
-
-void INexusInteractableInterface::TryStartInteraction()
-{
-	
-}
-
-void INexusInteractableInterface::TryStopInteraction()
-{
-	
-}
