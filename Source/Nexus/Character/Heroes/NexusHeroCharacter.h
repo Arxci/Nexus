@@ -32,10 +32,6 @@ public:
 
 	//Utility
 	UFUNCTION(BlueprintPure)
-	bool GetIsCrouched() const;
-	UFUNCTION(BlueprintPure)
-	bool GetIsGrounded() const;
-	UFUNCTION(BlueprintPure)
 	bool GetIsTurning() const;
 	UFUNCTION(BlueprintPure)
 	FVector GetRelativeAcceleration() const;
@@ -85,7 +81,7 @@ protected:
 	//Utility
 	UEnhancedInputComponent* GetEnhancedInputComponent() const { return EnhancedInputComponent; }
 	
-	
+	virtual void ActorPreLoad_Implementation() override;
 	virtual void ActorLoaded_Implementation() override;
 	
 private:

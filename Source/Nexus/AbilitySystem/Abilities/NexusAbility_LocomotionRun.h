@@ -16,6 +16,8 @@ protected:
 	virtual bool RequestActivateAbility() override;
 	virtual bool RequestDeactivateAbility(bool bForce) override;
 	virtual void ForceEndAbility() override;
+	virtual void CommitAbility() override;
+	virtual void CommitAbilityEnd() override;
 	
 	virtual void TickAbility(float DeltaTime) override;
 	virtual bool CanTick() override;

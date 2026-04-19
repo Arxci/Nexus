@@ -17,4 +17,7 @@ namespace NexusGameplayTags
 	//Input-ID tags
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_Run,   "Input.Run");
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_Crouch,   "Input.Crouch");
+
+	//Interaction
+	UE_DEFINE_GAMEPLAY_TAG(Interactable_Proximity_PlayerInRange,   "Interactable.Proximity.PlayerInRange");
 }

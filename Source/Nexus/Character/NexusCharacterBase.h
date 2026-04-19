@@ -25,23 +25,31 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Character")
 	UNexusCharacterMovementComponent* GetNexusCharacterMovement() const;
-
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
 	TObjectPtr<UNexusAbilitySystemComponent> NexusAbilitySystemComponent;
-
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
 	TObjectPtr<UNexusCharacterMovementComponent> NexusCharacterMovement;
 
+	//Movement
 	UFUNCTION()
 	void OnStartRun();
 	UFUNCTION()
 	void OnEndRun();
-	
 	UFUNCTION(BlueprintCallable, Category = "Character")
 	void Run() const;
 	UFUNCTION(BlueprintCallable, Category = "Character")
-	void StopRunning() const;
+	void StopRun() const;
 
+
+	//Utility
+	UFUNCTION(BlueprintPure)
+	bool GetIsCrouched() const;
+	UFUNCTION(BlueprintPure)
+	bool GetIsRunning() const;
+	UFUNCTION(BlueprintPure)
+	bool GetIsGrounded() const;
+
+	//Delegates
 	UPROPERTY(BlueprintAssignable)
 	FOnCharacterLoaded OnCharacterLoaded;
 

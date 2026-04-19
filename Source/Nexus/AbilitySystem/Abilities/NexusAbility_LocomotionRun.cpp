@@ -24,14 +24,6 @@ void UNexusAbility_LocomotionRun::TickAbility(float DeltaTime)
 	{
 		if (!IsActive())
 		{
-			if (ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
-			{
-				Char->Run();
-			}
-			if (UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
-			{
-				ASC->RemoveLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_Run);
-			}
 			CommitAbility();
 		}
 	}
@@ -39,10 +31,6 @@ void UNexusAbility_LocomotionRun::TickAbility(float DeltaTime)
 	{
 		if (IsActive())
 		{
-			if (ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
-			{
-				Char->StopRunning();
-			}
 			if (UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
 			{
 				ASC->RemoveLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_Walk);
@@ -52,10 +40,6 @@ void UNexusAbility_LocomotionRun::TickAbility(float DeltaTime)
 	}
 	else if (IsActive())
 	{
-		if (ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
-		{
-			Char->StopRunning();
-		}
 		if (UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
 		{
 			ASC->AddLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_Run);
@@ -143,6 +127,31 @@ bool UNexusAbility_LocomotionRun::CanTick()
 	return bCanTick;
 }
 
+void UNexusAbility_LocomotionRun::CommitAbility()
+{
+	Super::CommitAbility();
+	
+	if (ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
+	{
+		Char->Run();
+	}
+	if (UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
+	{
+		ASC->RemoveLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_Run);
+		ASC->RemoveLooseGameplayTag(NexusGameplayTags::Ability_Locomotion_Intent_Walk);
+	}
+}
+
+void UNexusAbility_LocomotionRun::CommitAbilityEnd()
+{
+	Super::CommitAbilityEnd();
+	
+	if (ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
+	{
+		Char->StopRun();
+	}
+}
+
 void UNexusAbility_LocomotionRun::ForceEndAbility()
 {
 	Super::ForceEndAbility();
@@ -154,7 +163,7 @@ void UNexusAbility_LocomotionRun::ForceEndAbility()
 
 	if (ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
 	{
-		Char->StopRunning();
+		Char->StopRun();
 	}
 }
 

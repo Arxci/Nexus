@@ -17,18 +17,10 @@ void ANexusPlayerCameraManager::UpdateCamera(float DeltaTime)
 	Super::UpdateCamera(DeltaTime);
 }
 
-void ANexusPlayerCameraManager::StartCameraFadeWithHold(const float InFadeTime, const float HoldTime, const float OutFadeTime, const FLinearColor InFadeColor, const bool bInFadeAudio)
+void ANexusPlayerCameraManager::StartCameraFadeWithDelay(const float FromAlpha, const float ToAlpha, const float InFadeTime, const float InDelayTime, const FLinearColor InFadeColor, const bool bInFadeAudio, const bool bInHoldWhenFinished)
 {
-	OnCameraFadeCompleted.BindUFunction(this, FName("CameraFadeHoldEnd"), OutFadeTime, InFadeColor, bInFadeAudio);
-
-	StartCameraFade(0, 1, InFadeTime, InFadeColor,bInFadeAudio, true);
-	
-	GetWorldTimerManager().SetTimer(CameraFadeHandle, OnCameraFadeCompleted, HoldTime, false);
-}
-
-void ANexusPlayerCameraManager::CameraFadeHoldEnd(const float OutFadeTime, const FLinearColor InFadeColor, const bool bInFadeAudio)
-{
-	OnCameraFadeCompleted.Unbind();
-
-	StartCameraFade(1, 0, OutFadeTime, InFadeColor,bInFadeAudio, true);
+	GetWorldTimerManager().SetTimer(CameraFadeDelayHandle, FTimerDelegate::CreateLambda([this, FromAlpha, ToAlpha, InFadeTime, InFadeColor, bInFadeAudio, bInHoldWhenFinished]()
+	{
+		StartCameraFade(FromAlpha, ToAlpha, InFadeTime, InFadeColor,bInFadeAudio, bInHoldWhenFinished);
+	}), InDelayTime, false);
 }

@@ -17,13 +17,9 @@ public:
 
 	virtual void UpdateCamera(float DeltaTime) override;
 
-	void StartCameraFadeWithHold(const float InFadeTime, const float HoldTime, const float OutFadeTime, const FLinearColor InFadeColor, const bool bInFadeAudio);
+    void StartCameraFadeWithDelay(const float FromAlpha, const float ToAlpha, const float InFadeTime, const float InDelayTime, const FLinearColor InFadeColor, const bool bInFadeAudio, const bool bInHoldWhenFinished);
 
 private:
-	UFUNCTION()
-	void CameraFadeHoldEnd(const float OutFadeTime, const FLinearColor InFadeColor, const bool bInFadeAudio);
-
-	FTimerHandle CameraFadeHandle;
-	FTimerDelegate OnCameraFadeCompleted;
+	FTimerHandle CameraFadeDelayHandle;
 };
 

@@ -7,7 +7,7 @@
 #include "NexusInteractableInterface.generated.h"
 
 
-UINTERFACE(MinimalAPI)
+UINTERFACE(MinimalAPI, BlueprintType)
 class UNexusInteractableInterface : public UInterface
 {
 	GENERATED_BODY()
@@ -20,11 +20,13 @@ class NEXUS_API INexusInteractableInterface
 
 
 protected:
-	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interaction")
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interactable")
 	void TryStartInteraction();
-	virtual void TryStartInteraction_Implementation();
-
-	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interaction")
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interactable")
 	void TryStopInteraction();
-	virtual void TryStopInteraction_Implementation();
+
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interactable")
+	void OnEnteredPlayerRange();
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interactable")
+	void OnLeftPlayerRange();
 };

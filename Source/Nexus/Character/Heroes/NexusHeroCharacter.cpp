@@ -74,24 +74,6 @@ void ANexusHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 
 
 //Utility
-bool ANexusHeroCharacter::GetIsCrouched() const
-{
-	if (NexusCharacterMovement)
-	{
-		return NexusCharacterMovement->IsCrouching();
-	}
-	return false;	
-}
-
-bool ANexusHeroCharacter::GetIsGrounded() const
-{
-	if (NexusCharacterMovement)
-	{
-		return NexusCharacterMovement->IsGrounded();
-	}
-	return true;	
-}
-
 FVector ANexusHeroCharacter::GetRelativeAcceleration() const
 {
 	if (NexusCharacterMovement)
@@ -252,6 +234,21 @@ void ANexusHeroCharacter::HandleToggleAbilityInput(const FGameplayTag AbilityTag
 
 
 // Save/restore
+void ANexusHeroCharacter::ActorPreLoad_Implementation()
+{
+	Super::ActorPreLoad_Implementation();
+
+	if (const APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		
+		if (ANexusPlayerCameraManager* CManager = Cast<ANexusPlayerCameraManager>(PC->PlayerCameraManager))
+		{
+			CManager->StartCameraFade(0, 1, 0.01f, FLinearColor::Black, true, true);
+		}
+	}
+}
+
+
 void ANexusHeroCharacter::ActorLoaded_Implementation()
 {
 	Super::ActorLoaded_Implementation();
@@ -261,13 +258,7 @@ void ANexusHeroCharacter::ActorLoaded_Implementation()
 		
 		if (ANexusPlayerCameraManager* CManager = Cast<ANexusPlayerCameraManager>(PC->PlayerCameraManager))
 		{
-			CManager->StartCameraFadeWithHold(
-				0.01f,
-				1.0f,
-				0.5f,               
-				FLinearColor::Black, 
-				true
-			);
+			CManager->StartCameraFadeWithDelay(1, 0, 0.5f, 1.0f, FLinearColor::Black, true, true);
 		}
 	}
 

@@ -85,7 +85,7 @@ void ANexusCharacterBase::Run() const
 	}
 }
 
-void ANexusCharacterBase::StopRunning() const
+void ANexusCharacterBase::StopRun() const
 {
 	if (NexusCharacterMovement)
 	{
@@ -103,6 +103,34 @@ void ANexusCharacterBase::OnEndRun()
 
 }
 
+//Utility
+bool ANexusCharacterBase::GetIsCrouched() const
+{
+	if (NexusCharacterMovement)
+	{
+		return NexusCharacterMovement->IsCrouching();
+	}
+	return false;	
+}
+
+bool ANexusCharacterBase::GetIsRunning() const
+{
+	if (NexusCharacterMovement)
+	{
+		return NexusCharacterMovement->IsRunning();
+	}
+	return false;	
+}
+
+bool ANexusCharacterBase::GetIsGrounded() const
+{
+	if (NexusCharacterMovement)
+	{
+		return NexusCharacterMovement->IsGrounded();
+	}
+	return true;	
+}
+
 void ANexusCharacterBase::ActorPreSave_Implementation()
 {
 	SavedPawnPosition = GetActorLocation();
@@ -113,9 +141,14 @@ void ANexusCharacterBase::ActorLoaded_Implementation()
 {
 	GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
 	{
-		if (IsCrouched() && NexusAbilitySystemComponent && !NexusAbilitySystemComponent->HasTag(NexusGameplayTags::Ability_Locomotion_Crouch))
+		if (GetIsCrouched() && NexusAbilitySystemComponent && !NexusAbilitySystemComponent->HasTag(NexusGameplayTags::Ability_Locomotion_Crouch))
 		{
 			UnCrouch();
+		}
+
+		if (GetIsRunning() && NexusAbilitySystemComponent && !NexusAbilitySystemComponent->HasTag(NexusGameplayTags::Ability_Locomotion_Run))
+		{
+			StopRun();
 		}
 	}));
 

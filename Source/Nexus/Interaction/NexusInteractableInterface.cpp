@@ -4,12 +4,12 @@
 #include "NexusInteractableInterface.h"
 
 
-void INexusInteractableInterface::TryStartInteraction_Implementation()
+void INexusInteractableInterface::TryStartInteraction()
 {
 	
 }
 
-void INexusInteractableInterface::TryStopInteraction_Implementation()
+void INexusInteractableInterface::TryStopInteraction()
 {
 	
 }
