@@ -12,7 +12,6 @@ UNexusInteractableComponent::UNexusInteractableComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true; 
 	PrimaryComponentTick.bStartWithTickEnabled = false;
-	bWantsInitializeComponent = true;
 	bDisplayIndicator = true;
 }
 
@@ -30,11 +29,6 @@ void UNexusInteractableComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	InteractionProgress();
-}
-
-void UNexusInteractableComponent::InitializeComponent()
-{
-	Super::InitializeComponent();
 }
 
 float UNexusInteractableComponent::GetElapsedTime() const
@@ -134,9 +128,9 @@ void UNexusInteractableComponent::InitializeIndicatorWidget()
 	
 	UActorComponent* NewComp = Owner->AddComponentByClass(
 			UWidgetComponent::StaticClass(),
-			/* bManualAttachment */ true,
+			true,
 			FTransform::Identity,
-			/* bDeferredFinish */ true);
+			true);
 
 	IndicatorWidgetComponent = Cast<UWidgetComponent>(NewComp);
 

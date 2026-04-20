@@ -8,6 +8,66 @@
 #include "Nexus/Character/NexusCharacterBase.h"
 #include "Kismet/KismetSystemLibrary.h"
 
+namespace
+{
+	// Cached CVar values — refreshed via per-CVar change callbacks so the hot path
+	// reads plain ints/floats instead of going through atomic loads each frame.
+	int32 GShowInteractionFocusReach = 0;
+	int32 GShowInteractionAwareness = 0;
+	float GAwarenessRadiusOverride = -1.0f;
+	float GFocusReachOverride = -1.0f;
+
+	TAutoConsoleVariable<int32> CVarShowInteractionFocusReach(
+		TEXT("Nexus.Interaction.Show.FocusReach"),
+		0,
+		TEXT("0: Hide Interaction Show Focus Reach\n1: Show Interaction Show Focus Reach"),
+		ECVF_Cheat
+	);
+
+	TAutoConsoleVariable<int32> CVarShowInteractionAwareness(
+		TEXT("Nexus.Interaction.Show.Awareness"),
+		0,
+		TEXT("0: Hide Interaction Show Awareness\n1: Show Interaction Show Awareness"),
+		ECVF_Cheat
+	);
+
+	TAutoConsoleVariable<float> CVarAwarenessRadiusOverride(
+		TEXT("Nexus.Interaction.AwarenessRadiusOverride"),
+		-1.0f,
+		TEXT("Override the proximity detection radius. Set to -1 to use default."),
+		ECVF_Cheat
+	);
+
+	TAutoConsoleVariable<float> CVarFocusReachOverride(
+		TEXT("Nexus.Interaction.FocusReachOverride"),
+		-1.0f,
+		TEXT("Override the focus reach distance. Set to -1 to use default."),
+		ECVF_Cheat
+	);
+
+	struct FInteractionCVarBinder
+	{
+		FInteractionCVarBinder()
+		{
+			// Seed cached values from initial defaults.
+			GShowInteractionFocusReach = CVarShowInteractionFocusReach.GetValueOnGameThread();
+			GShowInteractionAwareness  = CVarShowInteractionAwareness.GetValueOnGameThread();
+			GAwarenessRadiusOverride   = CVarAwarenessRadiusOverride.GetValueOnGameThread();
+			GFocusReachOverride        = CVarFocusReachOverride.GetValueOnGameThread();
+
+			CVarShowInteractionFocusReach.AsVariable()->SetOnChangedCallback(
+				FConsoleVariableDelegate::CreateLambda([](IConsoleVariable* V){ GShowInteractionFocusReach = V->GetInt(); }));
+			CVarShowInteractionAwareness.AsVariable()->SetOnChangedCallback(
+				FConsoleVariableDelegate::CreateLambda([](IConsoleVariable* V){ GShowInteractionAwareness = V->GetInt(); }));
+			CVarAwarenessRadiusOverride.AsVariable()->SetOnChangedCallback(
+				FConsoleVariableDelegate::CreateLambda([](IConsoleVariable* V){ GAwarenessRadiusOverride = V->GetFloat(); }));
+			CVarFocusReachOverride.AsVariable()->SetOnChangedCallback(
+				FConsoleVariableDelegate::CreateLambda([](IConsoleVariable* V){ GFocusReachOverride = V->GetFloat(); }));
+		}
+	};
+	static FInteractionCVarBinder GInteractionCVarBinder;
+}
+
 UNexusAbility_Interaction::UNexusAbility_Interaction()
 {
 	FocusReachDistance = 150.0f;
@@ -28,6 +88,8 @@ void UNexusAbility_Interaction::OnDisableAbility()
 	{
 		World->GetTimerManager().ClearTimer(TimerHandle_UpdateInteractables);
 	}
+	
+	ClearAwarenessState();
 }
 
 void UNexusAbility_Interaction::OnEnableAbility()
@@ -58,15 +120,14 @@ void UNexusAbility_Interaction::TraceForInteractables()
 		return;
 	}
 
-	const EDrawDebugTrace::Type DebugTrace = CVarShowInteractionFocusReach.GetValueOnGameThread() != 0
+	const EDrawDebugTrace::Type DebugTrace = GShowInteractionFocusReach != 0
 		? EDrawDebugTrace::ForDuration
 		: EDrawDebugTrace::None;
-    
+
 	float CurrentDistance = FocusReachDistance;
-	const float DistanceOverride = CVarFocusReachOverride.GetValueOnGameThread();
-	if (DistanceOverride >= 0.f)
+	if (GFocusReachOverride >= 0.f)
 	{
-		CurrentDistance = DistanceOverride;
+		CurrentDistance = GFocusReachOverride;
 	}
     
 	FHitResult Hit;
@@ -83,17 +144,24 @@ void UNexusAbility_Interaction::TraceForInteractables()
     
 	if (bHit)
 	{
-		if (const AActor* Actor = Hit.GetActor())
+		if (AActor* Actor = Hit.GetActor())
 		{
-			const UPrimitiveComponent* HitComp = Hit.GetComponent();
-            
-			TInlineComponentArray<UNexusInteractableComponent*> Comps(Actor);
-			for (UNexusInteractableComponent* Comp : Comps)
+			// Gate focus on awareness: the focus trace originates at the camera and
+			// can reach further than the awareness sphere (which is centered on the
+			// actor). Requiring the actor to already be in NearbyInteractables keeps
+			// the two stages consistent — you can only focus what you're near.
+			if (NearbyInteractables.Contains(Actor))
 			{
-				if (Comp && Comp->GetInteractionTriggerTarget() == HitComp)
+				const UPrimitiveComponent* HitComp = Hit.GetComponent();
+
+				TInlineComponentArray<UNexusInteractableComponent*> Comps(Actor);
+				for (UNexusInteractableComponent* Comp : Comps)
 				{
-					NewTarget = Comp;
-					break;
+					if (Comp && Comp->GetInteractionTriggerTarget() == HitComp)
+					{
+						NewTarget = Comp;
+						break;
+					}
 				}
 			}
 		}
@@ -106,15 +174,27 @@ void UNexusAbility_Interaction::TraceForInteractables()
 void UNexusAbility_Interaction::UpdateInteractionTarget(UNexusInteractableComponent* NewInteractionTarget)
 {
 	UNexusInteractableComponent* Previous = InteractionTarget.Get();
-	if (Previous == NewInteractionTarget) return;
+	// IsStale is true when the weak ptr held a valid object that has since been
+	// garbage-collected. In that case Get() returns null, so the Previous ==
+	// NewInteractionTarget short-circuit would incorrectly suppress the focus-lost
+	// notification.
+	const bool bTargetWasDestroyed = InteractionTarget.IsStale();
+
+	if (Previous == NewInteractionTarget && !bTargetWasDestroyed) return;
 
 	if (Previous)
 	{
 		INexusInteractableInterface::Execute_OnLostPlayerFocus(Previous);
 	}
-    
+	else if (bTargetWasDestroyed)
+	{
+		// Component is already dead — can't call into it. Broadcast the ability-level
+		// event so listeners (HUD prompts, etc.) can clear focus-dependent state.
+		OnInteractionFocusCleared.Broadcast();
+	}
+
 	InteractionTarget = NewInteractionTarget;
-    
+
 	if (NewInteractionTarget)
 	{
 		INexusInteractableInterface::Execute_OnGainedPlayerFocus(NewInteractionTarget);
@@ -141,13 +221,11 @@ void UNexusAbility_Interaction::UpdateNearbyInteractables()
 	AActor* Owner = GetOwner();
 	if (!Owner) return;
 
-	const EDrawDebugTrace::Type DebugTrace = CVarShowInteractionAwareness.GetValueOnGameThread() != 0 ? EDrawDebugTrace::ForDuration : EDrawDebugTrace::None;
+	const EDrawDebugTrace::Type DebugTrace = GShowInteractionAwareness  != 0 ? EDrawDebugTrace::ForDuration : EDrawDebugTrace::None;
 	float CurrentRadius = AwarenessRadius;
-	const float RadiusOverride = CVarAwarenessRadiusOverride.GetValueOnGameThread();
-
-	if (RadiusOverride >= 0.f)
+	if (GAwarenessRadiusOverride >= 0.f)
 	{
-		CurrentRadius = RadiusOverride;
+		CurrentRadius = GAwarenessRadiusOverride;
 	}
 	
 	TArray<AActor*> ActorsToIgnore;
@@ -191,14 +269,20 @@ void UNexusAbility_Interaction::UpdateNearbyInteractables()
 	for (const FHitResult& Hit : Hits)
 	{
 		AActor* Actor = Hit.GetActor();
-		if (IsValid(Actor))
+		if (!IsValid(Actor)) continue;
+
+		// GetComponents skips actors with no interactable components, which
+		// guards against a non-interactable primitive landing in the results
+		// if someone ever configures a collision response that causes it.
+		TInlineComponentArray<UNexusInteractableComponent*> Comps(Actor);
+		if (Comps.Num() == 0) continue;
+
+		bool bNewlyAdded = false;
+		NewNearbyInteractables.Add(Actor, &bNewlyAdded);
+
+		if (bNewlyAdded && !NearbyInteractables.Contains(Actor))
 		{
-			NewNearbyInteractables.Add(Actor);
-			
-			if (!NearbyInteractables.Contains(Actor))
-			{
-				FireOnComponents(Actor, /*bEntered=*/true);
-			}
+			FireOnComponents(Actor, /*bEntered=*/true);
 		}
 	}
 	
@@ -213,3 +297,24 @@ void UNexusAbility_Interaction::UpdateNearbyInteractables()
 	NearbyInteractables = MoveTemp(NewNearbyInteractables);
 }
 
+void UNexusAbility_Interaction::ClearAwarenessState()
+{
+	// Clear focus first so listeners see LostFocus before LeftRange.
+	UpdateInteractionTarget(nullptr);
+
+	for (const TWeakObjectPtr<AActor>& WeakActor : NearbyInteractables)
+	{
+		AActor* Actor = WeakActor.Get();
+		if (!Actor) continue;
+
+		TInlineComponentArray<UNexusInteractableComponent*> Comps(Actor);
+		for (UNexusInteractableComponent* Comp : Comps)
+		{
+			if (Comp)
+			{
+				INexusInteractableInterface::Execute_OnLeftPlayerRange(Comp);
+			}
+		}
+	}
+	NearbyInteractables.Empty();
+}

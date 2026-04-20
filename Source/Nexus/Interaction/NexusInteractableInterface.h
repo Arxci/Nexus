@@ -18,8 +18,7 @@ class NEXUS_API INexusInteractableInterface
 {
 	GENERATED_BODY()
 
-
-protected:
+public:
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interaction")
 	void TryStartInteraction();
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interaction")

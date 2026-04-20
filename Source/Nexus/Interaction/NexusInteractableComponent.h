@@ -38,7 +38,6 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 FActorComponentTickFunction* ThisTickFunction) override;
-	virtual void InitializeComponent() override;
 	
 	virtual void TryStartInteraction_Implementation() override;
 	virtual void TryStopInteraction_Implementation() override;
@@ -51,8 +50,7 @@ FActorComponentTickFunction* ThisTickFunction) override;
 	
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Interaction")
 	void InteractionProgress();
-
-	/** Designer-configurable: delay before interaction fires, in seconds. */
+	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interaction")
 	float InteractionDuration = 0.0f;
 
@@ -98,7 +96,7 @@ protected:
 private:
 	/** Runtime: world time when the current interaction started. */
 	float InteractionStartTime = 0.0f;
-	UPROPERTY(SaveGame)
+	UPROPERTY()
 	FGameplayTagContainer InteractableState;
 
 	UPROPERTY(Transient)

@@ -7,38 +7,22 @@
 #include "NexusAbility_Interaction.generated.h"
 
 class UNexusInteractableComponent;
-static TAutoConsoleVariable CVarShowInteractionFocusReach(
-	TEXT("nexus.Interaction.Show.FocusReach"), 
-	0,                               
-	TEXT("0: Hide Interaction Show Focus Reach\n1: Show Interaction Show Focus Reach"), 
-	ECVF_Cheat                       
-);
 
-static TAutoConsoleVariable CVarShowInteractionAwareness(
-	TEXT("nexus.Interaction.Show.Awareness"), 
-	0,                               
-	TEXT("0: Hide Interaction Show Awareness\n1: Show Interaction Show Awareness"), 
-	ECVF_Cheat                       
-);
-
-static TAutoConsoleVariable CVarAwarenessRadiusOverride(
-	TEXT("nexus.Interaction.AwarenessRadiusOverride"),
-	-1.0f, 
-	TEXT("Override the proximity detection radius. Set to -1 to use default."),
-	ECVF_Cheat
-);
-
-static TAutoConsoleVariable CVarFocusReachOverride(
-	TEXT("nexus.Interaction.FocusReachOverride"),
-	-1.0f, 
-	TEXT("Override the focus reach distance. Set to -1 to use default."),
-	ECVF_Cheat
-);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInteractionFocusCleared);
 
 UCLASS()
 class NEXUS_API UNexusAbility_Interaction : public UNexusAbility
 {
 	GENERATED_BODY()
+	
+public:
+	/**
+	 * Broadcast when the previously focused interactable is destroyed between
+	 * frames. No component pointer is provided (it's already dead); listeners
+	 * should clear any focus-dependent state (HUD prompts, etc.).
+	 */
+	UPROPERTY(BlueprintAssignable)
+	FOnInteractionFocusCleared OnInteractionFocusCleared;
 
 protected:
 	UNexusAbility_Interaction();
@@ -70,4 +54,5 @@ private:
 	void UpdateInteractionTarget(UNexusInteractableComponent* NewInteractionTarget);
 	void UpdateNearbyInteractables();
 	void StartAwarenessTimer();
+	void ClearAwarenessState();
 };
