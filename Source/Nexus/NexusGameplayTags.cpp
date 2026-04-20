@@ -20,4 +20,9 @@ namespace NexusGameplayTags
 
 	//Interaction
 	UE_DEFINE_GAMEPLAY_TAG(Interactable_Proximity_PlayerInRange,   "Interactable.Proximity.PlayerInRange");
+	UE_DEFINE_GAMEPLAY_TAG(Interactable_State_HasPlayerFocus,   "Interactable.State.HasPlayerFocus");
+	
+	//World Marker
+	UE_DEFINE_GAMEPLAY_TAG(WorldMarker_State_Visible,   "WorldMarker.State.Visible");
+	UE_DEFINE_GAMEPLAY_TAG(WorldMarker_State_IsFacingCamera,   "WorldMarker.State.IsFacingCamera");
 }

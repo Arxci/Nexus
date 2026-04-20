@@ -17,6 +17,113 @@ UNexusAbility_Interaction::UNexusAbility_Interaction()
 
 void UNexusAbility_Interaction::InitializeAbility()
 {
+	StartAwarenessTimer();
+}
+
+void UNexusAbility_Interaction::OnDisableAbility()
+{
+	Super::OnDisableAbility();
+	
+	if (const UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(TimerHandle_UpdateInteractables);
+	}
+}
+
+void UNexusAbility_Interaction::OnEnableAbility()
+{
+	Super::OnEnableAbility();
+	
+	StartAwarenessTimer();
+}
+
+void UNexusAbility_Interaction::TickAbility(float DeltaTime)
+{
+	Super::TickAbility(DeltaTime);
+
+	TraceForInteractables();
+}
+
+bool UNexusAbility_Interaction::CanTick()
+{
+	return IsEnabled();
+}
+
+void UNexusAbility_Interaction::TraceForInteractables()
+{
+	const ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner());
+	if (!Char)
+	{
+		UpdateInteractionTarget(nullptr);
+		return;
+	}
+
+	const EDrawDebugTrace::Type DebugTrace = CVarShowInteractionFocusReach.GetValueOnGameThread() != 0
+		? EDrawDebugTrace::ForDuration
+		: EDrawDebugTrace::None;
+    
+	float CurrentDistance = FocusReachDistance;
+	const float DistanceOverride = CVarFocusReachOverride.GetValueOnGameThread();
+	if (DistanceOverride >= 0.f)
+	{
+		CurrentDistance = DistanceOverride;
+	}
+    
+	FHitResult Hit;
+	const bool bHit = UNexusHeroPlayerUtility::CameraForwardTrace(
+		Char,
+		CurrentDistance,
+		UEngineTypes::ConvertToTraceType(NexusCollisionChannels::Interaction),
+		Hit,
+		DebugTrace,
+		0.0f
+	);
+
+	UNexusInteractableComponent* NewTarget = nullptr;
+    
+	if (bHit)
+	{
+		if (const AActor* Actor = Hit.GetActor())
+		{
+			const UPrimitiveComponent* HitComp = Hit.GetComponent();
+            
+			TInlineComponentArray<UNexusInteractableComponent*> Comps(Actor);
+			for (UNexusInteractableComponent* Comp : Comps)
+			{
+				if (Comp && Comp->GetInteractionTriggerTarget() == HitComp)
+				{
+					NewTarget = Comp;
+					break;
+				}
+			}
+		}
+	}
+
+	UpdateInteractionTarget(NewTarget);
+}
+
+
+void UNexusAbility_Interaction::UpdateInteractionTarget(UNexusInteractableComponent* NewInteractionTarget)
+{
+	UNexusInteractableComponent* Previous = InteractionTarget.Get();
+	if (Previous == NewInteractionTarget) return;
+
+	if (Previous)
+	{
+		INexusInteractableInterface::Execute_OnLostPlayerFocus(Previous);
+	}
+    
+	InteractionTarget = NewInteractionTarget;
+    
+	if (NewInteractionTarget)
+	{
+		INexusInteractableInterface::Execute_OnGainedPlayerFocus(NewInteractionTarget);
+	}
+}
+
+
+void UNexusAbility_Interaction::StartAwarenessTimer()
+{
 	if (const UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().SetTimer(
@@ -29,47 +136,43 @@ void UNexusAbility_Interaction::InitializeAbility()
 	}
 }
 
-
-void UNexusAbility_Interaction::TickAbility(float DeltaTime)
-{
-	Super::TickAbility(DeltaTime);
-
-	if (const ANexusCharacterBase* Char = Cast<ANexusCharacterBase>(GetOwner()))
-	{
-		FHitResult Hit;
-		if (UNexusHeroPlayerUtility::CameraForwardTrace(Char, FocusReachDistance, UEngineTypes::ConvertToTraceType(NexusCollisionChannels::Interaction), Hit, EDrawDebugTrace::ForDuration, 0.0f))
-		{
-			// ...
-		}
-	}
-}
-
-bool UNexusAbility_Interaction::CanTick()
-{
-	return IsEnabled();
-}
-
 void UNexusAbility_Interaction::UpdateNearbyInteractables()
 {
 	AActor* Owner = GetOwner();
 	if (!Owner) return;
+
+	const EDrawDebugTrace::Type DebugTrace = CVarShowInteractionAwareness.GetValueOnGameThread() != 0 ? EDrawDebugTrace::ForDuration : EDrawDebugTrace::None;
+	float CurrentRadius = AwarenessRadius;
+	const float RadiusOverride = CVarAwarenessRadiusOverride.GetValueOnGameThread();
+
+	if (RadiusOverride >= 0.f)
+	{
+		CurrentRadius = RadiusOverride;
+	}
 	
 	TArray<AActor*> ActorsToIgnore;
 	ActorsToIgnore.Add(Owner);
-	TArray<AActor*> Overlapped;
+	TArray<FHitResult> Hits;
+	const FVector Location = Owner->GetActorLocation();
 	
-	UKismetSystemLibrary::SphereOverlapActors(
+	UKismetSystemLibrary::SphereTraceMulti(
 		Owner,
-		Owner->GetActorLocation(),
-		AwarenessRadius,
-		{ UEngineTypes::ConvertToObjectType(NexusCollisionChannels::Interaction) },
-		AActor::StaticClass(),
+		Location,
+		Location,
+		CurrentRadius,
+		UEngineTypes::ConvertToTraceType(NexusCollisionChannels::Interaction),
+		false,
 		ActorsToIgnore,
-		Overlapped
+		DebugTrace,
+		Hits,
+		true,
+		FLinearColor::Red,
+		FLinearColor::Green, 
+		AwarenessUpdateInterval
 	);
 
 	TSet<TWeakObjectPtr<AActor>> NewNearbyInteractables;
-	NewNearbyInteractables.Reserve(Overlapped.Num());
+	NewNearbyInteractables.Reserve(Hits.Num());
 
 	auto FireOnComponents = [](AActor* Actor, bool bEntered)
 	{
@@ -85,13 +188,12 @@ void UNexusAbility_Interaction::UpdateNearbyInteractables()
 		}
 	};
 
-	for (AActor* Actor : Overlapped)
+	for (const FHitResult& Hit : Hits)
 	{
+		AActor* Actor = Hit.GetActor();
 		if (IsValid(Actor))
 		{
 			NewNearbyInteractables.Add(Actor);
-			
-			DrawDebugPoint(GetWorld(), Actor->GetActorLocation(), 10.f, FColor::Cyan, false, -1.f);
 			
 			if (!NearbyInteractables.Contains(Actor))
 			{

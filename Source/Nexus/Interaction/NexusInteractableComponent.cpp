@@ -3,7 +3,9 @@
 
 #include "NexusInteractableComponent.h"
 #include "Components/WidgetComponent.h"
+#include "Nexus/NexusCollisionChannels.h"
 #include "Nexus/NexusGameplayTags.h"
+#include "Nexus/UI/World/NexusWorldMarkerWidget.h"
 
 
 UNexusInteractableComponent::UNexusInteractableComponent()
@@ -19,6 +21,7 @@ void UNexusInteractableComponent::BeginPlay()
 	Super::BeginPlay();
 
 	ResolveIndicatorComponent();
+	ResolveInteractionTriggerComponent();
 }
 
 void UNexusInteractableComponent::TickComponent(float DeltaTime, ELevelTick TickType,
@@ -77,22 +80,40 @@ void UNexusInteractableComponent::OnLeftPlayerRange_Implementation()
 	RemoveIndicator();
 }
 
-//Indicator
-void UNexusInteractableComponent::AddIndicator() const
+void UNexusInteractableComponent::OnGainedPlayerFocus_Implementation()
 {
-	if (bDisplayIndicator && IndicatorWidget)
+	InteractableState.AddTag(NexusGameplayTags::Interactable_State_HasPlayerFocus);
+}
+
+void UNexusInteractableComponent::OnLostPlayerFocus_Implementation()
+{
+	InteractableState.RemoveTag(NexusGameplayTags::Interactable_State_HasPlayerFocus);
+}
+
+//Indicator
+void UNexusInteractableComponent::AddIndicator() 
+{
+	UNexusWorldMarkerWidget* Marker = GetMarkerWidget();
+	if (bDisplayIndicator && IndicatorWidgetComponent)
 	{
-		IndicatorWidget->Activate();
+		Marker->AddStateTag(NexusGameplayTags::WorldMarker_State_Visible);
+		
+		IndicatorWidgetComponent->Activate();
 	}
 }
 
-void UNexusInteractableComponent::RemoveIndicator() const
+void UNexusInteractableComponent::RemoveIndicator()
 {
-	if (bDisplayIndicator && IndicatorWidget)
+	UNexusWorldMarkerWidget* Marker = GetMarkerWidget();
+	if (bDisplayIndicator && Marker)
 	{
-		IndicatorWidget->Deactivate();
+		Marker->RemoveStateTag(NexusGameplayTags::WorldMarker_State_Visible);
+		
+		IndicatorWidgetComponent->Deactivate();
 	}
 }
+
+
 void UNexusInteractableComponent::ResolveIndicatorComponent()
 {
 	IndicatorTarget = IndicatorComponent.GetComponent<USceneComponent>(this);
@@ -117,23 +138,56 @@ void UNexusInteractableComponent::InitializeIndicatorWidget()
 			FTransform::Identity,
 			/* bDeferredFinish */ true);
 
-	IndicatorWidget = Cast<UWidgetComponent>(NewComp);
+	IndicatorWidgetComponent = Cast<UWidgetComponent>(NewComp);
 
-	if (!IndicatorWidget) return;
+	if (!IndicatorWidgetComponent) return;
 
-	IndicatorWidget->AttachToComponent(IndicatorTarget, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-	IndicatorWidget->SetWidgetSpace(EWidgetSpace::Screen);
-	IndicatorWidget->SetDrawAtDesiredSize(true);
-	IndicatorWidget->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	IndicatorWidget->SetWidgetClass(IndicatorWidgetClass);
+	IndicatorWidgetComponent->AttachToComponent(IndicatorTarget, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+	IndicatorWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
+	IndicatorWidgetComponent->SetDrawAtDesiredSize(true);
+	IndicatorWidgetComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	IndicatorWidgetComponent->SetWidgetClass(IndicatorWidgetClass);
 	
-	Owner->FinishAddComponent(IndicatorWidget, true, FTransform::Identity);
+	Owner->FinishAddComponent(IndicatorWidgetComponent, true, FTransform::Identity);
+
+	if (UNexusWorldMarkerWidget* Marker = GetMarkerWidget())
+	{
+		Marker->SetContext(IndicatorTarget, Owner);
+	}
+	else
+	{
+		// Widget may not be instantiated yet; force it and retry.
+		IndicatorWidgetComponent->InitWidget();
+		if (UNexusWorldMarkerWidget* MarkerRetry = GetMarkerWidget())
+		{
+			MarkerRetry->SetContext(IndicatorTarget, Owner);
+		}
+	}
 }
 
+void UNexusInteractableComponent::ResolveInteractionTriggerComponent()
+{
+	InteractionTriggerTarget = InteractionTriggerComponent.GetComponent<UPrimitiveComponent>(this);
+
+	if (InteractionTriggerTarget)
+	{
+		InteractionTriggerTarget->SetCollisionResponseToChannel(    NexusCollisionChannels::Interaction,
+	ECR_Block);
+		InteractionTriggerTarget->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	}
+}
 
 //Utility
 bool UNexusInteractableComponent::IsPlayerInRange() const
 {
 	return InteractableState.HasTag(NexusGameplayTags::Interactable_Proximity_PlayerInRange);
 }
+
+UNexusWorldMarkerWidget* UNexusInteractableComponent::GetMarkerWidget() const
+{
+	return IndicatorWidgetComponent
+	? Cast<UNexusWorldMarkerWidget>(IndicatorWidgetComponent->GetUserWidgetObject())
+	: nullptr;
+}
+
 

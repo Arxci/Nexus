@@ -20,13 +20,18 @@ class NEXUS_API INexusInteractableInterface
 
 
 protected:
-	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interactable")
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interaction")
 	void TryStartInteraction();
-	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interactable")
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interaction")
 	void TryStopInteraction();
 
-	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interactable")
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interaction")
 	void OnEnteredPlayerRange();
-	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interactable")
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interaction")
 	void OnLeftPlayerRange();
+
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interaction")
+	void OnGainedPlayerFocus();
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interaction")
+	void OnLostPlayerFocus();
 };

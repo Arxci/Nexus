@@ -8,9 +8,9 @@ public class Nexus : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "GameplayTags", "EasyMultiSave" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "GameplayTags", "EasyMultiSave", "SlateCore", "Slate", "DeveloperSettings" });
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "InputCore", "EnhancedInput", "CommonInput", "ModularGameplay", "ComponentPicker", "UMG", });
+		PrivateDependencyModuleNames.AddRange(new string[] { "InputCore", "EnhancedInput", "CommonInput", "ModularGameplay", "ComponentPicker", "UMG", "CommonUI" });
 
 		// Uncomment if you are using Slate UIW
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
