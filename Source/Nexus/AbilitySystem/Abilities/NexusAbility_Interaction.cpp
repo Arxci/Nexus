@@ -271,16 +271,13 @@ void UNexusAbility_Interaction::UpdateNearbyInteractables()
 		AActor* Actor = Hit.GetActor();
 		if (!IsValid(Actor)) continue;
 
-		// GetComponents skips actors with no interactable components, which
-		// guards against a non-interactable primitive landing in the results
-		// if someone ever configures a collision response that causes it.
 		TInlineComponentArray<UNexusInteractableComponent*> Comps(Actor);
 		if (Comps.Num() == 0) continue;
 
-		bool bNewlyAdded = false;
-		NewNearbyInteractables.Add(Actor, &bNewlyAdded);
+		bool bAlreadyInSet = false;
+		NewNearbyInteractables.Add(Actor, &bAlreadyInSet);
 
-		if (bNewlyAdded && !NearbyInteractables.Contains(Actor))
+		if (!bAlreadyInSet && !NearbyInteractables.Contains(Actor))
 		{
 			FireOnComponents(Actor, /*bEntered=*/true);
 		}

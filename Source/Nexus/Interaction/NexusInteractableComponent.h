@@ -32,7 +32,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Interaction")
 	USceneComponent* GetIndicatorTarget() { return IndicatorTarget; }
 	UFUNCTION(BlueprintPure, Category = "Interaction")
-	USceneComponent* GetInteractionTriggerTarget() { return InteractionTriggerTarget; }
+	UPrimitiveComponent* GetInteractionTriggerTarget() { return InteractionTriggerTarget; }
 
 protected:
 	virtual void BeginPlay() override;
@@ -81,9 +81,9 @@ protected:
 	void InitializeIndicatorWidget();
 
 	UFUNCTION(BlueprintCallable)
-	void AddIndicator();
+	void ShowIndicator();
 	UFUNCTION(BlueprintCallable)
-	void RemoveIndicator();
+	void HideIndicator();
 
 //Utility	
 protected:

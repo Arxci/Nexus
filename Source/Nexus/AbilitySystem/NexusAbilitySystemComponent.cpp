@@ -193,12 +193,9 @@ void UNexusAbilitySystemComponent::DeactivateAllAbilities()
 {
 	for (const auto& Pair : GrantedAbilities)
 	{
-		if (Pair.Value)
+		if (UNexusAbility* Ability = Pair.Value)
 		{
-			UNexusAbility* FoundAbility = GrantedAbilities.FindRef(Pair.Key);
-			if (!FoundAbility) return;
-
-			FoundAbility->RequestDeactivateAbility();
+			Ability->RequestDeactivateAbility();
 		}
 	}
 }

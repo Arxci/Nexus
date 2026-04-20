@@ -65,13 +65,13 @@ void UNexusInteractableComponent::InteractionProgress_Implementation()
 void UNexusInteractableComponent::OnEnteredPlayerRange_Implementation()
 {
 	InteractableState.AddTag(NexusGameplayTags::Interactable_Proximity_PlayerInRange);
-	AddIndicator();
+	ShowIndicator();
 }
 
 void UNexusInteractableComponent::OnLeftPlayerRange_Implementation()
 {
 	InteractableState.RemoveTag(NexusGameplayTags::Interactable_Proximity_PlayerInRange);
-	RemoveIndicator();
+	HideIndicator();
 }
 
 void UNexusInteractableComponent::OnGainedPlayerFocus_Implementation()
@@ -85,10 +85,10 @@ void UNexusInteractableComponent::OnLostPlayerFocus_Implementation()
 }
 
 //Indicator
-void UNexusInteractableComponent::AddIndicator() 
+void UNexusInteractableComponent::ShowIndicator() 
 {
 	UNexusWorldMarkerWidget* Marker = GetMarkerWidget();
-	if (bDisplayIndicator && IndicatorWidgetComponent)
+	if (bDisplayIndicator && Marker)
 	{
 		Marker->AddStateTag(NexusGameplayTags::WorldMarker_State_Visible);
 		
@@ -96,7 +96,7 @@ void UNexusInteractableComponent::AddIndicator()
 	}
 }
 
-void UNexusInteractableComponent::RemoveIndicator()
+void UNexusInteractableComponent::HideIndicator()
 {
 	UNexusWorldMarkerWidget* Marker = GetMarkerWidget();
 	if (bDisplayIndicator && Marker)
@@ -116,7 +116,7 @@ void UNexusInteractableComponent::ResolveIndicatorComponent()
 		InitializeIndicatorWidget();
 	}
 
-	if (IsPlayerInRange()) AddIndicator();
+	if (IsPlayerInRange()) ShowIndicator();
 }
 
 void UNexusInteractableComponent::InitializeIndicatorWidget()
@@ -143,20 +143,14 @@ void UNexusInteractableComponent::InitializeIndicatorWidget()
 	IndicatorWidgetComponent->SetWidgetClass(IndicatorWidgetClass);
 	
 	Owner->FinishAddComponent(IndicatorWidgetComponent, true, FTransform::Identity);
+	
+	// Widget may not be instantiated yet; force it.
+	IndicatorWidgetComponent->InitWidget();
+	if (UNexusWorldMarkerWidget* MarkerRetry = GetMarkerWidget())
+	{
+		MarkerRetry->SetContext(IndicatorTarget, Owner);
+	}
 
-	if (UNexusWorldMarkerWidget* Marker = GetMarkerWidget())
-	{
-		Marker->SetContext(IndicatorTarget, Owner);
-	}
-	else
-	{
-		// Widget may not be instantiated yet; force it and retry.
-		IndicatorWidgetComponent->InitWidget();
-		if (UNexusWorldMarkerWidget* MarkerRetry = GetMarkerWidget())
-		{
-			MarkerRetry->SetContext(IndicatorTarget, Owner);
-		}
-	}
 }
 
 void UNexusInteractableComponent::ResolveInteractionTriggerComponent()
