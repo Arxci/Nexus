@@ -46,7 +46,7 @@ void UNexusAbility_Interaction::TickAbility(float DeltaTime)
 
 bool UNexusAbility_Interaction::CanTick()
 {
-	return IsEnabled();
+	return IsEnabled() && NearbyInteractables.Num() > 0;
 }
 
 void UNexusAbility_Interaction::TraceForInteractables()
