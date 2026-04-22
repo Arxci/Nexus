@@ -77,11 +77,21 @@ void UNexusInteractableComponent::OnLeftPlayerRange_Implementation()
 void UNexusInteractableComponent::OnGainedPlayerFocus_Implementation()
 {
 	InteractableState.AddTag(NexusGameplayTags::Interactable_State_HasPlayerFocus);
+	UNexusWorldMarkerWidget* Marker = GetMarkerWidget();
+	if (bDisplayIndicator && Marker)
+	{
+		Marker->AddStateTag(NexusGameplayTags::WorldMarker_State_HasPlayerFocus);
+	}
 }
 
 void UNexusInteractableComponent::OnLostPlayerFocus_Implementation()
 {
 	InteractableState.RemoveTag(NexusGameplayTags::Interactable_State_HasPlayerFocus);
+	UNexusWorldMarkerWidget* Marker = GetMarkerWidget();
+	if (bDisplayIndicator && Marker)
+	{
+		Marker->RemoveStateTag(NexusGameplayTags::WorldMarker_State_HasPlayerFocus);
+	}
 }
 
 //Indicator

@@ -25,4 +25,5 @@ namespace NexusGameplayTags
 	//World Marker
 	UE_DEFINE_GAMEPLAY_TAG(WorldMarker_State_Visible,   "WorldMarker.State.Visible");
 	UE_DEFINE_GAMEPLAY_TAG(WorldMarker_State_IsFacingCamera,   "WorldMarker.State.IsFacingCamera");
+	UE_DEFINE_GAMEPLAY_TAG(WorldMarker_State_HasPlayerFocus,   "WorldMarker.State.HasPlayerFocus");
 }
