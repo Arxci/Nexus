@@ -1,0 +1,14 @@
+{
+	"OutputFiles": [
+		"../../../arm64/UnrealGame/Shipping/QuickTween/Module.QuickTween.1.cpp.o",
+		"../../../arm64/UnrealGame/Shipping/QuickTween/Module.QuickTween.2.cpp.o",
+		"../../../arm64/UnrealGame/Shipping/QuickTween/Module.QuickTween.3.cpp.o",
+		"../../../arm64/UnrealGame/Shipping/QuickTween/Module.QuickTween.4.cpp.o",
+		"../../../arm64/UnrealGame/Shipping/QuickTween/Module.QuickTween.5.cpp.o",
+		"../../../arm64/UnrealGame/Shipping/QuickTween/Module.QuickTween.1.cpp.o",
+		"../../../arm64/UnrealGame/Shipping/QuickTween/Module.QuickTween.2.cpp.o",
+		"../../../arm64/UnrealGame/Shipping/QuickTween/Module.QuickTween.3.cpp.o",
+		"../../../arm64/UnrealGame/Shipping/QuickTween/Module.QuickTween.4.cpp.o",
+		"../../../arm64/UnrealGame/Shipping/QuickTween/Module.QuickTween.5.cpp.o"
+	]
+}

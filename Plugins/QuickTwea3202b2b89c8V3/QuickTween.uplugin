@@ -1,0 +1,31 @@
+{
+	"FileVersion": 3,
+	"Version": 5,
+	"VersionName": "1.4.1",
+	"FriendlyName": "QuickTween",
+	"Description": "Quick and simple library for tweening",
+	"Category": "Other",
+	"CreatedBy": "Mosti Dev",
+	"CreatedByURL": "",
+	"DocsURL": "https://juanpablohdzm.github.io/QuickTweenDocs/",
+	"MarketplaceURL": "",
+	"SupportURL": "mosti.dev@gmail.com",
+	"EngineVersion": "5.7.0",
+	"CanContainContent": true,
+	"Installed": true,
+	"Modules": [
+		{
+			"Name": "QuickTween",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"PlatformAllowList": [
+				"Win64",
+				"Mac",
+				"Linux",
+				"Android",
+				"IOS",
+				"TVOS"
+			]
+		}
+	]
+}
