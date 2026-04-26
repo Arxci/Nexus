@@ -65,6 +65,110 @@ UNexusAbility_WeaponFire::UNexusAbility_WeaponFire()
 	bCooldownOnDeactivation = false;
 }
 
+bool UNexusAbility_WeaponFire::RequestDeactivateAbility(bool bForce)
+{
+	// Mirror Reload — without this, tag-based deactivate would only fire the K2 event.
+	if (!bForce && !IsActive()) return false;
+	CommitAbilityEnd();
+	return true;
+}
+
+void UNexusAbility_WeaponFire::CommitAbility()
+{
+	Super::CommitAbility();
+
+	const FNexusFragment_Weapon* W = GetWeaponFragment();
+	if (!W) { CommitAbilityEnd(); return; }
+
+	FireShot();
+
+	switch (W->FireMode)
+	{
+	case ENexusWeaponFireMode::FullAuto:
+		// Stay active; TickAbility re-fires while cooldown clears AND intent is held.
+		break;
+
+	case ENexusWeaponFireMode::Burst:
+		BurstShotsRemaining = FMath::Max(0, W->BurstCount - 1);
+		if (BurstShotsRemaining <= 0) CommitAbilityEnd();
+		break;
+
+	case ENexusWeaponFireMode::SemiAuto:
+	case ENexusWeaponFireMode::Shotgun:
+	case ENexusWeaponFireMode::Melee:
+	default:
+		CommitAbilityEnd();
+		break;
+	}
+}
+
+void UNexusAbility_WeaponFire::CommitAbilityEnd()
+{
+	BurstShotsRemaining = 0;
+	Super::CommitAbilityEnd();
+}
+
+void UNexusAbility_WeaponFire::TickAbility(float DeltaTime)
+{
+	Super::TickAbility(DeltaTime);
+
+	if (!IsActive()) return;
+	if (IsOnCooldown()) return;
+
+	const FNexusFragment_Weapon* W = GetWeaponFragment();
+	const UNexusItemInstance*    I = GetActiveInstance();
+	if (!W || !I) { CommitAbilityEnd(); return; }
+
+	// Out of ammo mid-burst/full-auto — bail with a click, don't keep ticking.
+	const bool bRequiresAmmo = W->AmmoModel != ENexusWeaponAmmoModel::None;
+	const bool bHasAmmo      = I->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0) > 0;
+	if (bRequiresAmmo && !bHasAmmo)
+	{
+		HandleDryFire();
+		CommitAbilityEnd();
+		return;
+	}
+
+	if (IsBlockedByOwnedTags()) { CommitAbilityEnd(); return; }
+
+	switch (W->FireMode)
+	{
+	case ENexusWeaponFireMode::Burst:
+		if (BurstShotsRemaining <= 0) { CommitAbilityEnd(); return; }
+		--BurstShotsRemaining;
+		FireShot();
+		RestartCooldown();
+		if (BurstShotsRemaining <= 0) CommitAbilityEnd();
+		break;
+
+	case ENexusWeaponFireMode::FullAuto:
+		if (!IsFireIntentHeld()) { CommitAbilityEnd(); return; }
+		FireShot();
+		RestartCooldown();
+		break;
+
+	default:
+		// SemiAuto / Shotgun / Melee should never be Active here, but guard anyway.
+		CommitAbilityEnd();
+		break;
+	}
+}
+
+bool UNexusAbility_WeaponFire::IsFireIntentHeld() const
+{
+	if (const UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
+	{
+		return ASC->HasTag(NexusGameplayTags::Ability_Weapon_Intent_Fire);
+	}
+	return false;
+}
+
+bool UNexusAbility_WeaponFire::IsBlockedByOwnedTags() const
+{
+	const UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent();
+	return ASC && !ActivationBlockedTags.IsEmpty() && ASC->HasAnyTags(ActivationBlockedTags);
+}
+
 float UNexusAbility_WeaponFire::GetCooldownTotalDuration() const
 {
 	if (const FNexusFragment_Weapon* W = GetWeaponFragment())
@@ -129,20 +233,6 @@ bool UNexusAbility_WeaponFire::RequestActivateAbility()
 	return true;
 }
 
-void UNexusAbility_WeaponFire::CommitAbility()
-{
-	// Cooldown is read via the virtual GetCooldownTotalDuration override above,
-	// so Super (which calls StartCooldown) gets the correct per-weapon duration
-	// without us mutating the SaveGame CooldownDuration field.
-	Super::CommitAbility();
-
-	FireShot();
-
-	// One Activate per shot — the next press re-triggers once cooldown clears.
-	// Full-auto is slice-3 work (the ability needs to tick while input is held).
-	CommitAbilityEnd();
-}
-
 void UNexusAbility_WeaponFire::FireShot()
 {
 	const FNexusFragment_Weapon* W = GetWeaponFragment();
@@ -187,6 +277,8 @@ void UNexusAbility_WeaponFire::FireShot()
 			}
 		}
 	}
+
+	const ANexusEquippedActor* EA = GetEquippedActor();
 
 	PlayMontageSafe(W->FireMontage);
 	if (USoundBase* S = W->FireSound.LoadSynchronous())

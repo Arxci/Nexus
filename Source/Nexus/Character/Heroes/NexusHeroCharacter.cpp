@@ -138,10 +138,17 @@ bool ANexusHeroCharacter::GetCrouchInput() const
 void ANexusHeroCharacter::OnFireInputTriggered()
 {
 	if (!NexusAbilitySystemComponent) return;
+
+	// Tag must be set BEFORE activate so the ability sees it on its first tick.
+	NexusAbilitySystemComponent->AddLooseGameplayTag(NexusGameplayTags::Ability_Weapon_Intent_Fire);
 	NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Weapon_Fire);
 }
 
-void ANexusHeroCharacter::OnFireInputCompleted() {}
+void ANexusHeroCharacter::OnFireInputCompleted()
+{
+	if (!NexusAbilitySystemComponent) return;
+	NexusAbilitySystemComponent->RemoveLooseGameplayTag(NexusGameplayTags::Ability_Weapon_Intent_Fire);
+}
 
 void ANexusHeroCharacter::OnReloadInputStarted()
 {

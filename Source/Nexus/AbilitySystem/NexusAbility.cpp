@@ -143,6 +143,11 @@ void UNexusAbility::StartCooldown()
 	}
 }
 
+void UNexusAbility::RestartCooldown()
+{
+	StartCooldown();
+}
+
 void UNexusAbility::TickCooldown(float DeltaTime)
 {
 	if (!bIsOnCooldown) return;

@@ -20,6 +20,13 @@ UNexusAbility_WeaponAim::UNexusAbility_WeaponAim()
 	bCooldownOnDeactivation = false;
 }
 
+bool UNexusAbility_WeaponAim::RequestDeactivateAbility(bool bForce)
+{
+	if (!bForce && !IsActive()) return false;
+	CommitAbilityEnd();
+	return true;
+}
+
 bool UNexusAbility_WeaponAim::CanActivateAbility_Implementation() const
 {
 	return Super::CanActivateAbility_Implementation();

@@ -8,6 +8,7 @@
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
 #include "Nexus/Inventory/Fragments/NexusFragment_Equippable.h"
+#include "Nexus/Weapon/NexusFragment_Weapon.h"
 
 ANexusEquippedActor::ANexusEquippedActor()
 {
@@ -33,6 +34,16 @@ void ANexusEquippedActor::InitializeFromInstance(UNexusItemInstance* Instance)
 		{
 			Mesh->SetSkeletalMesh(Loaded);
 		}
+	}
+
+	if (const FNexusFragment_Weapon* W = Def->FindFragment<FNexusFragment_Weapon>())
+	{
+		CachedFireSound    = W->FireSound.LoadSynchronous();
+		CachedDryFireSound = W->DryFireSound.LoadSynchronous();
+		CachedReloadSound  = W->ReloadSound.LoadSynchronous();
+		CachedMuzzleFlash  = W->MuzzleFlash.LoadSynchronous();
+		CachedImpactFX     = W->ImpactFX.LoadSynchronous();
+		CachedFireMontage  = W->FireMontage.LoadSynchronous();
 	}
 
 	K2_OnInitializedFromInstance();

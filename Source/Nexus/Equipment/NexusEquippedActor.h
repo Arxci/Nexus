@@ -36,6 +36,26 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Equipped")
 	FTransform GetSocketTransform(FName SocketName) const;
 
+	/** Hard refs to the active weapon's presentation assets, paged in on equip
+ *  so the fire ability never sync-loads on the hot path. */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Equipped|Weapon")
+	TObjectPtr<USoundBase> CachedFireSound;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Equipped|Weapon")
+	TObjectPtr<USoundBase> CachedDryFireSound;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Equipped|Weapon")
+	TObjectPtr<USoundBase> CachedReloadSound;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Equipped|Weapon")
+	TObjectPtr<class UFXSystemAsset> CachedMuzzleFlash;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Equipped|Weapon")
+	TObjectPtr<class UFXSystemAsset> CachedImpactFX;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Equipped|Weapon")
+	TObjectPtr<class UAnimMontage> CachedFireMontage;
+
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipped")
 	TObjectPtr<USkeletalMeshComponent> Mesh;

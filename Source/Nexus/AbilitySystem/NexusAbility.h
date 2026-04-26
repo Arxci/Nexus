@@ -236,6 +236,10 @@ protected:
 	
 
 	//Cooldown
+	/** Restart cooldown from scratch. Use when a still-active ability fires another sub-action
+	  *  (e.g. full-auto firing a follow-up shot) and needs to gate the next one. */
+	void RestartCooldown();
+	
 	/** Flat cooldown duration in seconds. */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Ability System|Cooldown", meta = (ClampMin = "0.0"))
 	float CooldownDuration = 0.0f;

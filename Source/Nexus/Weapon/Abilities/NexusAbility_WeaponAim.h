@@ -18,6 +18,7 @@ protected:
 	virtual void CommitAbility() override;
 	virtual void CommitAbilityEnd() override;
 	virtual void ForceEndAbility() override;
+	virtual bool RequestDeactivateAbility(bool bForce) override;
 	virtual bool CanActivateAbility_Implementation() const override;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Aim", meta = (ClampMin = "10.0", ClampMax = "120.0"))

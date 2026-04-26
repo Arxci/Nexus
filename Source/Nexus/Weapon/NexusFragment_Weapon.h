@@ -61,7 +61,12 @@ struct NEXUS_API FNexusFragment_Weapon : public FNexusItemFragment
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat", meta = (ClampMin = "1"))
 	float RoundsPerMinute = 300.0f;
-
+	
+	/** Shots fired per trigger pull when FireMode == Burst. Ignored otherwise. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat",
+		meta = (ClampMin = "1", EditCondition = "FireMode == ENexusWeaponFireMode::Burst"))
+	int32 BurstCount = 3;
+	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat", meta = (ClampMin = "1"))
 	int32 PelletsPerShot = 1;
 
@@ -146,4 +151,6 @@ struct NEXUS_API FNexusFragment_Weapon : public FNexusItemFragment
 	{
 		return RoundsPerMinute > 0.0f ? 60.0f / RoundsPerMinute : 0.0f;
 	}
+
+	virtual void InitializeInstance(UNexusItemInstance* Instance) const override;
 };

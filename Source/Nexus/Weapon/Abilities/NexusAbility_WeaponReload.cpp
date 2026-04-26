@@ -23,6 +23,7 @@ UNexusAbility_WeaponReload::UNexusAbility_WeaponReload()
 	AbilityTags.AddTag(NexusGameplayTags::Ability_Weapon_Reload);
 	ActivationOwnedTags.AddTag(NexusGameplayTags::Character_State_Weapon_Reloading);
 	ActivationBlockedTags.AddTag(NexusGameplayTags::Character_State_Weapon_Reloading);
+	CancelAbilitiesWithTags.AddTag(NexusGameplayTags::Ability_Weapon_Fire); // <-- new
 	bCooldownOnActivation   = false;
 	bCooldownOnDeactivation = false;
 }

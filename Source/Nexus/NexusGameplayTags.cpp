@@ -35,6 +35,7 @@ namespace NexusGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(Ability_Weapon_Inspect,       "Ability.Weapon.Inspect");
 	UE_DEFINE_GAMEPLAY_TAG(Ability_Weapon_Intent_Aim,    "Ability.Weapon.Intent.Aim");
 	UE_DEFINE_GAMEPLAY_TAG(Ability_Weapon_Intent_Unaim,  "Ability.Weapon.Intent.Unaim");
+	UE_DEFINE_GAMEPLAY_TAG(Ability_Weapon_Intent_Fire,   "Ability.Weapon.Intent.Fire");
 
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Weapon_Equipped,  "Character.State.Weapon.Equipped");
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Weapon_Firing,    "Character.State.Weapon.Firing");
