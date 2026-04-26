@@ -6,6 +6,8 @@
 #include "GameFramework/Character.h"
 #include "EMSActorSaveInterface.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemInterface.h"
+#include "Nexus/Equipment/NexusEquipmentComponent.h"
+#include "Nexus/Inventory/NexusInventoryComponent.h"
 #include "NexusCharacterBase.generated.h"
 
 class UNexusAbilitySystemComponent;
@@ -24,13 +26,21 @@ public:
 	ANexusCharacterBase(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
 	virtual UNexusAbilitySystemComponent* GetNexusAbilitySystemComponent() const override;
-
 	UFUNCTION(BlueprintPure, Category = "Character")
 	UNexusCharacterMovementComponent* GetNexusCharacterMovement() const;
+	UFUNCTION(BlueprintPure, Category = "Character")
+	UNexusInventoryComponent* GetNexusInventoryComponent() const { return NexusInventoryComponent; }
+	UFUNCTION(BlueprintPure, Category = "Character")
+	UNexusEquipmentComponent* GetNexusEquipmentComponent() const { return NexusEquipmentComponent; }
+	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
 	TObjectPtr<UNexusAbilitySystemComponent> NexusAbilitySystemComponent;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
 	TObjectPtr<UNexusCharacterMovementComponent> NexusCharacterMovement;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
+	TObjectPtr<UNexusInventoryComponent> NexusInventoryComponent;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
+	TObjectPtr<UNexusEquipmentComponent> NexusEquipmentComponent;
 
 	//Movement
 	UFUNCTION()

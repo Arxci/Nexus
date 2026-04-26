@@ -10,7 +10,7 @@ public class Nexus : ModuleRules
 	
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "GameplayTags", "EasyMultiSave", "SlateCore", "Slate", "DeveloperSettings" });
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "InputCore", "EnhancedInput", "CommonInput", "ModularGameplay", "ComponentPicker", "UMG", "CommonUI" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "InputCore", "EnhancedInput", "CommonInput", "ModularGameplay", "ComponentPicker", "UMG", "CommonUI", "Niagara" });
 
 		// Uncomment if you are using Slate UIW
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });

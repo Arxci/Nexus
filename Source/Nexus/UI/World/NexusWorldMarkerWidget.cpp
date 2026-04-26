@@ -3,8 +3,6 @@
 
 #include "NexusWorldMarkerWidget.h"
 
-#include "NexusWorldMarkerWidget.h"
-
 void UNexusWorldMarkerWidget::SetContext(USceneComponent* InAnchor, AActor* InContextActor)
 {
 	Anchor = InAnchor;

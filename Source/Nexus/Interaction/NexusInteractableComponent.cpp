@@ -151,6 +151,7 @@ void UNexusInteractableComponent::InitializeIndicatorWidget()
 	IndicatorWidgetComponent->SetDrawAtDesiredSize(true);
 	IndicatorWidgetComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	IndicatorWidgetComponent->SetWidgetClass(IndicatorWidgetClass);
+	IndicatorWidgetComponent->PrimaryComponentTick.TickGroup = TG_PostUpdateWork;
 	
 	Owner->FinishAddComponent(IndicatorWidgetComponent, true, FTransform::Identity);
 	

@@ -2,7 +2,7 @@
 
 
 #include "NexusAbility.h"
-#include "NexusAbilitySystemComponent.h"
+#include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 
 UNexusAbility::UNexusAbility()
 {

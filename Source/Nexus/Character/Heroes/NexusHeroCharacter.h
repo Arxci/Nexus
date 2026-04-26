@@ -75,11 +75,24 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions")
 	TObjectPtr<UInputAction> CrouchAction;
 
+	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions|Weapon")
+	TObjectPtr<UInputAction> FireAction;
+	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions|Weapon")
+	TObjectPtr<UInputAction> ReloadAction;
+	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions|Weapon")
+	TObjectPtr<UInputAction> AimAction;
+	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions|Weapon")
+	TObjectPtr<UInputAction> SlotPrimaryAction;
+	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions|Weapon")
+	TObjectPtr<UInputAction> SlotSecondaryAction;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Character|Input|Sprint")
 	EInputMode RunInputMode = EInputMode::Hold;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Character|Input|Crouch")
 	EInputMode CrouchInputMode = EInputMode::Hold;
-
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Character|Input|Aim")
+	EInputMode AimInputMode = EInputMode::Hold;
+	
 	//Utility
 	UEnhancedInputComponent* GetEnhancedInputComponent() const { return EnhancedInputComponent; }
 	
@@ -96,8 +109,18 @@ private:
 	void OnCrouchInputCompleted();
 	void OnRunInputStarted();
 	void OnRunInputCompleted();
+	void OnFireInputTriggered();
+	void OnFireInputCompleted();
+	void OnReloadInputStarted();
+	void OnAimInputStarted();
+	void OnAimInputCompleted();
+	void OnSlotPrimaryInputStarted();
+	void OnSlotSecondaryInputStarted();
+
 	void HandleToggleAbilityInput(const FGameplayTag AbilityTag, const FGameplayTag DeactivateIntentTag);
 
+	const FEnhancedInputActionValueBinding* FireBinding = nullptr;
+	const FEnhancedInputActionValueBinding* AimBinding  = nullptr;
 	const FEnhancedInputActionValueBinding* LookBinding   = nullptr;
 	const FEnhancedInputActionValueBinding* MoveBinding   = nullptr;
 	const FEnhancedInputActionValueBinding* RunBinding    = nullptr;

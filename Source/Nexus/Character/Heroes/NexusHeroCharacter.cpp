@@ -11,6 +11,7 @@
 #include "Nexus/NexusGameplayTags.h"
 #include "Nexus/Character/NexusCharacterMovementComponent.h"
 #include "Nexus/Player/NexusPlayerCameraManager.h"
+#include "Nexus/Equipment/NexusEquipmentComponent.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 
 ANexusHeroCharacter::ANexusHeroCharacter(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
@@ -70,11 +71,20 @@ void ANexusHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 		EnhancedInputComponent->BindAction(RunAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnRunInputCompleted);
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnCrouchInputStarted);
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnCrouchInputCompleted);
+		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnFireInputTriggered);
+		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnFireInputCompleted);
+		EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnReloadInputStarted);
+		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnAimInputStarted);
+		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnAimInputCompleted);
+		EnhancedInputComponent->BindAction(SlotPrimaryAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnSlotPrimaryInputStarted);
+		EnhancedInputComponent->BindAction(SlotSecondaryAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnSlotSecondaryInputStarted);
 		
 		if (LookAction)   LookBinding   = &EIC->BindActionValue(LookAction);
 		if (MoveAction)   MoveBinding   = &EIC->BindActionValue(MoveAction);
 		if (RunAction)    RunBinding    = &EIC->BindActionValue(RunAction);
 		if (CrouchAction) CrouchBinding = &EIC->BindActionValue(CrouchAction);
+		if (FireAction)   FireBinding =   &EIC->BindActionValue(FireAction);
+		if (AimAction)    AimBinding  =   &EIC->BindActionValue(AimAction);
 	}
 }
 
@@ -125,6 +135,57 @@ bool ANexusHeroCharacter::GetCrouchInput() const
 
 
 // Player Input
+void ANexusHeroCharacter::OnFireInputTriggered()
+{
+	if (!NexusAbilitySystemComponent) return;
+	NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Weapon_Fire);
+}
+
+void ANexusHeroCharacter::OnFireInputCompleted() {}
+
+void ANexusHeroCharacter::OnReloadInputStarted()
+{
+	if (!NexusAbilitySystemComponent) return;
+	NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Weapon_Reload);
+}
+
+void ANexusHeroCharacter::OnAimInputStarted()
+{
+	if (!NexusAbilitySystemComponent) return;
+	if (AimInputMode == EInputMode::Hold)
+	{
+		NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Weapon_Aim);
+		return;
+	}
+	HandleToggleAbilityInput(NexusGameplayTags::Ability_Weapon_Aim, NexusGameplayTags::Ability_Weapon_Intent_Unaim);
+}
+
+void ANexusHeroCharacter::OnAimInputCompleted()
+{
+	if (AimInputMode != EInputMode::Hold) return;
+	if (!NexusAbilitySystemComponent) return;
+	NexusAbilitySystemComponent->TryDeactivateAbilityByTag(NexusGameplayTags::Ability_Weapon_Aim);
+}
+
+void ANexusHeroCharacter::OnSlotPrimaryInputStarted()
+{
+	if (!NexusEquipmentComponent) return;
+
+	// Press = equip-if-empty + activate. If no compatible item is in the inventory,
+	// TryEquipFirstCompatibleForSlot is a no-op and the slot stays empty; SetActiveSlot
+	// rejects the empty slot, so the press is harmlessly ignored.
+	NexusEquipmentComponent->TryEquipFirstCompatibleForSlot(NexusGameplayTags::Equipment_Slot_Primary);
+	NexusEquipmentComponent->SetActiveSlot(NexusGameplayTags::Equipment_Slot_Primary);
+}
+
+void ANexusHeroCharacter::OnSlotSecondaryInputStarted()
+{
+	if (!NexusEquipmentComponent) return;
+
+	NexusEquipmentComponent->TryEquipFirstCompatibleForSlot(NexusGameplayTags::Equipment_Slot_Secondary);
+	NexusEquipmentComponent->SetActiveSlot(NexusGameplayTags::Equipment_Slot_Secondary);
+}
+
 void ANexusHeroCharacter::OnCrouchInputStarted()
 {
 	if (!NexusAbilitySystemComponent) return;

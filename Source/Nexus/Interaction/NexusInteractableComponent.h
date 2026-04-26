@@ -54,6 +54,7 @@ FActorComponentTickFunction* ThisTickFunction) override;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interaction")
 	float InteractionDuration = 0.0f;
 
+public:
 	//Delegates
 	UPROPERTY(BlueprintAssignable, Category = "Interaction")
 	FOnInteractionProgressed OnInteractionProgressed;

@@ -146,10 +146,6 @@ void UNexusAbility_Interaction::TraceForInteractables()
 	{
 		if (AActor* Actor = Hit.GetActor())
 		{
-			// Gate focus on awareness: the focus trace originates at the camera and
-			// can reach further than the awareness sphere (which is centered on the
-			// actor). Requiring the actor to already be in NearbyInteractables keeps
-			// the two stages consistent — you can only focus what you're near.
 			if (NearbyInteractables.Contains(Actor))
 			{
 				const UPrimitiveComponent* HitComp = Hit.GetComponent();
@@ -174,10 +170,7 @@ void UNexusAbility_Interaction::TraceForInteractables()
 void UNexusAbility_Interaction::UpdateInteractionTarget(UNexusInteractableComponent* NewInteractionTarget)
 {
 	UNexusInteractableComponent* Previous = InteractionTarget.Get();
-	// IsStale is true when the weak ptr held a valid object that has since been
-	// garbage-collected. In that case Get() returns null, so the Previous ==
-	// NewInteractionTarget short-circuit would incorrectly suppress the focus-lost
-	// notification.
+
 	const bool bTargetWasDestroyed = InteractionTarget.IsStale();
 
 	if (Previous == NewInteractionTarget && !bTargetWasDestroyed) return;
@@ -188,8 +181,6 @@ void UNexusAbility_Interaction::UpdateInteractionTarget(UNexusInteractableCompon
 	}
 	else if (bTargetWasDestroyed)
 	{
-		// Component is already dead — can't call into it. Broadcast the ability-level
-		// event so listeners (HUD prompts, etc.) can clear focus-dependent state.
 		OnInteractionFocusCleared.Broadcast();
 	}
 

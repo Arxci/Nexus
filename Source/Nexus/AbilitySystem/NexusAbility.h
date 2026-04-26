@@ -104,16 +104,18 @@ public:
 
 	/**
 	* Returns true if this ability has a cooldown configured (flat duration > 0).
+	* Override in subclasses that drive cooldown from external data so the ASC's
+	* tick loop calls TickCooldown for them.
 	**/
 	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Cooldown")
-	bool HasCooldown() const;
+	virtual bool HasCooldown() const;
 	
 	/**
 	* Returns the total cooldown duration in seconds.
-	* Uses the curve's max time if set, otherwise the flat CooldownDuration.
+	* Override in subclasses that drive cooldown from external data (e.g. weapon RPM).
 	**/
 	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Cooldown")
-	float GetCooldownTotalDuration() const;
+	virtual float GetCooldownTotalDuration() const;
 
 	/**
 	* Returns the remaining cooldown time in seconds. 0 if not on cooldown.
