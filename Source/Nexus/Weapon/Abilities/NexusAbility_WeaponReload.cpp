@@ -21,6 +21,7 @@ UNexusAbility_WeaponReload::UNexusAbility_WeaponReload()
 	AbilityTags.AddTag(NexusGameplayTags::Ability_Weapon_Reload);
 	ActivationOwnedTags.AddTag(NexusGameplayTags::Character_State_Weapon_Reloading);
 	ActivationBlockedTags.AddTag(NexusGameplayTags::Character_State_Weapon_Reloading);
+	ActivationBlockedTags.AddTag(NexusGameplayTags::Character_State_Weapon_Swapping);
 	CancelAbilitiesWithTags.AddTag(NexusGameplayTags::Ability_Weapon_Fire);
 	bCooldownOnActivation   = false;
 	bCooldownOnDeactivation = false;
@@ -65,16 +66,34 @@ void UNexusAbility_WeaponReload::CommitAbility()
 	bAmmoTransferred = false;
 	const ANexusWeaponEquippedActor* WeaponActor = GetEquippedWeaponActor();
 
+	UAnimInstance* ReloadAnimInstance = nullptr;
+	float MontageDuration = 0.0f;
+
 	if (UAnimMontage* Montage = WeaponActor ? WeaponActor->CachedReloadMontage.Get() : Weapon->Animations.ReloadMontage.LoadSynchronous())
 	{
 		if (const ACharacter* Char = Cast<ACharacter>(GetOwner()))
 		{
-			if (UAnimInstance* AnimInstance = Char->GetMesh()->GetAnimInstance())
+			if (USkeletalMeshComponent* Mesh = Char->GetMesh())
 			{
-				AnimInstance->Montage_Play(Montage);
+				if (UAnimInstance* AnimInstance = Mesh->GetAnimInstance())
+				{
+					MontageDuration = AnimInstance->Montage_Play(Montage);
+					if (MontageDuration > 0.0f)
+					{
+						// Bind the AmmoTransfer notify so the ammo move snaps to the
+						// magazine-clicks-in keyframe instead of waiting on the timer
+						// fallback. Stored on a TWeakObjectPtr so we can unbind cleanly
+						// in CommitAbilityEnd even if the mesh/AnimInstance has died.
+						ReloadAnimInstance = AnimInstance;
+						AnimInstance->OnPlayMontageNotifyBegin.AddUniqueDynamic(
+							this, &UNexusAbility_WeaponReload::HandleNotifyBegin);
+					}
+				}
 			}
 		}
 	}
+
+	BoundAnimInstance = ReloadAnimInstance;
 
 	if (USoundBase* ReloadSound = WeaponActor ? WeaponActor->CachedReloadSound.Get() : Weapon->Presentation.ReloadSound.LoadSynchronous())
 	{
@@ -84,7 +103,10 @@ void UNexusAbility_WeaponReload::CommitAbility()
 		}
 	}
 
-	const float Duration = FMath::Max(0.0f, Weapon->Reload.ReloadDuration);
+	// If the montage played, prefer its actual duration over the configured fallback
+	// — keeps ReloadDuration honest if the designer trims the montage in the editor.
+	const float ConfiguredDuration = FMath::Max(0.0f, Weapon->Reload.ReloadDuration);
+	const float Duration = MontageDuration > 0.0f ? MontageDuration : ConfiguredDuration;
 	if (Duration <= 0.0f)
 	{
 		FinishReload();

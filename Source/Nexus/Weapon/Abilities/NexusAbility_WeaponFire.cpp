@@ -59,6 +59,7 @@ UNexusAbility_WeaponFire::UNexusAbility_WeaponFire()
 	AbilityTags.AddTag(NexusGameplayTags::Ability_Weapon_Fire);
 	ActivationOwnedTags.AddTag(NexusGameplayTags::Character_State_Weapon_Firing);
 	ActivationBlockedTags.AddTag(NexusGameplayTags::Character_State_Weapon_Reloading);
+	ActivationBlockedTags.AddTag(NexusGameplayTags::Character_State_Weapon_Swapping);
 	bCooldownOnActivation   = true;
 	bCooldownOnDeactivation = false;
 }
@@ -119,7 +120,12 @@ bool UNexusAbility_WeaponFire::RequestActivateAbility()
 	const bool bHasAmmo      = Instance->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0) > 0;
 	if (bRequiresAmmo && !bHasAmmo)
 	{
+		// Cap dry-fire spam at the weapon's fire interval. Re-uses the standard
+		// cooldown machinery so trigger-mash can't strobe the SFX/anim. The
+		// IsOnCooldown() check at the top of this function blocks subsequent
+		// presses until the interval elapses.
 		HandleDryFire();
+		RestartCooldown();
 		return false;
 	}
 
@@ -176,8 +182,18 @@ void UNexusAbility_WeaponFire::FireShot()
 
 	if (UFXSystemAsset* FX = WeaponActor ? WeaponActor->CachedMuzzleFlash.Get() : Weapon->Presentation.MuzzleFlash.LoadSynchronous())
 	{
-		const FTransform MuzzleXf = WeaponActor->GetSocketTransform(Weapon->Presentation.MuzzleSocketName);
-		SpawnFXAtLocation(this, FX, MuzzleXf.GetLocation(), MuzzleXf.Rotator());
+		// Falls back to the view location so the FX still spawns on a weapon
+		// definition that doesn't use ANexusWeaponEquippedActor. The first-person
+		// rifle case (the common one) takes the muzzle-socket path.
+		FVector MuzzleLoc = ViewLoc;
+		FRotator MuzzleRot = ViewRot;
+		if (WeaponActor)
+		{
+			const FTransform MuzzleXf = WeaponActor->GetSocketTransform(Weapon->Presentation.MuzzleSocketName);
+			MuzzleLoc = MuzzleXf.GetLocation();
+			MuzzleRot = MuzzleXf.Rotator();
+		}
+		SpawnFXAtLocation(this, FX, MuzzleLoc, MuzzleRot);
 	}
 }
 
@@ -287,11 +303,11 @@ void UNexusAbility_WeaponFire::HandleDryFire() const
 	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
 	if (!Weapon) return;
 
-	const ANexusWeaponEquippedActor* WeapnActor = GetEquippedWeaponActor();
+	const ANexusWeaponEquippedActor* WeaponActor = GetEquippedWeaponActor();
 
-	PlayMontage(WeapnActor ? WeapnActor->CachedDryFireMontage.Get() : Weapon->Animations.DryFireMontage.LoadSynchronous());
+	PlayMontage(WeaponActor ? WeaponActor->CachedDryFireMontage.Get() : Weapon->Animations.DryFireMontage.LoadSynchronous());
 
-	if (USoundBase* S = WeapnActor ? WeapnActor->CachedDryFireSound.Get() : Weapon->Presentation.DryFireSound.LoadSynchronous())
+	if (USoundBase* S = WeaponActor ? WeaponActor->CachedDryFireSound.Get() : Weapon->Presentation.DryFireSound.LoadSynchronous())
 	{
 		if (const AActor* Owner = GetOwner())
 		{

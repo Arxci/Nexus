@@ -6,6 +6,8 @@
 
 class UNexusItemDefinition;
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnItemInstanceChanged, UNexusItemInstance*, Instance);
+
 UCLASS(BlueprintType)
 class NEXUS_API UNexusItemInstance : public UObject
 {
@@ -55,7 +57,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Item|Stats")
 	bool HasStat(FGameplayTag StatTag) const;
 
+
+	//Delegates
+	UPROPERTY(BlueprintAssignable, Category = "Item")
+	FOnItemInstanceChanged OnInstanceChanged;
+
 protected:
+	void BroadcastChanged();
 	bool bInitialized = false;
 	
 	/** Soft so the asset path is what's actually serialized — survives reorgs and partial loads. */

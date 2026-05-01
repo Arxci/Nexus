@@ -110,6 +110,7 @@ private:
 	void OnAimInputCompleted();
 	void OnSlotPrimaryInputStarted();
 	void OnSlotSecondaryInputStarted();
+	void HandleSlotInput(FGameplayTag SlotTag);
 
 	void HandleToggleAbilityInput(const FGameplayTag AbilityTag, const FGameplayTag DeactivateIntentTag);
 

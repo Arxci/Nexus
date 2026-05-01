@@ -44,6 +44,7 @@ namespace NexusGameplayTags
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Character_State_Weapon_Firing);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Character_State_Weapon_Reloading);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Character_State_Weapon_Aiming);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Character_State_Weapon_Swapping);
 
 	// Weapon input
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Weapon_Fire);

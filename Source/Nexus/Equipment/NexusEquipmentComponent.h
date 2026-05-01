@@ -6,11 +6,14 @@
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
 #include "EMSCompSaveInterface.h"
+
 #include "NexusEquipmentComponent.generated.h"
 
-class ANexusEquippedActor;
+class USceneComponent;
 class UAnimMontage;
 class UAnimSequence;
+
+class ANexusEquippedActor;
 class UNexusAbility;
 class UNexusAbilitySystemComponent;
 class UNexusInventoryComponent;
@@ -18,11 +21,6 @@ class UNexusItemInstance;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnEquipmentChanged, FGameplayTag, SlotTag, UNexusItemInstance*, Instance);
 
-/**
- * Resolved presentation animations for a single equipment slot. Built once at
- * equip time from FNexusFragment_AnimationSet so the anim BP can read hard
- * pointers without unpacking fragments or sync-loading on the hot path.
- */
 USTRUCT(BlueprintType)
 struct NEXUS_API FNexusResolvedSlotAnims
 {
@@ -35,7 +33,7 @@ struct NEXUS_API FNexusResolvedSlotAnims
 	TObjectPtr<UAnimSequence> IdleLoop;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
-	TObjectPtr<UAnimSequence> RunPoseOverride;
+	TObjectPtr<UAnimSequence> RunLoop;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
 	TObjectPtr<UAnimMontage> EquipMontage;
@@ -47,14 +45,6 @@ struct NEXUS_API FNexusResolvedSlotAnims
 	TObjectPtr<UAnimMontage> InspectMontage;
 };
 
-/**
- * Binds inventory items to equipment slots and translates them into in-world
- * capabilities (spawned actor + granted abilities + owned tags). Reads items
- * from a sibling UNexusInventoryComponent — never owns items itself.
- *
- * Lives on ANexusCharacterBase alongside the inventory and ASC. Generic enough
- * that AI characters can use it for their loadouts later.
- */
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class NEXUS_API UNexusEquipmentComponent : public UActorComponent, public IEMSCompSaveInterface
 {
@@ -62,18 +52,10 @@ class NEXUS_API UNexusEquipmentComponent : public UActorComponent, public IEMSCo
 
 public:
 	UNexusEquipmentComponent();
-
-	// Lifecycle
-
+	
 	UFUNCTION(BlueprintCallable, Category = "Equipment")
 	bool EquipInstance(UNexusItemInstance* Instance);
 
-	/**
-	 * Walk the sibling inventory and equip the first item whose Equippable
-	 * fragment matches SlotTag. Returns the equipped instance, or null if
-	 * the inventory has no compatible item. Idempotent: if SlotTag already
-	 * has an item equipped, returns that item without doing anything.
-	 */
 	UFUNCTION(BlueprintCallable, Category = "Equipment")
 	UNexusItemInstance* TryEquipFirstCompatibleForSlot(FGameplayTag SlotTag);
 
@@ -82,9 +64,6 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Equipment")
 	void UnequipAll();
-
-	
-	// Utility
 
 	UFUNCTION(BlueprintPure, Category = "Equipment")
 	UNexusItemInstance* GetEquippedInSlot(FGameplayTag SlotTag) const;
@@ -104,17 +83,23 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Equipment")
 	UNexusItemInstance* GetActiveInstance() const;
 
-	/**
-	 * Resolved animation set for SlotTag, populated when the slot was equipped.
-	 * Returns a default-zeroed struct if the slot is empty or the equipped item
-	 * has no FNexusFragment_AnimationSet. Anim BPs should call this on the
-	 * OnEquipped / OnActiveSlotChanged delegates and cache the fields they need.
-	 */
+	UFUNCTION(BlueprintPure, Category = "Equipment")
+	ANexusEquippedActor* GetActiveActor() const { return GetEquippedActorInSlot(ActiveSlot); }
+
+	UFUNCTION(BlueprintPure, Category = "Equipment")
+	bool IsSwapping() const { return bIsSwapping; }
+
 	UFUNCTION(BlueprintPure, Category = "Equipment|Anims")
 	FNexusResolvedSlotAnims GetResolvedSlotAnims(FGameplayTag SlotTag) const;
 
-	
-	// Delegates
+	/**
+	 * Called by UNexusAnimNotify_HideOutgoingEquipped from the unequip montage.
+	 * Hides the slot whose unequip is currently in flight and clears the
+	 * pending-hide marker. Designer-authored notify is the canonical way to
+	 * synchronize visibility with the holster animation.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Equipment|Anim Notify")
+	void NotifyHideOutgoingSlot();
 
 	UPROPERTY(BlueprintAssignable, Category = "Equipment")
 	FOnEquipmentChanged OnEquipped;
@@ -129,30 +114,24 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
-	// EMS Component Save Interface
 	virtual void ComponentPreLoad_Implementation() override;
 	virtual void ComponentLoaded_Implementation() override;
 
 	UNexusAbilitySystemComponent* GetASC() const;
 	UNexusInventoryComponent*     GetInventory() const;
 
-	/** Slot → currently-equipped instance. Saved as the source of truth on load. */
 	UPROPERTY(SaveGame)
 	TMap<FGameplayTag, TObjectPtr<UNexusItemInstance>> EquippedSlots;
 
-	/** Slot → spawned actor. Transient — re-spawned on load via re-equip. */
 	UPROPERTY(Transient)
 	TMap<FGameplayTag, TObjectPtr<ANexusEquippedActor>> SpawnedActors;
 
-	/** Slot → resolved animation set. Transient — rebuilt on equip. */
 	UPROPERTY(Transient)
 	TMap<FGameplayTag, FNexusResolvedSlotAnims> SlotAnims;
 
-	/** Slot → ability classes granted on equip, so we can revoke exactly what we added. */
 	UPROPERTY(Transient)
 	TMap<FGameplayTag, FGameplayTagContainer> AppliedTagsBySlot;
 
-	/** Slot → abilities granted on equip. Mirror of GrantedAbilities for clean revoke. */
 	TMap<FGameplayTag, TArray<TSubclassOf<UNexusAbility>>> AppliedAbilitiesBySlot;
 
 	UPROPERTY(SaveGame)
@@ -161,8 +140,25 @@ protected:
 private:
 	void ApplyEquipEffects(FGameplayTag SlotTag, UNexusItemInstance* Instance);
 	void RemoveEquipEffects(FGameplayTag SlotTag);
-	
+
+	/** Stow OutgoingSlot (visibility deferred until HideOutgoingEquipped notify),
+	 *  draw IncomingSlot, push the swap lockout. */
+	void HandleActiveSlotTransition(FGameplayTag OutgoingSlot, FGameplayTag IncomingSlot);
+	void AttachActorForSlotState(FGameplayTag SlotTag, bool bActive);
+	float PlayMontageOnOwner(UAnimMontage* Montage) const;
+
 	UFUNCTION()
 	void HandleInventoryItemRemoved(UNexusItemInstance* RemovedInstance);
-	
+
+	UFUNCTION()
+	void HandleSwapLockoutFinished();
+
+	/** Slot whose unequip montage is currently playing and is waiting for its
+	 *  HideOutgoingEquipped notify. Cleared by the notify or by the lockout-end
+	 *  safety net. Stomp-protected: starting a new swap force-hides any
+	 *  previously-pending slot whose montage just got interrupted. */
+	FGameplayTag OutgoingPendingHide;
+
+	FTimerHandle SwapLockoutTimer;
+	bool bIsSwapping = false;
 };

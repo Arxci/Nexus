@@ -25,6 +25,31 @@ UNexusInventoryComponent::UNexusInventoryComponent()
 	PrimaryComponentTick.bCanEverTick = false;
 }
 
+void UNexusInventoryComponent::BindInstance(UNexusItemInstance* Instance)
+{
+	if (!Instance) return;
+	// AddUniqueDynamic so reparenting an instance never double-subscribes us.
+	Instance->OnInstanceChanged.AddUniqueDynamic(this, &UNexusInventoryComponent::HandleInstanceChanged);
+}
+
+void UNexusInventoryComponent::UnbindInstance(UNexusItemInstance* Instance)
+{
+	if (!Instance) return;
+	Instance->OnInstanceChanged.RemoveDynamic(this, &UNexusInventoryComponent::HandleInstanceChanged);
+}
+
+void UNexusInventoryComponent::HandleInstanceChanged(UNexusItemInstance* Instance)
+{
+	if (!Instance || !Items.Contains(Instance)) return;
+
+	// Stat mutations don't change inventory weight (stack count is the only
+	// driver, and stack changes flow through inventory methods that maintain
+	// the weight cache themselves). All we do here is relay the change so HUD
+	// code can subscribe to the inventory and not every individual instance.
+	FBroadcastScope Scope(this);
+	EnqueueChange(Instance, /*bAdded*/false, /*bRemoved*/false);
+}
+
 // Add/Remove
 FNexusAddItemResult UNexusInventoryComponent::AddItem(UNexusItemDefinition* Definition, int32 Count)
 {
@@ -37,7 +62,6 @@ FNexusAddItemResult UNexusInventoryComponent::AddItem(UNexusItemDefinition* Defi
 
 	const int32 OriginalCount = Count;
 
-	// Clamp by weight capacity.
 	if (WeightCapacity > 0.0f && Definition->Weight > 0.0f)
 	{
 		const float Available     = WeightCapacity - GetUsedWeight();
@@ -47,7 +71,6 @@ FNexusAddItemResult UNexusInventoryComponent::AddItem(UNexusItemDefinition* Defi
 		Count = FMath::Min(Count, MaxByWeight);
 	}
 
-	// Hard safety cap.
 	Count = FMath::Min(Count, MaxItemsPerAddCall);
 
 	if (Count <= 0)
@@ -57,15 +80,13 @@ FNexusAddItemResult UNexusInventoryComponent::AddItem(UNexusItemDefinition* Defi
 	}
 
 	const int32 MaxStack = GetMaxStackForDefinition(Definition);
-	
+
 	FBroadcastScope Scope(this);
 
 	int32 Placed = 0;
 
-	// 1. Top up existing stacks.
 	if (MaxStack > 1)
 	{
-		// Snapshot to be reentrancy-safe even if listeners somehow run inline.
 		TArray<UNexusItemInstance*> Snapshot;
 		Snapshot.Reserve(Items.Num());
 		for (UNexusItemInstance* I : Items) { Snapshot.Add(I); }
@@ -89,7 +110,6 @@ FNexusAddItemResult UNexusInventoryComponent::AddItem(UNexusItemDefinition* Defi
 		}
 	}
 
-	// 2. Spawn new instances for the leftover.
 	while (Placed < Count)
 	{
 		if (SlotCapacity > 0 && Items.Num() >= SlotCapacity) break;
@@ -100,6 +120,7 @@ FNexusAddItemResult UNexusInventoryComponent::AddItem(UNexusItemDefinition* Defi
 		UNexusItemInstance* NewInstance = NewObject<UNexusItemInstance>(this);
 		NewInstance->Initialize(Definition, ToPlace);
 		Items.Add(NewInstance);
+		BindInstance(NewInstance);
 
 		Placed += ToPlace;
 		CachedUsedWeight += ToPlace * Definition->Weight;
@@ -136,6 +157,7 @@ bool UNexusInventoryComponent::AddInstance(UNexusItemInstance* Instance)
 		Instance->Rename(nullptr, this, REN_DontCreateRedirectors);
 	}
 	Items.Add(Instance);
+	BindInstance(Instance);
 	CachedUsedWeight += GetWeightContribution(Instance);
 	EnqueueChange(Instance, true, false);
 	return true;
@@ -155,6 +177,7 @@ int32 UNexusInventoryComponent::RemoveFromInstance(UNexusItemInstance* Instance,
 
 	if (Instance->IsEmpty())
 	{
+		UnbindInstance(Instance);
 		Items.RemoveSingle(Instance);
 		EnqueueChange(Instance, false, true);
 	}
@@ -175,6 +198,7 @@ bool UNexusInventoryComponent::RemoveInstance(UNexusItemInstance* Instance)
 	const int32 Removed = Items.Remove(Instance);
 	if (Removed > 0)
 	{
+		UnbindInstance(Instance);
 		CachedUsedWeight = FMath::Max(0.0f, CachedUsedWeight - Contribution);
 		EnqueueChange(Instance, false, true);
 		return true;
@@ -193,6 +217,7 @@ void UNexusInventoryComponent::ClearAll()
 
 	for (UNexusItemInstance* Instance : Removed)
 	{
+		UnbindInstance(Instance);
 		EnqueueChange(Instance, false, true);
 	}
 }
@@ -202,9 +227,9 @@ void UNexusInventoryComponent::EnqueueChange(UNexusItemInstance* Instance, bool 
 	PendingChanges.Add({ Instance, bAdded, bRemoved });
 }
 
-void UNexusInventoryComponent::FlushPendingChanges() 
+void UNexusInventoryComponent::FlushPendingChanges()
 {
-	if (bFlushInProgress) return;          // outer Flush will pick up the new entries
+	if (bFlushInProgress) return;
 	if (PendingChanges.Num() == 0) return;
 
 	TGuardValue<bool> InProgress(bFlushInProgress, true);
@@ -318,8 +343,7 @@ float UNexusInventoryComponent::GetUsedWeight() const
 }
 
 
-// ---------------- Internals ----------------
-
+// Utility
 int32 UNexusInventoryComponent::GetMaxStackForDefinition(const UNexusItemDefinition* Definition) const
 {
 	if (!Definition) return 1;
@@ -330,8 +354,8 @@ int32 UNexusInventoryComponent::GetMaxStackForDefinition(const UNexusItemDefinit
 	return 1;
 }
 
-// Save
 
+// Save
 void UNexusInventoryComponent::ComponentSaved_Implementation()
 {
 	for (UNexusItemInstance* Instance : Items)
@@ -345,19 +369,22 @@ void UNexusInventoryComponent::ComponentSaved_Implementation()
 
 void UNexusInventoryComponent::ComponentLoaded_Implementation()
 {
+	CachedUsedWeight = 0.0f;
 	for (UNexusItemInstance* Instance : Items)
 	{
 		if (!Instance) continue;
-		
-		// 1. Generate the unique save key
+
 		const FString Key = FString::Printf(TEXT("InventoryItem_%s"),
 			*Instance->GetInstanceGuid().ToString(EGuidFormats::DigitsWithHyphens));
-		
-		// 2. EMS populates the Instance's properties (DefinitionRef, StatTags, StackCount)
-		UEMSFunctionLibrary::LoadRawObject(GetOwner(), FRawObjectSaveData{ Instance, Key });
 
-		// 3. NEW: Rehydrate the hard reference immediately so it's cached in memory
+		UEMSFunctionLibrary::LoadRawObject(GetOwner(), FRawObjectSaveData{ Instance, Key });
 		Instance->RestoreLoadedState();
+
+		BindInstance(Instance);
+		if (const UNexusItemDefinition* Def = Instance->GetDefinition())
+		{
+			CachedUsedWeight += Def->Weight * Instance->GetStackCount();
+		}
 	}
 
 	OnInventoryChanged.Broadcast();

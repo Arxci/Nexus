@@ -1,10 +1,8 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-
-#include "NexusEquippedActor.h"
+﻿#include "NexusEquippedActor.h"
 
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
+#include "GameFramework/Pawn.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
 #include "Nexus/Inventory/Fragments/NexusFragment_Equippable.h"
@@ -16,8 +14,10 @@ ANexusEquippedActor::ANexusEquippedActor()
 	Mesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Mesh"));
 	SetRootComponent(Mesh);
 	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	Mesh->SetCastShadow(false);
-	Mesh->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::FirstPerson;
+
+	// Defaults are third-person: shadows on, default primitive type. The local
+	// player's items are reconfigured via ApplyOwnerViewpointRendering() so AI
+	// and remote pawns render correctly out of the box without any extra setup.
 }
 
 void ANexusEquippedActor::InitializeFromInstance(UNexusItemInstance* Instance)
@@ -46,4 +46,57 @@ FTransform ANexusEquippedActor::GetSocketTransform(const FName SocketName) const
 		return Mesh->GetSocketTransform(SocketName);
 	}
 	return GetActorTransform();
+}
+
+void ANexusEquippedActor::SetEquippedVisibility(bool bNewVisible)
+{
+	const bool bChanged = (bVisible != bNewVisible);
+	bVisible = bNewVisible;
+
+	if (bChanged)
+	{
+		// Hide the whole actor (including any BP-added child components like
+		// FX, lights) rather than touching just the mesh — keeps weapon laser /
+		// lights behaving sanely.
+		SetActorHiddenInGame(!bNewVisible);
+		K2_OnEquippedVisibilityChanged(bNewVisible);
+	}
+
+	// Always sync the anim-tick option (no early-return). On the first equip,
+	// bVisible defaulted to true and the change-guard above would otherwise skip
+	// this — leaving the skeletal mesh on USkeletalMeshComponent's default tick
+	// mode, which only ticks the anim graph during montages. FP weapons need
+	// idle sway / breath bob to update every frame regardless.
+	if (Mesh)
+	{
+		Mesh->VisibilityBasedAnimTickOption = bNewVisible
+			? EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones
+			: EVisibilityBasedAnimTickOption::OnlyTickPoseWhenRendered;
+	}
+}
+
+void ANexusEquippedActor::ApplyOwnerViewpointRendering()
+{
+	if (!Mesh) return;
+
+	// "Locally controlled by a player" — true for the singleplayer player pawn,
+	// false for AI (which is locally controlled but not player-controlled) and
+	// false for any future remote players.
+	const APawn* OwnerPawn = Cast<APawn>(GetOwner());
+	const bool bIsFirstPerson = OwnerPawn
+		&& OwnerPawn->IsPlayerControlled()
+		&& OwnerPawn->IsLocallyControlled();
+
+	if (bIsFirstPerson)
+	{
+		Mesh->SetCastShadow(false);
+		Mesh->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::FirstPerson;
+	}
+	else
+	{
+		Mesh->SetCastShadow(true);
+		Mesh->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::None;
+	}
+
+	K2_OnOwnerViewpointApplied(bIsFirstPerson);
 }

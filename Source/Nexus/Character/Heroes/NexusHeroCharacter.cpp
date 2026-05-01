@@ -166,21 +166,39 @@ void ANexusHeroCharacter::OnAimInputCompleted()
 
 void ANexusHeroCharacter::OnSlotPrimaryInputStarted()
 {
-	if (!NexusEquipmentComponent) return;
-
-	// Press = equip-if-empty + activate. If no compatible item is in the inventory,
-	// TryEquipFirstCompatibleForSlot is a no-op and the slot stays empty; SetActiveSlot
-	// rejects the empty slot, so the press is harmlessly ignored.
-	NexusEquipmentComponent->TryEquipFirstCompatibleForSlot(NexusGameplayTags::Equipment_Slot_Primary);
-	NexusEquipmentComponent->SetActiveSlot(NexusGameplayTags::Equipment_Slot_Primary);
+	HandleSlotInput(NexusGameplayTags::Equipment_Slot_Primary);
 }
 
 void ANexusHeroCharacter::OnSlotSecondaryInputStarted()
 {
-	if (!NexusEquipmentComponent) return;
+	HandleSlotInput(NexusGameplayTags::Equipment_Slot_Secondary);
+}
 
-	NexusEquipmentComponent->TryEquipFirstCompatibleForSlot(NexusGameplayTags::Equipment_Slot_Secondary);
-	NexusEquipmentComponent->SetActiveSlot(NexusGameplayTags::Equipment_Slot_Secondary);
+void ANexusHeroCharacter::HandleSlotInput(FGameplayTag SlotTag)
+{
+	if (!NexusEquipmentComponent) return;
+	if (NexusEquipmentComponent->IsSwapping()) return; // ignore mash during draw/holster
+
+	// Snapshot the active slot BEFORE TryEquip — equipping into an empty setup
+	// auto-activates the new slot, so reading GetActiveSlot() after the fact
+	// would always make the toggle check below see "already active" and
+	// immediately holster what we just drew.
+	const FGameplayTag PreviousActive = NexusEquipmentComponent->GetActiveSlot();
+
+	NexusEquipmentComponent->TryEquipFirstCompatibleForSlot(SlotTag);
+
+	// RE-style toggle: tap an already-active slot key to holster.
+	if (PreviousActive.MatchesTagExact(SlotTag))
+	{
+		NexusEquipmentComponent->SetActiveSlot(FGameplayTag());
+	}
+	else
+	{
+		// Either nothing was active, a different slot was active, or this slot
+		// was equipped-but-inactive. Activate it. (Idempotent if EquipInstance
+		// just auto-activated it — SetActiveSlot early-outs on no-op.)
+		NexusEquipmentComponent->SetActiveSlot(SlotTag);
+	}
 }
 
 void ANexusHeroCharacter::OnCrouchInputStarted()

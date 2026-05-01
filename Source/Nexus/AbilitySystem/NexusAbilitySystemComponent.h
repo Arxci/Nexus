@@ -180,6 +180,15 @@ protected:
 	UPROPERTY(SaveGame)
 	TMap<TSubclassOf<UNexusAbility>, TObjectPtr<UNexusAbility>> GrantedAbilities;
 
+	/**
+	 * Per-class grant counts. Each GiveAbility increments; each RemoveAbility
+	 * decrements. The instance only leaves GrantedAbilities at zero. This lets
+	 * two independent sources (e.g. two equipped slots) both grant Fire without
+	 * the first one's unequip stripping the ability the second still needs.
+	 */
+	UPROPERTY(Transient)
+	TMap<TSubclassOf<UNexusAbility>, int32> AbilityGrantCounts;
+
 	UFUNCTION()
 	void HandleAbilityActivated(UNexusAbility* InAbility);
 	UFUNCTION()

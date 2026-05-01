@@ -58,6 +58,10 @@ FGameplayTag UNexusItemInstance::GetIdentityTag() const
 
 int32 UNexusItemInstance::ModifyStack(int32 Delta, int32 MaxStack)
 {
+	// Note: ModifyStack does NOT broadcast OnInstanceChanged. Stack mutations
+	// flow through UNexusInventoryComponent which already emits OnItemAdded /
+	// OnItemRemoved / OnItemChanged. Broadcasting here would race the inventory's
+	// own weight-cache update on the same call.
 	const int64 Wide      = static_cast<int64>(StackCount) + static_cast<int64>(Delta);
 	const int64 ClampedW  = FMath::Clamp<int64>(Wide, 0, MaxStack);
 	const int32 Clamped   = static_cast<int32>(ClampedW);
@@ -92,7 +96,10 @@ int32 UNexusItemInstance::GetStat(FGameplayTag StatTag, int32 Default) const
 void UNexusItemInstance::SetStat(FGameplayTag StatTag, int32 Value)
 {
 	if (!StatTag.IsValid()) return;
+	int32* Existing = StatTags.Find(StatTag);
+	if (Existing && *Existing == Value) return; // no-op write — don't spam the delegate
 	StatTags.Add(StatTag, Value);
+	BroadcastChanged();
 }
 
 int32 UNexusItemInstance::ModifyStat(FGameplayTag StatTag, int32 Delta)
@@ -100,10 +107,20 @@ int32 UNexusItemInstance::ModifyStat(FGameplayTag StatTag, int32 Delta)
 	if (!StatTag.IsValid()) return 0;
 	int32& Value = StatTags.FindOrAdd(StatTag, 0);
 	Value += Delta;
+	if (Delta != 0)
+	{
+		BroadcastChanged();
+	}
 	return Value;
 }
 
 bool UNexusItemInstance::HasStat(FGameplayTag StatTag) const
 {
 	return StatTags.Contains(StatTag);
+}
+
+void UNexusItemInstance::BroadcastChanged()
+{
+	if (!bInitialized) return; 
+	OnInstanceChanged.Broadcast(this);
 }

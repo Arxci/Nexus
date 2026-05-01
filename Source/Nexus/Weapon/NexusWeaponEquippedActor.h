@@ -10,15 +10,7 @@
 class UAnimMontage;
 class USoundBase;
 
-/**
- * Equipped-actor specialization for weapons. Pages in the weapon's
- * presentation soft refs (sounds, FX, fire montage) at equip time so the
- * fire/reload abilities can read hard pointers without sync-loading on the
- * hot path.
- *
- * Set FNexusFragment_Equippable::EquippedActorClass to a subclass of this
- * (or this class itself) on weapon item definitions.
- */
+
 UCLASS(Blueprintable)
 class NEXUS_API ANexusWeaponEquippedActor : public ANexusEquippedActor
 {

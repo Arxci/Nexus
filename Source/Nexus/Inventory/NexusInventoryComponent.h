@@ -6,11 +6,11 @@
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
 #include "EMSCompSaveInterface.h"
+
 #include "NexusItemDefinition.h" 
-#include "NexusItemInstance.h"   
+#include "NexusItemInstance.h"
+
 #include "NexusInventoryComponent.generated.h"
-
-
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInventoryItemChanged, UNexusItemInstance*, Instance);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInventoryChanged);
@@ -141,6 +141,12 @@ protected:
 
 private:
 	int32 GetMaxStackForDefinition(const UNexusItemDefinition* Definition) const;
+
+	UFUNCTION()
+	void HandleInstanceChanged(UNexusItemInstance* Instance);
+	
+	void BindInstance(UNexusItemInstance* Instance);
+	void UnbindInstance(UNexusItemInstance* Instance);
 
 	struct FPendingChange
 	{

@@ -79,9 +79,10 @@ void UNexusAbilitySystemComponent::HandleAbilityDeactivated(UNexusAbility* InAbi
 UNexusAbility* UNexusAbilitySystemComponent::GiveAbility(const TSubclassOf<UNexusAbility> AbilityClass)
 {
 	if (!AbilityClass) return nullptr;
-	
+
 	if (UNexusAbility* Existing = GrantedAbilities.FindRef(AbilityClass))
 	{
+		++AbilityGrantCounts.FindOrAdd(AbilityClass);
 		if (!Existing->IsEnabled())
 		{
 			Existing->OnEnableAbility();
@@ -92,13 +93,15 @@ UNexusAbility* UNexusAbilitySystemComponent::GiveAbility(const TSubclassOf<UNexu
 	if (UNexusAbility* NewAbility = NewObject<UNexusAbility>(this, AbilityClass))
 	{
 		GrantedAbilities.Add(AbilityClass, NewAbility);
-		OnAbilityGiven.Broadcast(NewAbility);
+		AbilityGrantCounts.Add(AbilityClass, 1);
 		NewAbility->OnActivated.AddDynamic(this, &UNexusAbilitySystemComponent::HandleAbilityActivated);
 		NewAbility->OnDeactivated.AddDynamic(this, &UNexusAbilitySystemComponent::HandleAbilityDeactivated);
+		// Init before broadcast so subscribers see a fully-prepared ability.
 		NewAbility->InitializeAbility();
+		OnAbilityGiven.Broadcast(NewAbility);
 		return NewAbility;
 	}
-	
+
 	return nullptr;
 }
 
@@ -108,6 +111,17 @@ bool UNexusAbilitySystemComponent::RemoveAbility(const TSubclassOf<UNexusAbility
 
 	UNexusAbility* Existing = GrantedAbilities.FindRef(AbilityClass);
 	if (!Existing) return false;
+
+	if (int32* Count = AbilityGrantCounts.Find(AbilityClass))
+	{
+		(*Count)--;
+		if (*Count > 0)
+		{
+			// Still granted by another source — keep the instance alive.
+			return true;
+		}
+		AbilityGrantCounts.Remove(AbilityClass);
+	}
 
 	if (Existing->IsActive())
 	{
@@ -131,13 +145,24 @@ void UNexusAbilitySystemComponent::ClearAbilities()
 {
 	for (const auto& Pair : GrantedAbilities)
 	{
-		if (UNexusAbility* Ability = Pair.Value)
+		UNexusAbility* Ability = Pair.Value;
+		if (!Ability) continue;
+
+		if (Ability->IsActive())
 		{
-			Ability->OnActivated.Clear();
-			Ability->OnDeactivated.Clear();
+			Ability->ForceEndAbility();
 		}
+		if (Ability->IsEnabled())
+		{
+			Ability->OnDisableAbility();
+		}
+		OnAbilityRemoved.Broadcast(Ability);
+
+		Ability->OnActivated.Clear();
+		Ability->OnDeactivated.Clear();
 	}
 	GrantedAbilities.Empty();
+	AbilityGrantCounts.Empty();
 }
 
 bool UNexusAbilitySystemComponent::TryActivateAbilityByClass(const TSubclassOf<UNexusAbility> InAbilityToActivate)

@@ -4,10 +4,13 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+
 #include "EMSActorSaveInterface.h"
+
 #include "Nexus/AbilitySystem/NexusAbilitySystemInterface.h"
 #include "Nexus/Equipment/NexusEquipmentComponent.h"
 #include "Nexus/Inventory/NexusInventoryComponent.h"
+
 #include "NexusCharacterBase.generated.h"
 
 class UNexusAbilitySystemComponent;
@@ -24,7 +27,7 @@ class NEXUS_API ANexusCharacterBase : public ACharacter, public INexusAbilitySys
 
 public:
 	ANexusCharacterBase(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
-
+	
 	virtual UNexusAbilitySystemComponent* GetNexusAbilitySystemComponent() const override;
 	UFUNCTION(BlueprintPure, Category = "Character")
 	UNexusCharacterMovementComponent* GetNexusCharacterMovement() const;
@@ -32,6 +35,7 @@ public:
 	UNexusInventoryComponent* GetNexusInventoryComponent() const { return NexusInventoryComponent; }
 	UFUNCTION(BlueprintPure, Category = "Character")
 	UNexusEquipmentComponent* GetNexusEquipmentComponent() const { return NexusEquipmentComponent; }
+	
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
 	TObjectPtr<UNexusAbilitySystemComponent> NexusAbilitySystemComponent;

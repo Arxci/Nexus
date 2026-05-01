@@ -40,6 +40,7 @@ namespace NexusGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Weapon_Firing,    "Character.State.Weapon.Firing");
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Weapon_Reloading, "Character.State.Weapon.Reloading");
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Weapon_Aiming,    "Character.State.Weapon.Aiming");
+	UE_DEFINE_GAMEPLAY_TAG(Character_State_Weapon_Swapping,  "Character.State.Weapon.Swapping");
 
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_Weapon_Fire,     "Input.Weapon.Fire");
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_Weapon_Reload,   "Input.Weapon.Reload");
