@@ -7,7 +7,8 @@
 #include "Nexus/Equipment/NexusEquippedActor.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
-#include "Nexus/Weapon/NexusFragment_Weapon.h"
+#include "Nexus/Inventory/Fragments/NexusFragment_Weapon.h"
+#include "Nexus/Weapon/NexusWeaponEquippedActor.h"
 
 UNexusEquipmentComponent* UNexusAbility_Weapon::GetEquipment() const
 {
@@ -29,8 +30,13 @@ UNexusItemDefinition* UNexusAbility_Weapon::GetActiveDefinition() const
 
 ANexusEquippedActor* UNexusAbility_Weapon::GetEquippedActor() const
 {
-	UNexusEquipmentComponent* Equipment = GetEquipment();
+	const UNexusEquipmentComponent* Equipment = GetEquipment();
 	return Equipment ? Equipment->GetEquippedActorInSlot(Equipment->GetActiveSlot()) : nullptr;
+}
+
+ANexusWeaponEquippedActor* UNexusAbility_Weapon::GetEquippedWeaponActor() const
+{
+	return Cast<ANexusWeaponEquippedActor>(GetEquippedActor());
 }
 
 const FNexusFragment_Weapon* UNexusAbility_Weapon::GetWeaponFragment() const

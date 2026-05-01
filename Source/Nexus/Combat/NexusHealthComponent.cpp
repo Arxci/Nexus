@@ -12,7 +12,11 @@ void UNexusHealthComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	Health = FMath::Clamp(Health <= 0.0f && !bDead ? MaxHealth : Health, 0.0f, MaxHealth);
+	if (!bDead && Health <= 0.0f)
+	{
+		Health = MaxHealth;
+	}
+	Health = FMath::Clamp(Health, 0.0f, MaxHealth);
 }
 
 float UNexusHealthComponent::GetResistance(FGameplayTag DamageType) const
@@ -25,13 +29,26 @@ float UNexusHealthComponent::GetResistance(FGameplayTag DamageType) const
 	return 1.0f;
 }
 
+float UNexusHealthComponent::GetBoneMultiplier(FName BoneName) const
+{
+	if (BoneName.IsNone()) return 1.0f;
+	if (const float* Found = BoneDamageMultipliers.Find(BoneName))
+	{
+		return *Found;
+	}
+	return 1.0f;
+}
+
 void UNexusHealthComponent::ApplyDamage(const FNexusDamageContext& Context)
 {
 	if (!IsAlive()) return;
 
+	const float BoneMul         = GetBoneMultiplier(Context.HitResult.BoneName);
 	const float Resistance      = GetResistance(Context.DamageTypeTag);
-	const float EffectiveDamage = Context.GetEffectiveDamage() * Resistance;
+	const float EffectiveDamage = Context.GetEffectiveDamage() * BoneMul * Resistance;
 	if (EffectiveDamage <= 0.0f) return;
+
+	OnDamageTaken.Broadcast(Context);
 
 	const float Old = Health;
 	Health          = FMath::Clamp(Health - EffectiveDamage, 0.0f, MaxHealth);

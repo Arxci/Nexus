@@ -105,18 +105,26 @@ UNexusAbility* UNexusAbilitySystemComponent::GiveAbility(const TSubclassOf<UNexu
 bool UNexusAbilitySystemComponent::RemoveAbility(const TSubclassOf<UNexusAbility> AbilityClass)
 {
 	if (!AbilityClass) return false;
-	
-	if (UNexusAbility* Existing = GrantedAbilities.FindRef(AbilityClass))
+
+	UNexusAbility* Existing = GrantedAbilities.FindRef(AbilityClass);
+	if (!Existing) return false;
+
+	if (Existing->IsActive())
 	{
-		if (Existing->IsEnabled())
-		{
-			Existing->OnDisableAbility();
-			OnAbilityRemoved.Broadcast(Existing);
-			return true;
-		}
+		Existing->ForceEndAbility();
 	}
-	
-	return false;
+	if (Existing->IsEnabled())
+	{
+		Existing->OnDisableAbility();
+	}
+
+	OnAbilityRemoved.Broadcast(Existing);
+
+	Existing->OnActivated.RemoveAll(this);
+	Existing->OnDeactivated.RemoveAll(this);
+
+	GrantedAbilities.Remove(AbilityClass);
+	return true;
 }
 
 void UNexusAbilitySystemComponent::ClearAbilities()

@@ -9,12 +9,43 @@
 #include "NexusEquipmentComponent.generated.h"
 
 class ANexusEquippedActor;
+class UAnimMontage;
+class UAnimSequence;
 class UNexusAbility;
 class UNexusAbilitySystemComponent;
 class UNexusInventoryComponent;
 class UNexusItemInstance;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnEquipmentChanged, FGameplayTag, SlotTag, UNexusItemInstance*, Instance);
+
+/**
+ * Resolved presentation animations for a single equipment slot. Built once at
+ * equip time from FNexusFragment_AnimationSet so the anim BP can read hard
+ * pointers without unpacking fragments or sync-loading on the hot path.
+ */
+USTRUCT(BlueprintType)
+struct NEXUS_API FNexusResolvedSlotAnims
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
+	TObjectPtr<UAnimSequence> IdlePose;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
+	TObjectPtr<UAnimSequence> IdleLoop;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
+	TObjectPtr<UAnimSequence> RunPoseOverride;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
+	TObjectPtr<UAnimMontage> EquipMontage;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
+	TObjectPtr<UAnimMontage> UnequipMontage;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
+	TObjectPtr<UAnimMontage> InspectMontage;
+};
 
 /**
  * Binds inventory items to equipment slots and translates them into in-world
@@ -32,7 +63,7 @@ class NEXUS_API UNexusEquipmentComponent : public UActorComponent, public IEMSCo
 public:
 	UNexusEquipmentComponent();
 
-	// ---------------- Lifecycle ----------------
+	// Lifecycle
 
 	UFUNCTION(BlueprintCallable, Category = "Equipment")
 	bool EquipInstance(UNexusItemInstance* Instance);
@@ -52,7 +83,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Equipment")
 	void UnequipAll();
 
-	// ---------------- Queries ----------------
+	
+	// Utility
 
 	UFUNCTION(BlueprintPure, Category = "Equipment")
 	UNexusItemInstance* GetEquippedInSlot(FGameplayTag SlotTag) const;
@@ -72,7 +104,17 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Equipment")
 	UNexusItemInstance* GetActiveInstance() const;
 
-	// ---------------- Delegates ----------------
+	/**
+	 * Resolved animation set for SlotTag, populated when the slot was equipped.
+	 * Returns a default-zeroed struct if the slot is empty or the equipped item
+	 * has no FNexusFragment_AnimationSet. Anim BPs should call this on the
+	 * OnEquipped / OnActiveSlotChanged delegates and cache the fields they need.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Equipment|Anims")
+	FNexusResolvedSlotAnims GetResolvedSlotAnims(FGameplayTag SlotTag) const;
+
+	
+	// Delegates
 
 	UPROPERTY(BlueprintAssignable, Category = "Equipment")
 	FOnEquipmentChanged OnEquipped;
@@ -88,8 +130,6 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	// EMS Component Save Interface
-	virtual void ComponentPreSave_Implementation() override;
-	virtual void ComponentSaved_Implementation() override;
 	virtual void ComponentPreLoad_Implementation() override;
 	virtual void ComponentLoaded_Implementation() override;
 
@@ -103,6 +143,10 @@ protected:
 	/** Slot → spawned actor. Transient — re-spawned on load via re-equip. */
 	UPROPERTY(Transient)
 	TMap<FGameplayTag, TObjectPtr<ANexusEquippedActor>> SpawnedActors;
+
+	/** Slot → resolved animation set. Transient — rebuilt on equip. */
+	UPROPERTY(Transient)
+	TMap<FGameplayTag, FNexusResolvedSlotAnims> SlotAnims;
 
 	/** Slot → ability classes granted on equip, so we can revoke exactly what we added. */
 	UPROPERTY(Transient)

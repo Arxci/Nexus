@@ -32,7 +32,6 @@ public:
 
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
-	//Utility
 	UFUNCTION(BlueprintPure)
 	bool GetIsTurning() const;
 	UFUNCTION(BlueprintPure)
@@ -40,7 +39,6 @@ public:
 	UFUNCTION(BlueprintPure)
 	FVector GetAcceleration() const;
 
-	
 	UFUNCTION(BlueprintPure)
 	FVector2D GetLookInput() const;
 	UFUNCTION(BlueprintPure)
@@ -49,11 +47,10 @@ public:
 	bool GetRunInput() const;
 	UFUNCTION(BlueprintPure)
 	bool GetCrouchInput() const;
-	
+
 protected:
 	virtual void BeginPlay() override;
 
-	//Camera
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Camera")
 	TObjectPtr<USceneComponent> ViewRoot;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Camera")
@@ -63,7 +60,6 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Camera")
 	TObjectPtr<UCameraComponent> FollowCamera;
 
-	//Input
 	UPROPERTY(EditAnywhere, Category = "Character|Input")
 	TObjectPtr<UInputMappingContext> DefaultMappingContext;
 	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions")
@@ -92,25 +88,23 @@ protected:
 	EInputMode CrouchInputMode = EInputMode::Hold;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Character|Input|Aim")
 	EInputMode AimInputMode = EInputMode::Hold;
-	
-	//Utility
+
 	UEnhancedInputComponent* GetEnhancedInputComponent() const { return EnhancedInputComponent; }
-	
+
 	virtual void ActorPreLoad_Implementation() override;
 	virtual void ActorLoaded_Implementation() override;
-	
+
 private:
 	UPROPERTY()
 	TObjectPtr<UEnhancedInputComponent> EnhancedInputComponent;
-	
+
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
-	void OnCrouchInputStarted(); 
+	void OnCrouchInputStarted();
 	void OnCrouchInputCompleted();
 	void OnRunInputStarted();
 	void OnRunInputCompleted();
-	void OnFireInputTriggered();
-	void OnFireInputCompleted();
+	void OnFireInputStarted();
 	void OnReloadInputStarted();
 	void OnAimInputStarted();
 	void OnAimInputCompleted();
@@ -119,8 +113,8 @@ private:
 
 	void HandleToggleAbilityInput(const FGameplayTag AbilityTag, const FGameplayTag DeactivateIntentTag);
 
-	const FEnhancedInputActionValueBinding* FireBinding = nullptr;
-	const FEnhancedInputActionValueBinding* AimBinding  = nullptr;
+	const FEnhancedInputActionValueBinding* FireBinding   = nullptr;
+	const FEnhancedInputActionValueBinding* AimBinding    = nullptr;
 	const FEnhancedInputActionValueBinding* LookBinding   = nullptr;
 	const FEnhancedInputActionValueBinding* MoveBinding   = nullptr;
 	const FEnhancedInputActionValueBinding* RunBinding    = nullptr;

@@ -13,8 +13,9 @@ class USkeletalMeshComponent;
  * Visible 3D representation of an equipped item, attached to the owning
  * character's mesh. Pure presentation — no game state lives here.
  *
- * Subclass for custom FX hooks (muzzle sockets, shell ejection, light cones).
- * The default actor is sufficient for any simple equippable.
+ * Subclass for capability-specific cached presentation (weapon FX/audio,
+ * flashlight beam, journal page geometry). The default actor is sufficient
+ * for any simple equippable that just needs a mesh on a socket.
  */
 UCLASS(Blueprintable)
 class NEXUS_API ANexusEquippedActor : public AActor
@@ -34,27 +35,7 @@ public:
 	USkeletalMeshComponent* GetMesh() const { return Mesh; }
 
 	UFUNCTION(BlueprintPure, Category = "Equipped")
-	FTransform GetSocketTransform(FName SocketName) const;
-
-	/** Hard refs to the active weapon's presentation assets, paged in on equip
- *  so the fire ability never sync-loads on the hot path. */
-	UPROPERTY(Transient, BlueprintReadOnly, Category = "Equipped|Weapon")
-	TObjectPtr<USoundBase> CachedFireSound;
-
-	UPROPERTY(Transient, BlueprintReadOnly, Category = "Equipped|Weapon")
-	TObjectPtr<USoundBase> CachedDryFireSound;
-
-	UPROPERTY(Transient, BlueprintReadOnly, Category = "Equipped|Weapon")
-	TObjectPtr<USoundBase> CachedReloadSound;
-
-	UPROPERTY(Transient, BlueprintReadOnly, Category = "Equipped|Weapon")
-	TObjectPtr<class UFXSystemAsset> CachedMuzzleFlash;
-
-	UPROPERTY(Transient, BlueprintReadOnly, Category = "Equipped|Weapon")
-	TObjectPtr<class UFXSystemAsset> CachedImpactFX;
-
-	UPROPERTY(Transient, BlueprintReadOnly, Category = "Equipped|Weapon")
-	TObjectPtr<class UAnimMontage> CachedFireMontage;
+	FTransform GetSocketTransform(const FName SocketName) const;
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipped")

@@ -10,6 +10,7 @@
 #include "NexusInventoryComponent.h"
 #include "NexusItemDefinition.h"
 #include "NexusItemInstance.h"
+#include "Engine/AssetManager.h"
 #include "Nexus/Interaction/NexusInteractableComponent.h"
 
 ANexusItemPickup::ANexusItemPickup()
@@ -28,9 +29,23 @@ void ANexusItemPickup::BeginPlay()
 
 	if (bWasCollected)
 	{
-		// Save reload path: this pickup was already taken in a prior session.
 		Destroy();
 		return;
+	}
+
+	if (Mesh && Definition && !Definition->PickupMesh.IsNull() && !Mesh->GetStaticMesh())
+	{
+		const TSoftObjectPtr<UStaticMesh> MeshPtr = Definition->PickupMesh;
+		FStreamableManager& Streamable = UAssetManager::GetStreamableManager();
+		PickupMeshHandle = Streamable.RequestAsyncLoad(
+			MeshPtr.ToSoftObjectPath(),
+			FStreamableDelegate::CreateWeakLambda(this, [this, MeshPtr]()
+			{
+				if (Mesh && !Mesh->GetStaticMesh())
+				{
+					Mesh->SetStaticMesh(MeshPtr.Get());
+				}
+			}));
 	}
 
 	if (Interactable)
@@ -39,20 +54,28 @@ void ANexusItemPickup::BeginPlay()
 	}
 }
 
+void ANexusItemPickup::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (PickupMeshHandle.IsValid())
+	{
+		PickupMeshHandle->CancelHandle();
+		PickupMeshHandle.Reset();
+	}
+	Super::EndPlay(EndPlayReason);
+}
+
 void ANexusItemPickup::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
 
-	// Editor + runtime: keep the preview mesh in sync with the assigned Definition
-	// so designers can see what they're placing without entering PIE.
 	if (!Mesh) return;
 
-	UStaticMesh* Resolved = nullptr;
+#if WITH_EDITOR
 	if (Definition && !Definition->PickupMesh.IsNull())
 	{
-		Resolved = Definition->PickupMesh.LoadSynchronous();
+		Mesh->SetStaticMesh(Definition->PickupMesh.LoadSynchronous());
 	}
-	Mesh->SetStaticMesh(Resolved);
+#endif
 }
 
 #if WITH_EDITOR
@@ -60,9 +83,6 @@ void ANexusItemPickup::PostEditChangeProperty(FPropertyChangedEvent& PropertyCha
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
-	// CDO / archetype edits trigger PostEditChangeProperty too. RerunConstructionScripts
-	// is undefined on those (no world, no proper actor lifecycle) and crashes — bail out
-	// and let the change propagate to any real instances normally.
 	if (HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject)) return;
 
 	const FName PropName = PropertyChangedEvent.GetPropertyName();
@@ -89,7 +109,6 @@ UNexusInventoryComponent* ANexusItemPickup::ResolveInventory(AActor* Interactor)
 		}
 	}
 
-	// Single-player fallback: route to the local player pawn.
 	if (const APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(this, 0))
 	{
 		return PlayerPawn->FindComponentByClass<UNexusInventoryComponent>();
@@ -101,27 +120,34 @@ void ANexusItemPickup::HandleInteractionCompleted()
 {
 	if (bWasCollected || !Definition) return;
 
-	UNexusInventoryComponent* Inventory = ResolveInventory(/*Interactor*/ nullptr);
+	UNexusInventoryComponent* Inventory = ResolveInventory(nullptr);
 	if (!Inventory) return;
 
-	int32 Remainder = 0;
-	UNexusItemInstance* AddedInstance = Inventory->AddItem(Definition, InitialCount, Remainder);
-
-	// Apply any authored stat-tag overrides (half-empty pickup, low durability...).
-	if (AddedInstance)
+	const FNexusAddItemResult AddResult = Inventory->AddItem(Definition, InitialCount);
+	
+	if (InitialStatTags.Num() > 0)
 	{
-		for (const TPair<FGameplayTag, int32>& Pair : InitialStatTags)
+		for (UNexusItemInstance* New : AddResult.NewInstances)
 		{
-			AddedInstance->SetStat(Pair.Key, Pair.Value);
+			if (!New) continue;
+			for (const TPair<FGameplayTag, int32>& Pair : InitialStatTags)
+			{
+				New->SetStat(Pair.Key, Pair.Value);
+			}
 		}
 	}
 
-	const int32 Taken = InitialCount - Remainder;
-	if (Taken > 0)
+	if (AddResult.AmountAdded <= 0) return;
+
+	if (AddResult.Remainder > 0)
 	{
-		bWasCollected = true;
-		Destroy();
+		// Partial pickup: leave the rest in the world.
+		InitialCount = AddResult.Remainder;
+		return;
 	}
+
+	bWasCollected = true;
+	Destroy();
 }
 
 void ANexusItemPickup::ActorLoaded_Implementation()

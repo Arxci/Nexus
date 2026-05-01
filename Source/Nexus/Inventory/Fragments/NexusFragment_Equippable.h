@@ -10,6 +10,34 @@ class ANexusEquippedActor;
 class UAnimInstance;
 class USkeletalMesh;
 
+USTRUCT(BlueprintType, DisplayName = "Animation Set")
+struct NEXUS_API FEquippableAnimationSet
+{
+	GENERATED_BODY()
+
+	/** Static pose blended into the upper body while the item is held idle. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Pose")
+	TSoftObjectPtr<UAnimSequence> IdlePose;
+
+	/** Optional override pose used while the owner is moving (jog/run). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Pose")
+	TSoftObjectPtr<UAnimSequence> RunPoseOverride;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Loops")
+	TSoftObjectPtr<UAnimSequence> IdleLoop;
+
+	/** Played on the owner's anim instance when this item becomes equipped. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Montage")
+	TSoftObjectPtr<UAnimMontage> EquipMontage;
+
+	/** Played on the owner's anim instance when this item is unequipped. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Montage")
+	TSoftObjectPtr<UAnimMontage> UnequipMontage;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Montage")
+	TSoftObjectPtr<UAnimMontage> InspectMontage;
+};
+
 /**
  * Item can be bound to an equipment slot. While equipped:
  *   - An ANexusEquippedActor is spawned and attached to the owning character.
@@ -44,4 +72,7 @@ struct NEXUS_API FNexusFragment_Equippable : public FNexusItemFragment
 	/** Loose tags pushed onto the owner's ASC while equipped (ref-counted). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	FGameplayTagContainer OwnedTagsWhileEquipped;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animations")
+	FEquippableAnimationSet Animations;
 };

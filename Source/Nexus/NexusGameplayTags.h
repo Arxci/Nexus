@@ -38,7 +38,6 @@ namespace NexusGameplayTags
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Weapon_Inspect);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Weapon_Intent_Aim);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Weapon_Intent_Unaim);
-	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Weapon_Intent_Fire);
 
 	// Weapon owned-state tags
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Character_State_Weapon_Equipped);

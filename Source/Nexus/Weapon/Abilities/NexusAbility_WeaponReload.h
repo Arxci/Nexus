@@ -1,10 +1,11 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
+#include "Animation/AnimInstance.h"
 #include "Nexus/Weapon/Abilities/NexusAbility_Weapon.h"
 #include "NexusAbility_WeaponReload.generated.h"
+
+class UAnimMontage;
 
 UCLASS(Blueprintable)
 class NEXUS_API UNexusAbility_WeaponReload : public UNexusAbility_Weapon
@@ -22,9 +23,19 @@ protected:
 	virtual bool CanActivateAbility_Implementation() const override;
 	virtual void OnSaveStateRestored() override;
 
+	void TransferAmmo();
 	void FinishReload();
+
 	int32 GetReserveAmmo() const;
 	int32 ConsumeReserveAmmo(int32 Amount);
 
+	UFUNCTION()
+	void HandleNotifyBegin(FName NotifyName, const FBranchingPointNotifyPayload& Payload);
+
+private:
 	FTimerHandle TimerHandle_ReloadFinish;
+
+	TWeakObjectPtr<UAnimInstance> BoundAnimInstance;
+
+	bool bAmmoTransferred = false;
 };

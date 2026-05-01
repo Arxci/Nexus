@@ -12,17 +12,8 @@
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FOnHealthChanged, UNexusHealthComponent*, Component,
 	float, OldHealth, float, NewHealth, const FNexusDamageContext&, Context);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDeath, const FNexusDamageContext&, Context);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDamageTaken, const FNexusDamageContext&, Context);
 
-/**
- * Standardised health state. The owning actor implements INexusDamageReceiver
- * and forwards Execute_ReceiveDamage to this component, which:
- *   1. Applies resistance multipliers from per-type curves.
- *   2. Clamps and updates current health.
- *   3. Broadcasts OnHealthChanged / OnDeath for VFX / AI / UI listeners.
- *
- * Designed to be reused on player, enemies, and breakables — you only swap
- * MaxHealth and the resistance map per archetype.
- */
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class NEXUS_API UNexusHealthComponent : public UActorComponent, public IEMSCompSaveInterface
 {
@@ -55,11 +46,17 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Health")
 	float GetResistance(FGameplayTag DamageType) const;
 
+	UFUNCTION(BlueprintPure, Category = "Health")
+	float GetBoneMultiplier(FName BoneName) const;
+
 	UPROPERTY(BlueprintAssignable, Category = "Health")
 	FOnHealthChanged OnHealthChanged;
 
 	UPROPERTY(BlueprintAssignable, Category = "Health")
 	FOnDeath OnDeath;
+
+	UPROPERTY(BlueprintAssignable, Category = "Health")
+	FOnDamageTaken OnDamageTaken;
 
 protected:
 	virtual void BeginPlay() override;
@@ -67,10 +64,12 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Health", meta = (ClampMin = "0.0"))
 	float MaxHealth = 100.0f;
 
-	/** Per-type resistance multipliers (0 = immune, 1 = normal, 2 = double damage). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Health",
 		meta = (Categories = "Damage.Type"))
 	TMap<FGameplayTag, float> Resistances;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Health|DamageZones")
+	TMap<FName, float> BoneDamageMultipliers;
 
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Health")
 	float Health = 100.0f;

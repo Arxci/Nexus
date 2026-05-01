@@ -1,9 +1,10 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "NexusEquipmentComponent.h"
 
 #include "GameFramework/Character.h"
+#include "Animation/AnimMontage.h"
+#include "Animation/AnimSequence.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
 #include "NexusEquippedActor.h"
@@ -26,17 +27,17 @@ void UNexusEquipmentComponent::BeginPlay()
 	
 	// React to inventory mutations so a dropped/destroyed item can't leave us
 	// holding a dangling slot pointer with abilities still granted.
-	if (UNexusInventoryComponent* Inv = GetInventory())
+	if (UNexusInventoryComponent* Inventory = GetInventory())
 	{
-		Inv->OnItemRemoved.AddDynamic(this, &UNexusEquipmentComponent::HandleInventoryItemRemoved);
+		Inventory->OnItemRemoved.AddDynamic(this, &UNexusEquipmentComponent::HandleInventoryItemRemoved);
 	}
 }
 
 void UNexusEquipmentComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	if (UNexusInventoryComponent* Inv = GetInventory())
+	if (UNexusInventoryComponent* Inventory = GetInventory())
 	{
-		Inv->OnItemRemoved.RemoveDynamic(this, &UNexusEquipmentComponent::HandleInventoryItemRemoved);
+		Inventory->OnItemRemoved.RemoveDynamic(this, &UNexusEquipmentComponent::HandleInventoryItemRemoved);
 	}
 
 	UnequipAll();
@@ -78,15 +79,15 @@ UNexusInventoryComponent* UNexusEquipmentComponent::GetInventory() const
 	return GetOwner() ? GetOwner()->FindComponentByClass<UNexusInventoryComponent>() : nullptr;
 }
 
-// ---------------- Lifecycle ----------------
 
+// Lifecycle
 bool UNexusEquipmentComponent::EquipInstance(UNexusItemInstance* Instance)
 {
 	if (!Instance) return false;
-	const UNexusItemDefinition* Def = Instance->GetDefinition();
-	if (!Def) return false;
+	const UNexusItemDefinition* Definition = Instance->GetDefinition();
+	if (!Definition) return false;
 
-	const FNexusFragment_Equippable* Eq = Def->FindFragment<FNexusFragment_Equippable>();
+	const FNexusFragment_Equippable* Eq = Definition->FindFragment<FNexusFragment_Equippable>();
 	if (!Eq || !Eq->SlotTag.IsValid()) return false;
 
 	const FGameplayTag SlotTag = Eq->SlotTag;
@@ -118,16 +119,16 @@ UNexusItemInstance* UNexusEquipmentComponent::TryEquipFirstCompatibleForSlot(FGa
 		return Existing;
 	}
 
-	UNexusInventoryComponent* Inv = GetInventory();
-	if (!Inv) return nullptr;
+	const UNexusInventoryComponent* Inventory = GetInventory();
+	if (!Inventory) return nullptr;
 
-	for (UNexusItemInstance* Inst : Inv->GetItems())
+	for (UNexusItemInstance* Inst : Inventory->GetItems())
 	{
 		if (!Inst) continue;
-		const UNexusItemDefinition* Def = Inst->GetDefinition();
-		if (!Def) continue;
+		const UNexusItemDefinition* Definition = Inst->GetDefinition();
+		if (!Definition) continue;
 
-		const FNexusFragment_Equippable* Eq = Def->FindFragment<FNexusFragment_Equippable>();
+		const FNexusFragment_Equippable* Eq = Definition->FindFragment<FNexusFragment_Equippable>();
 		if (!Eq) continue;
 		if (!Eq->SlotTag.MatchesTagExact(SlotTag)) continue;
 
@@ -164,8 +165,8 @@ void UNexusEquipmentComponent::UnequipAll()
 	}
 }
 
-// ---------------- Queries ----------------
 
+// Utility
 UNexusItemInstance* UNexusEquipmentComponent::GetEquippedInSlot(FGameplayTag SlotTag) const
 {
 	return EquippedSlots.FindRef(SlotTag);
@@ -195,14 +196,23 @@ UNexusItemInstance* UNexusEquipmentComponent::GetActiveInstance() const
 	return GetEquippedInSlot(ActiveSlot);
 }
 
-// ---------------- Effects ----------------
+FNexusResolvedSlotAnims UNexusEquipmentComponent::GetResolvedSlotAnims(FGameplayTag SlotTag) const
+{
+	if (const FNexusResolvedSlotAnims* Found = SlotAnims.Find(SlotTag))
+	{
+		return *Found;
+	}
+	return FNexusResolvedSlotAnims();
+}
 
+
+// Effects
 void UNexusEquipmentComponent::ApplyEquipEffects(FGameplayTag SlotTag, UNexusItemInstance* Instance)
 {
-	const UNexusItemDefinition* Def = Instance ? Instance->GetDefinition() : nullptr;
-	if (!Def) return;
+	const UNexusItemDefinition* Definition = Instance ? Instance->GetDefinition() : nullptr;
+	if (!Definition) return;
 
-	const FNexusFragment_Equippable* Eq = Def->FindFragment<FNexusFragment_Equippable>();
+	const FNexusFragment_Equippable* Eq = Definition->FindFragment<FNexusFragment_Equippable>();
 	if (!Eq) return;
 
 	// 1. Spawn the visible actor.
@@ -249,6 +259,17 @@ void UNexusEquipmentComponent::ApplyEquipEffects(FGameplayTag SlotTag, UNexusIte
 		}
 		AppliedTagsBySlot.Add(SlotTag, Pushed);
 	}
+	
+	FNexusResolvedSlotAnims Resolved;
+	FEquippableAnimationSet AnimationSet = Eq->Animations;
+
+	Resolved.IdlePose        = AnimationSet.IdlePose.LoadSynchronous();
+	Resolved.IdleLoop   =      AnimationSet.IdleLoop.LoadSynchronous();
+	Resolved.RunPoseOverride = AnimationSet.RunPoseOverride.LoadSynchronous();
+	Resolved.EquipMontage    = AnimationSet.EquipMontage.LoadSynchronous();
+	Resolved.UnequipMontage  = AnimationSet.UnequipMontage.LoadSynchronous();
+
+	SlotAnims.Add(SlotTag, Resolved);
 }
 
 void UNexusEquipmentComponent::RemoveEquipEffects(FGameplayTag SlotTag)
@@ -280,18 +301,12 @@ void UNexusEquipmentComponent::RemoveEquipEffects(FGameplayTag SlotTag)
 		Actor->Destroy();
 	}
 	SpawnedActors.Remove(SlotTag);
+
+	SlotAnims.Remove(SlotTag);
 }
 
-// ---------------- Save ----------------
 
-void UNexusEquipmentComponent::ComponentPreSave_Implementation()
-{
-}
-
-void UNexusEquipmentComponent::ComponentSaved_Implementation()
-{
-}
-
+// Save
 void UNexusEquipmentComponent::ComponentPreLoad_Implementation()
 {
 	UnequipAll();

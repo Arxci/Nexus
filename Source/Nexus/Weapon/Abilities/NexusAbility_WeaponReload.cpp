@@ -1,7 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-
-#include "NexusAbility_WeaponReload.h"
+﻿#include "NexusAbility_WeaponReload.h"
 
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
@@ -16,14 +13,15 @@
 #include "Nexus/Inventory/NexusInventoryComponent.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
 #include "Nexus/NexusGameplayTags.h"
-#include "Nexus/Weapon/NexusFragment_Weapon.h"
+#include "Nexus/Inventory/Fragments/NexusFragment_Weapon.h"
+#include "Nexus/Weapon/NexusWeaponEquippedActor.h"
 
 UNexusAbility_WeaponReload::UNexusAbility_WeaponReload()
 {
 	AbilityTags.AddTag(NexusGameplayTags::Ability_Weapon_Reload);
 	ActivationOwnedTags.AddTag(NexusGameplayTags::Character_State_Weapon_Reloading);
 	ActivationBlockedTags.AddTag(NexusGameplayTags::Character_State_Weapon_Reloading);
-	CancelAbilitiesWithTags.AddTag(NexusGameplayTags::Ability_Weapon_Fire); // <-- new
+	CancelAbilitiesWithTags.AddTag(NexusGameplayTags::Ability_Weapon_Fire);
 	bCooldownOnActivation   = false;
 	bCooldownOnDeactivation = false;
 }
@@ -32,13 +30,13 @@ bool UNexusAbility_WeaponReload::CanActivateAbility_Implementation() const
 {
 	if (!Super::CanActivateAbility_Implementation()) return false;
 
-	const UNexusItemInstance* Inst = GetActiveInstance();
-	const FNexusFragment_Weapon* W = GetWeaponFragment();
-	if (!Inst || !W) return false;
-	if (W->AmmoModel == ENexusWeaponAmmoModel::None) return false;
+	const UNexusItemInstance* Instance = GetActiveInstance();
+	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
+	if (!Instance || !Weapon) return false;
+	if (Weapon->Ammo.AmmoModel == ENexusWeaponAmmoModel::None) return false;
 
-	const int32 InMag = Inst->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0);
-	if (InMag >= W->MagazineSize) return false;
+	const int32 InMag = Instance->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0);
+	if (InMag >= Weapon->Ammo.MagazineSize) return false;
 
 	return GetReserveAmmo() > 0;
 }
@@ -61,28 +59,32 @@ void UNexusAbility_WeaponReload::CommitAbility()
 {
 	Super::CommitAbility();
 
-	const FNexusFragment_Weapon* W = GetWeaponFragment();
-	if (!W) { CommitAbilityEnd(); return; }
+	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
+	if (!Weapon) { CommitAbilityEnd(); return; }
 
-	if (UAnimMontage* M = W->ReloadMontage.LoadSynchronous())
+	bAmmoTransferred = false;
+	const ANexusWeaponEquippedActor* WeaponActor = GetEquippedWeaponActor();
+
+	if (UAnimMontage* Montage = WeaponActor ? WeaponActor->CachedReloadMontage.Get() : Weapon->Animations.ReloadMontage.LoadSynchronous())
 	{
-		if (const ACharacter* C = Cast<ACharacter>(GetOwner()))
+		if (const ACharacter* Char = Cast<ACharacter>(GetOwner()))
 		{
-			if (UAnimInstance* AI = C->GetMesh()->GetAnimInstance())
+			if (UAnimInstance* AnimInstance = Char->GetMesh()->GetAnimInstance())
 			{
-				AI->Montage_Play(M);
+				AnimInstance->Montage_Play(Montage);
 			}
 		}
 	}
-	if (USoundBase* S = W->ReloadSound.LoadSynchronous())
+
+	if (USoundBase* ReloadSound = WeaponActor ? WeaponActor->CachedReloadSound.Get() : Weapon->Presentation.ReloadSound.LoadSynchronous())
 	{
 		if (const AActor* Owner = GetOwner())
 		{
-			UGameplayStatics::PlaySoundAtLocation(this, S, Owner->GetActorLocation());
+			UGameplayStatics::PlaySoundAtLocation(this, ReloadSound, Owner->GetActorLocation());
 		}
 	}
 
-	const float Duration = FMath::Max(0.0f, W->ReloadDuration);
+	const float Duration = FMath::Max(0.0f, Weapon->Reload.ReloadDuration);
 	if (Duration <= 0.0f)
 	{
 		FinishReload();
@@ -100,26 +102,50 @@ void UNexusAbility_WeaponReload::CommitAbilityEnd()
 	{
 		World->GetTimerManager().ClearTimer(TimerHandle_ReloadFinish);
 	}
+
+	if (UAnimInstance* AnimInstance = BoundAnimInstance.Get())
+	{
+		AnimInstance->OnPlayMontageNotifyBegin.RemoveDynamic(this, &UNexusAbility_WeaponReload::HandleNotifyBegin);
+	}
+	BoundAnimInstance = nullptr;
+
 	Super::CommitAbilityEnd();
 }
 
-void UNexusAbility_WeaponReload::FinishReload()
+void UNexusAbility_WeaponReload::HandleNotifyBegin(FName NotifyName, const FBranchingPointNotifyPayload& Payload)
 {
-	UNexusItemInstance* Inst       = GetActiveInstance();
-	const FNexusFragment_Weapon* W = GetWeaponFragment();
-	if (!Inst || !W) { CommitAbilityEnd(); return; }
+	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
+	if (!Weapon) return;
+	if (NotifyName != Weapon->Reload.AmmoTransferNotifyName) return;
 
-	const int32 CurrentInMag = Inst->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0);
-	const int32 Needed       = FMath::Max(0, W->MagazineSize - CurrentInMag);
+	TransferAmmo();
+}
+
+void UNexusAbility_WeaponReload::TransferAmmo()
+{
+	if (bAmmoTransferred) return;
+
+	UNexusItemInstance* Instance       = GetActiveInstance();
+	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
+	if (!Instance || !Weapon) return;
+
+	const int32 CurrentInMag = Instance->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0);
+	const int32 Needed       = FMath::Max(0, Weapon->Ammo.MagazineSize - CurrentInMag);
 	const int32 Available    = GetReserveAmmo();
 	const int32 Transferring = FMath::Min(Needed, Available);
 
 	if (Transferring > 0)
 	{
 		const int32 Consumed = ConsumeReserveAmmo(Transferring);
-		Inst->SetStat(NexusGameplayTags::Stat_Ammo_InMagazine, CurrentInMag + Consumed);
+		Instance->SetStat(NexusGameplayTags::Stat_Ammo_InMagazine, CurrentInMag + Consumed);
 	}
+	bAmmoTransferred = true;
+}
 
+void UNexusAbility_WeaponReload::FinishReload()
+{
+	// Fallback path: timer expired. If the AmmoTransfer notify already moved ammo, this is a no-op.
+	TransferAmmo();
 	CommitAbilityEnd();
 }
 
@@ -127,10 +153,10 @@ int32 UNexusAbility_WeaponReload::GetReserveAmmo() const
 {
 	const FNexusFragment_Weapon* W = GetWeaponFragment();
 	const AActor* Owner            = GetOwner();
-	if (!W || !Owner || !W->AmmoIdentityTag.IsValid()) return 0;
+	if (!W || !Owner || !W->Ammo.AmmoIdentityTag.IsValid()) return 0;
 	if (const UNexusInventoryComponent* Inv = Owner->FindComponentByClass<UNexusInventoryComponent>())
 	{
-		return Inv->GetTotalCountForIdentityTag(W->AmmoIdentityTag);
+		return Inv->GetTotalCountForIdentityTag(W->Ammo.AmmoIdentityTag);
 	}
 	return 0;
 }
@@ -138,22 +164,22 @@ int32 UNexusAbility_WeaponReload::GetReserveAmmo() const
 int32 UNexusAbility_WeaponReload::ConsumeReserveAmmo(int32 Amount)
 {
 	if (Amount <= 0) return 0;
-	const FNexusFragment_Weapon* W = GetWeaponFragment();
+	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
 	AActor* Owner                  = GetOwner();
-	if (!W || !Owner || !W->AmmoIdentityTag.IsValid()) return 0;
+	if (!Weapon || !Owner || !Weapon->Ammo.AmmoIdentityTag.IsValid()) return 0;
 
-	UNexusInventoryComponent* Inv = Owner->FindComponentByClass<UNexusInventoryComponent>();
-	if (!Inv) return 0;
+	UNexusInventoryComponent* Inventory = Owner->FindComponentByClass<UNexusInventoryComponent>();
+	if (!Inventory) return 0;
 
 	int32 Remaining = Amount;
-	TArray<UNexusItemInstance*> Snapshot = Inv->GetItems();
+	TArray<UNexusItemInstance*> Snapshot = Inventory->GetItems();
 	for (UNexusItemInstance* Inst : Snapshot)
 	{
 		if (Remaining <= 0) break;
 		if (!Inst) continue;
-		if (!Inst->GetIdentityTag().MatchesTagExact(W->AmmoIdentityTag)) continue;
+		if (!Inst->GetIdentityTag().MatchesTagExact(Weapon->Ammo.AmmoIdentityTag)) continue;
 
-		const int32 Taken = Inv->RemoveFromInstance(Inst, Remaining);
+		const int32 Taken = Inventory->RemoveFromInstance(Inst, Remaining);
 		Remaining -= Taken;
 	}
 	return Amount - Remaining;

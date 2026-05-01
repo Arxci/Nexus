@@ -6,18 +6,6 @@
 
 class UNexusItemDefinition;
 
-/**
- * Per-pickup runtime state for an item.
- *
- * Two instances of the same definition (e.g. two pistols) differ only by
- * StatTags (current ammo, durability, ...) and StackCount. Mutable per-instance
- * data lives in StatTags so that fragments can stay shareable, side-effect-free
- * data classes.
- *
- * Persisted as instanced UObjects via UEMSFunctionLibrary::SaveRawObject by the
- * owning UNexusInventoryComponent — same pattern used by the ASC for granted
- * abilities (NexusAbilitySystemComponent.cpp:399).
- */
 UCLASS(BlueprintType)
 class NEXUS_API UNexusItemInstance : public UObject
 {
@@ -25,8 +13,7 @@ class NEXUS_API UNexusItemInstance : public UObject
 
 public:
 	UNexusItemInstance();
-
-	/** One-time setup. Resolves Definition synchronously and runs fragment initializers. */
+	
 	void Initialize(UNexusItemDefinition* InDefinition, int32 InStackCount = 1);
 
 	UFUNCTION(BlueprintPure, Category = "Item")
@@ -34,12 +21,9 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Item")
 	FGameplayTag GetIdentityTag() const;
-
-	/**
-	 * Stable identity assigned at Initialize-time, persisted in SaveGame.
-	 * Used as the EMS save-key so this instance's StatTags survive save/load
-	 * regardless of UObject auto-name churn.
-	 */
+	
+	void RestoreLoadedState();
+	
 	UFUNCTION(BlueprintPure, Category = "Item")
 	FGuid GetInstanceGuid() const { return InstanceGuid; }
 
@@ -49,6 +33,11 @@ public:
 
 	/** Adds Delta (can be negative). Returns the actual delta applied (clamped to MaxStack and >=0). */
 	int32 ModifyStack(int32 Delta, int32 MaxStack = MAX_int32);
+
+	UFUNCTION(BlueprintPure, Category = "Item|Stack")
+	bool CanStackWith(const UNexusItemInstance* Other) const;
+
+	const TMap<FGameplayTag, int32>& GetStatTags() const { return StatTags; }
 
 	UFUNCTION(BlueprintPure, Category = "Item|Stack")
 	bool IsEmpty() const { return StackCount <= 0; }
@@ -67,6 +56,8 @@ public:
 	bool HasStat(FGameplayTag StatTag) const;
 
 protected:
+	bool bInitialized = false;
+	
 	/** Soft so the asset path is what's actually serialized — survives reorgs and partial loads. */
 	UPROPERTY(SaveGame)
 	TSoftObjectPtr<UNexusItemDefinition> DefinitionRef;

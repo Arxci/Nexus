@@ -41,9 +41,11 @@ public:
 	UNexusAbility* GiveAbility(TSubclassOf<UNexusAbility> AbilityClass);
 
 	/**
-	* Disables a granted ability of this ASC. This does not actually remove the reference (the instance will permeate the removal), the ability is merely made inactive. Requires GiveAbility to be called to enable again.
-	* @param AbilityClass the class reference for the NexusAbility to disable.
-	**/
+	* Removes a granted ability from this ASC. Force-ends it if active, broadcasts
+	* OnAbilityRemoved, and erases the instance from the granted-abilities map so a
+	* later GiveAbility of the same class produces a fresh instance (no stale
+	* cooldown / activation state carried over from the previous grant).
+	*/
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	bool RemoveAbility(TSubclassOf<UNexusAbility> AbilityClass);
 

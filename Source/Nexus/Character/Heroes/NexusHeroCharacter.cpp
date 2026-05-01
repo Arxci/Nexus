@@ -71,8 +71,7 @@ void ANexusHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 		EnhancedInputComponent->BindAction(RunAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnRunInputCompleted);
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnCrouchInputStarted);
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnCrouchInputCompleted);
-		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnFireInputTriggered);
-		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnFireInputCompleted);
+		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnFireInputStarted);
 		EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnReloadInputStarted);
 		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnAimInputStarted);
 		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnAimInputCompleted);
@@ -135,19 +134,10 @@ bool ANexusHeroCharacter::GetCrouchInput() const
 
 
 // Player Input
-void ANexusHeroCharacter::OnFireInputTriggered()
+void ANexusHeroCharacter::OnFireInputStarted()
 {
 	if (!NexusAbilitySystemComponent) return;
-
-	// Tag must be set BEFORE activate so the ability sees it on its first tick.
-	NexusAbilitySystemComponent->AddLooseGameplayTag(NexusGameplayTags::Ability_Weapon_Intent_Fire);
 	NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Weapon_Fire);
-}
-
-void ANexusHeroCharacter::OnFireInputCompleted()
-{
-	if (!NexusAbilitySystemComponent) return;
-	NexusAbilitySystemComponent->RemoveLooseGameplayTag(NexusGameplayTags::Ability_Weapon_Intent_Fire);
 }
 
 void ANexusHeroCharacter::OnReloadInputStarted()

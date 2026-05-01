@@ -6,21 +6,36 @@
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
 #include "EMSCompSaveInterface.h"
-#include "NexusItemDefinition.h"
-#include "NexusItemInstance.h"
+#include "NexusItemDefinition.h" 
+#include "NexusItemInstance.h"   
 #include "NexusInventoryComponent.generated.h"
+
+
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInventoryItemChanged, UNexusItemInstance*, Instance);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInventoryChanged);
 
-/**
- * Owns the player's (or any character's) item instances. Storage only —
- * binding an item to a slot/abilities is the EquipmentComponent's job.
- *
- * Save/restore: Items array and per-instance state are persisted via
- * UEMSFunctionLibrary::SaveRawObject in ComponentSaved/Loaded, mirroring
- * NexusAbilitySystemComponent (NexusAbilitySystemComponent.cpp:399).
- */
+USTRUCT(BlueprintType)
+struct NEXUS_API FNexusAddItemResult
+{
+	GENERATED_BODY()
+	
+	UPROPERTY(BlueprintReadOnly, Category = "Inventory")
+	int32 AmountAdded = 0;
+
+	/** Count that could not be placed (weight or slot limits). */
+	UPROPERTY(BlueprintReadOnly, Category = "Inventory")
+	int32 Remainder = 0;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "Inventory")
+	TArray<UNexusItemInstance*> AffectedInstances;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "Inventory")
+	TArray<UNexusItemInstance*> NewInstances;
+
+	bool IsEmpty() const { return AmountAdded == 0; }
+};
+
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class NEXUS_API UNexusInventoryComponent : public UActorComponent, public IEMSCompSaveInterface
 {
@@ -29,10 +44,15 @@ class NEXUS_API UNexusInventoryComponent : public UActorComponent, public IEMSCo
 public:
 	UNexusInventoryComponent();
 
-	// ---------------- Add / Remove ----------------
-
+	// Add/Remove
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	UNexusItemInstance* AddItem(UNexusItemDefinition* Definition, int32 Count, int32& OutRemainder);
+	FNexusAddItemResult AddItem(UNexusItemDefinition* Definition, int32 Count);
+	
+	UFUNCTION(BlueprintCallable, Category = "Inventory", meta = (DisplayName = "Add Item (Simple)"))
+	int32 AddItemSimple(UNexusItemDefinition* Definition, const int32 Count)
+	{
+		return AddItem(Definition, Count).AmountAdded;
+	}
 
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	bool AddInstance(UNexusItemInstance* Instance);
@@ -46,13 +66,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void ClearAll();
 
-	// ---------------- Queries ----------------
+	
+	// Utility
+	UFUNCTION(BlueprintPure, Category = "Inventory")
+	const TArray<UNexusItemInstance*>& GetItems() const
+	{
+		return reinterpret_cast<const TArray<UNexusItemInstance*>&>(Items);
+	}
 
 	UFUNCTION(BlueprintPure, Category = "Inventory")
-	const TArray<UNexusItemInstance*>& GetItems() const { return Items; }
-
-	UFUNCTION(BlueprintPure, Category = "Inventory")
-	int32 GetTotalCountForDefinition(UNexusItemDefinition* Definition) const;
+	int32 GetTotalCountForDefinition(const UNexusItemDefinition* Definition) const;
 
 	UFUNCTION(BlueprintPure, Category = "Inventory")
 	int32 GetTotalCountForIdentityTag(FGameplayTag IdentityTag) const;
@@ -61,7 +84,7 @@ public:
 	int32 GetTotalCountForCategory(FGameplayTag CategoryTag) const;
 
 	UFUNCTION(BlueprintPure, Category = "Inventory")
-	UNexusItemInstance* FindFirstByDefinition(UNexusItemDefinition* Definition) const;
+	UNexusItemInstance* FindFirstByDefinition(const UNexusItemDefinition* Definition) const;
 
 	UFUNCTION(BlueprintPure, Category = "Inventory")
 	UNexusItemInstance* FindFirstByIdentityTag(FGameplayTag IdentityTag) const;
@@ -72,8 +95,8 @@ public:
 	template <typename T>
 	void ForEachInstanceWithFragment(TFunctionRef<void(UNexusItemInstance*, const T&)> Fn) const;
 
-	// ---------------- Capacity ----------------
-
+	
+	//Capacity
 	UFUNCTION(BlueprintPure, Category = "Inventory|Capacity")
 	float GetUsedWeight() const;
 
@@ -86,8 +109,11 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Inventory|Capacity")
 	int32 GetSlotCapacity() const { return SlotCapacity; }
 
-	// ---------------- Delegates ----------------
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Inventory|Capacity", meta = (ClampMin = "1"))
+	int32 MaxItemsPerAddCall = 10000;
 
+	
+	//Delegates
 	UPROPERTY(BlueprintAssignable, Category = "Inventory")
 	FOnInventoryItemChanged OnItemAdded;
 
@@ -101,9 +127,7 @@ public:
 	FOnInventoryChanged OnInventoryChanged;
 
 protected:
-	virtual void ComponentPreSave_Implementation() override;
 	virtual void ComponentSaved_Implementation() override;
-	virtual void ComponentPreLoad_Implementation() override;
 	virtual void ComponentLoaded_Implementation() override;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Inventory|Capacity", meta = (ClampMin = "0"))
@@ -118,7 +142,37 @@ protected:
 private:
 	int32 GetMaxStackForDefinition(const UNexusItemDefinition* Definition) const;
 
-	void BroadcastChange(UNexusItemInstance* Instance, bool bAdded, bool bRemoved);
+	struct FPendingChange
+	{
+		TWeakObjectPtr<UNexusItemInstance> Instance;
+		bool bAdded   = false;
+		bool bRemoved = false;
+	};
+	TArray<FPendingChange> PendingChanges;
+	int32 BroadcastDeferDepth = 0;
+	bool bFlushInProgress = false;
+	
+	float CachedUsedWeight = 0.0f;
+
+	void EnqueueChange(UNexusItemInstance* Instance, bool bAdded, bool bRemoved);
+	void FlushPendingChanges();
+
+	/** RAII guard: defers broadcasts until the outermost guard exits. */
+	struct FBroadcastScope
+	{
+		UNexusInventoryComponent* Owner;
+		explicit FBroadcastScope(UNexusInventoryComponent* InOwner) : Owner(InOwner)
+		{
+			++Owner->BroadcastDeferDepth;
+		}
+		~FBroadcastScope()
+		{
+			if (--Owner->BroadcastDeferDepth == 0)
+			{
+				Owner->FlushPendingChanges();
+			}
+		}
+	};
 };
 
 template <typename T>
@@ -129,7 +183,7 @@ void UNexusInventoryComponent::ForEachInstanceWithFragment(TFunctionRef<void(UNe
 		if (!Instance) continue;
 		const UNexusItemDefinition* Def = Instance->GetDefinition();
 		if (!Def) continue;
-		if (const T* Frag = Def->template FindFragment<T>())
+		if (const T* Frag = Def-> FindFragment<T>())
 		{
 			Fn(Instance, *Frag);
 		}

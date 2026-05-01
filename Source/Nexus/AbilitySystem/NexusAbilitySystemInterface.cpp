@@ -3,5 +3,3 @@
 
 #include "NexusAbilitySystemInterface.h"
 
-
-// Add default functionality here for any INexusAbilitySystemInterface functions that are not pure virtual.

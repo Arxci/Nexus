@@ -9,7 +9,8 @@ UNexusItemInstance::UNexusItemInstance()
 
 void UNexusItemInstance::Initialize(UNexusItemDefinition* InDefinition, int32 InStackCount)
 {
-	if (!InDefinition) return;
+	if (!ensureMsgf(InDefinition, TEXT("Initialize called with null Definition"))) return;
+	if (!ensureMsgf(!bInitialized, TEXT("Initialize called twice on %s"), *GetName())) return;
 
 	CachedDefinition = InDefinition;
 	DefinitionRef    = InDefinition;
@@ -27,13 +28,23 @@ void UNexusItemInstance::Initialize(UNexusItemDefinition* InDefinition, int32 In
 			Frag.Get().InitializeInstance(this);
 		}
 	}
+
+	bInitialized = true;
 }
 
 UNexusItemDefinition* UNexusItemInstance::GetDefinition() const
 {
 	if (CachedDefinition) return CachedDefinition;
-	// Loaded path: rehydrate the soft ref. Caller is responsible for accepting a sync load here.
+	
 	return DefinitionRef.LoadSynchronous();
+}
+
+void UNexusItemInstance::RestoreLoadedState()
+{
+	if (!CachedDefinition && !DefinitionRef.IsNull())
+	{
+		CachedDefinition = DefinitionRef.LoadSynchronous();
+	}
 }
 
 FGameplayTag UNexusItemInstance::GetIdentityTag() const
@@ -47,10 +58,26 @@ FGameplayTag UNexusItemInstance::GetIdentityTag() const
 
 int32 UNexusItemInstance::ModifyStack(int32 Delta, int32 MaxStack)
 {
-	const int32 Clamped = FMath::Clamp(StackCount + Delta, 0, MaxStack);
-	const int32 Applied = Clamped - StackCount;
+	const int64 Wide      = static_cast<int64>(StackCount) + static_cast<int64>(Delta);
+	const int64 ClampedW  = FMath::Clamp<int64>(Wide, 0, MaxStack);
+	const int32 Clamped   = static_cast<int32>(ClampedW);
+	const int32 Applied   = Clamped - StackCount;
 	StackCount = Clamped;
 	return Applied;
+}
+
+bool UNexusItemInstance::CanStackWith(const UNexusItemInstance* Other) const
+{
+	if (!Other || Other == this) return false;
+	if (GetDefinition() != Other->GetDefinition()) return false;
+	if (StatTags.Num() != Other->StatTags.Num()) return false;
+
+	for (const TPair<FGameplayTag, int32>& Pair : StatTags)
+	{
+		const int32* OtherVal = Other->StatTags.Find(Pair.Key);
+		if (!OtherVal || *OtherVal != Pair.Value) return false;
+	}
+	return true;
 }
 
 int32 UNexusItemInstance::GetStat(FGameplayTag StatTag, int32 Default) const
