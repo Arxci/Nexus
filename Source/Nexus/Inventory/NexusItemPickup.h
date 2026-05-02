@@ -3,15 +3,21 @@
 #pragma once
 
 #include "CoreMinimal.h"
+
 #include "GameFramework/Actor.h"
-#include "EMSActorSaveInterface.h"
+
 #include "GameplayTagContainer.h"
+
 #include "Engine/StreamableManager.h"
+
+#include "EMSActorSaveInterface.h"
+
 #include "NexusItemPickup.generated.h"
 
 class UNexusInteractableComponent;
 class UNexusItemDefinition;
 class UStaticMeshComponent;
+
 
 UCLASS(Blueprintable, PrioritizeCategories = ("Pickup"))
 class NEXUS_API ANexusItemPickup : public AActor, public IEMSActorSaveInterface
@@ -35,7 +41,7 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	UFUNCTION()
-	void HandleInteractionCompleted();
+	void HandleInteractionCompleted(AActor* Interactor);
 	
 	class UNexusInventoryComponent* ResolveInventory(AActor* Interactor) const;
 
@@ -57,8 +63,13 @@ protected:
 	UPROPERTY(SaveGame)
 	bool bWasCollected = false;
 
+protected:
+	//~Start save interface
 	virtual void ActorLoaded_Implementation() override;
+	//~End save interface
 
 private:
 	TSharedPtr<FStreamableHandle> PickupMeshHandle;
+
+	void RequestPickupMeshLoad();
 };

@@ -1,11 +1,8 @@
 ﻿#include "NexusItemInstance.h"
 
-#include "NexusItemDefinition.h"
-#include "NexusItemFragment.h"
+#include "Nexus/Inventory/NexusItemDefinition.h"
+#include "Nexus/Inventory/NexusItemFragment.h"
 
-UNexusItemInstance::UNexusItemInstance()
-{
-}
 
 void UNexusItemInstance::Initialize(UNexusItemDefinition* InDefinition, int32 InStackCount)
 {
@@ -16,6 +13,7 @@ void UNexusItemInstance::Initialize(UNexusItemDefinition* InDefinition, int32 In
 	DefinitionRef    = InDefinition;
 	StackCount       = FMath::Max(1, InStackCount);
 
+	// Generate GUID
 	if (!InstanceGuid.IsValid())
 	{
 		InstanceGuid = FGuid::NewGuid();
@@ -32,19 +30,20 @@ void UNexusItemInstance::Initialize(UNexusItemDefinition* InDefinition, int32 In
 	bInitialized = true;
 }
 
-UNexusItemDefinition* UNexusItemInstance::GetDefinition() const
-{
-	if (CachedDefinition) return CachedDefinition;
-	
-	return DefinitionRef.LoadSynchronous();
-}
-
 void UNexusItemInstance::RestoreLoadedState()
 {
 	if (!CachedDefinition && !DefinitionRef.IsNull())
 	{
 		CachedDefinition = DefinitionRef.LoadSynchronous();
 	}
+}
+
+// Utility
+UNexusItemDefinition* UNexusItemInstance::GetDefinition() const
+{
+	if (CachedDefinition) return CachedDefinition;
+	
+	return DefinitionRef.LoadSynchronous();
 }
 
 FGameplayTag UNexusItemInstance::GetIdentityTag() const
@@ -56,17 +55,17 @@ FGameplayTag UNexusItemInstance::GetIdentityTag() const
 	return FGameplayTag();
 }
 
+
+// Stack
 int32 UNexusItemInstance::ModifyStack(int32 Delta, int32 MaxStack)
 {
-	// Note: ModifyStack does NOT broadcast OnInstanceChanged. Stack mutations
-	// flow through UNexusInventoryComponent which already emits OnItemAdded /
-	// OnItemRemoved / OnItemChanged. Broadcasting here would race the inventory's
-	// own weight-cache update on the same call.
 	const int64 Wide      = static_cast<int64>(StackCount) + static_cast<int64>(Delta);
 	const int64 ClampedW  = FMath::Clamp<int64>(Wide, 0, MaxStack);
 	const int32 Clamped   = static_cast<int32>(ClampedW);
 	const int32 Applied   = Clamped - StackCount;
+	
 	StackCount = Clamped;
+	
 	return Applied;
 }
 
@@ -84,6 +83,8 @@ bool UNexusItemInstance::CanStackWith(const UNexusItemInstance* Other) const
 	return true;
 }
 
+
+// Stat
 int32 UNexusItemInstance::GetStat(FGameplayTag StatTag, int32 Default) const
 {
 	if (const int32* Found = StatTags.Find(StatTag))
@@ -97,7 +98,7 @@ void UNexusItemInstance::SetStat(FGameplayTag StatTag, int32 Value)
 {
 	if (!StatTag.IsValid()) return;
 	int32* Existing = StatTags.Find(StatTag);
-	if (Existing && *Existing == Value) return; // no-op write — don't spam the delegate
+	if (Existing && *Existing == Value) return; 
 	StatTags.Add(StatTag, Value);
 	BroadcastChanged();
 }

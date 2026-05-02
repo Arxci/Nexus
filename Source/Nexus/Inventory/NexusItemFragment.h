@@ -2,6 +2,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+
 #include "NexusItemFragment.generated.h"
 
 class UNexusItemDefinition;

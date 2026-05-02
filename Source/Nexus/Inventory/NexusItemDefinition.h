@@ -1,14 +1,20 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+
 #include "Engine/DataAsset.h"
+
 #include "GameplayTagContainer.h"
+
 #include "StructUtils/InstancedStruct.h"
-#include "NexusItemFragment.h"
+
+#include "Nexus/Inventory/NexusItemFragment.h"
+
 #include "NexusItemDefinition.generated.h"
 
 class UTexture2D;
 class UStaticMesh;
+
 
 UCLASS(BlueprintType)
 class NEXUS_API UNexusItemDefinition : public UPrimaryDataAsset

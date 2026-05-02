@@ -117,7 +117,6 @@ bool UNexusEquipmentComponent::EquipInstance(UNexusItemInstance* Instance)
 	}
 	else
 	{
-		// Newly-equipped but not active: ensure it's stowed/hidden, not stuck on the hand.
 		AttachActorForSlotState(SlotTag, /*bActive*/false);
 	}
 	return true;
@@ -215,13 +214,13 @@ UNexusItemInstance* UNexusEquipmentComponent::GetActiveInstance() const
 	return GetEquippedInSlot(ActiveSlot);
 }
 
-FNexusResolvedSlotAnims UNexusEquipmentComponent::GetResolvedSlotAnims(FGameplayTag SlotTag) const
+FResolvedSlotAnims UNexusEquipmentComponent::GetResolvedSlotAnims(FGameplayTag SlotTag) const
 {
-	if (const FNexusResolvedSlotAnims* Found = SlotAnims.Find(SlotTag))
+	if (const FResolvedSlotAnims* Found = SlotAnims.Find(SlotTag))
 	{
 		return *Found;
 	}
-	return FNexusResolvedSlotAnims();
+	return FResolvedSlotAnims();
 }
 
 
@@ -250,10 +249,7 @@ void UNexusEquipmentComponent::ApplyEquipEffects(FGameplayTag SlotTag, UNexusIte
 			SpawnedActors.Add(SlotTag, Spawned);
 		}
 	}
-
-	// Grant abilities. The ASC ref-counts grants now, so two slots granting the
-	// same ability class share one instance and the second unequip won't pull
-	// the rug out from under the first.
+	
 	if (UNexusAbilitySystemComponent* ASC = GetASC())
 	{
 		TArray<TSubclassOf<UNexusAbility>>& Granted = AppliedAbilitiesBySlot.FindOrAdd(SlotTag);
@@ -274,15 +270,13 @@ void UNexusEquipmentComponent::ApplyEquipEffects(FGameplayTag SlotTag, UNexusIte
 		}
 		AppliedTagsBySlot.Add(SlotTag, Pushed);
 	}
-
-	// Resolve presentation animations once at equip time so the anim BP /
-	// fire ability can read hard pointers without sync-loading on the hot path.
-	FNexusResolvedSlotAnims Resolved;
+	
+	FResolvedSlotAnims Resolved;
 	const FEquippableAnimationSet& AnimationSet = Eq->Animations;
 
 	Resolved.IdlePose        = AnimationSet.IdlePose.LoadSynchronous();
 	Resolved.IdleLoop        = AnimationSet.IdleLoop.LoadSynchronous();
-	Resolved.RunLoop = AnimationSet.RunLoop.LoadSynchronous();
+	Resolved.RunLoop         = AnimationSet.RunLoop.LoadSynchronous();
 	Resolved.EquipMontage    = AnimationSet.EquipMontage.LoadSynchronous();
 	Resolved.UnequipMontage  = AnimationSet.UnequipMontage.LoadSynchronous();
 	Resolved.InspectMontage  = AnimationSet.InspectMontage.LoadSynchronous();
@@ -299,9 +293,6 @@ void UNexusEquipmentComponent::RemoveEquipEffects(FGameplayTag SlotTag)
 		{
 			for (const TSubclassOf<UNexusAbility>& AbilityClass : *Granted)
 			{
-				// RemoveAbility is ref-counted on the ASC. Safe to call once per
-				// grant from this slot, even if another slot still grants the
-				// same class — the instance only dies at zero count.
 				ASC->RemoveAbility(AbilityClass);
 			}
 		}
@@ -322,10 +313,7 @@ void UNexusEquipmentComponent::RemoveEquipEffects(FGameplayTag SlotTag)
 		Actor->Destroy();
 	}
 	SpawnedActors.Remove(SlotTag);
-
-	// If the slot we're tearing down was waiting for its hide notify, drop the
-	// marker — its actor is gone anyway and we don't want a stale tag making
-	// HandleSwapLockoutFinished's safety net target a freshly re-equipped slot.
+	
 	if (OutgoingPendingHide.MatchesTagExact(SlotTag))
 	{
 		OutgoingPendingHide = FGameplayTag();
@@ -336,10 +324,6 @@ void UNexusEquipmentComponent::RemoveEquipEffects(FGameplayTag SlotTag)
 
 void UNexusEquipmentComponent::HandleActiveSlotTransition(FGameplayTag OutgoingSlot, FGameplayTag IncomingSlot)
 {
-	// Stomp protection: if a previous swap is still mid-flight, its montage is
-	// about to be interrupted by the new transition (montages share the upper-
-	// body slot). The notify it was waiting on will never fire, so force-hide
-	// that previous outgoing now before we overwrite the pending marker.
 	if (OutgoingPendingHide.IsValid() && !OutgoingPendingHide.MatchesTagExact(OutgoingSlot))
 	{
 		AttachActorForSlotState(OutgoingPendingHide, /*bActive*/false);
@@ -348,15 +332,11 @@ void UNexusEquipmentComponent::HandleActiveSlotTransition(FGameplayTag OutgoingS
 
 	float UnequipLength = 0.0f;
 	float EquipLength   = 0.0f;
-
-	// Outgoing: play the unequip montage and let its HideOutgoingEquipped
-	// anim notify drive the actual hide. We DO NOT hide the actor here — the
-	// player should see the weapon being put away, not have it pop out on
-	// frame 0 of the holster animation.
+	
 	if (OutgoingSlot.IsValid())
 	{
 		UAnimMontage* UnequipMontage = nullptr;
-		if (const FNexusResolvedSlotAnims* Anims = SlotAnims.Find(OutgoingSlot))
+		if (const FResolvedSlotAnims* Anims = SlotAnims.Find(OutgoingSlot))
 		{
 			UnequipMontage = Anims->UnequipMontage;
 		}
@@ -368,27 +348,20 @@ void UNexusEquipmentComponent::HandleActiveSlotTransition(FGameplayTag OutgoingS
 		}
 		else
 		{
-			// No montage configured/played → nothing to wait for, hide now.
-			AttachActorForSlotState(OutgoingSlot, /*bActive*/false);
+
+			AttachActorForSlotState(OutgoingSlot, false);
 		}
 	}
-
-	// Incoming: attach + show before playing the equip montage. The weapon
-	// must be present in the hand from frame 0 of the draw so the animator
-	// can move it into view as part of the animation, rather than have it
-	// pop into existence partway through.
+	
 	if (IncomingSlot.IsValid())
 	{
 		AttachActorForSlotState(IncomingSlot, /*bActive*/true);
-		if (const FNexusResolvedSlotAnims* Anims = SlotAnims.Find(IncomingSlot))
+		if (const FResolvedSlotAnims* Anims = SlotAnims.Find(IncomingSlot))
 		{
 			EquipLength = PlayMontageOnOwner(Anims->EquipMontage);
 		}
 	}
-
-	// Lockout: blocks Fire / Reload / further swaps for the duration of the
-	// longer of the two montages. HandleSwapLockoutFinished is also where the
-	// "designer forgot the hide notify" safety net runs.
+	
 	const float LockoutDuration = FMath::Max(UnequipLength, EquipLength);
 	if (LockoutDuration > 0.0f)
 	{
@@ -425,10 +398,6 @@ void UNexusEquipmentComponent::NotifyHideOutgoingSlot()
 
 void UNexusEquipmentComponent::HandleSwapLockoutFinished()
 {
-	// Safety net: if the unequip montage finished (or was interrupted such
-	// that its HideOutgoingEquipped notify never fired), hide the outgoing
-	// now so we don't leak a visible weapon. Designer-authored notifies
-	// fire earlier in the montage, so this path normally has nothing to do.
 	if (OutgoingPendingHide.IsValid())
 	{
 		const FGameplayTag SlotToHide = OutgoingPendingHide;
@@ -451,8 +420,6 @@ void UNexusEquipmentComponent::AttachActorForSlotState(FGameplayTag SlotTag, boo
 
 	if (!bActive)
 	{
-		// Inactive: hide. The actor stays alive so swapping back is instant —
-		// destroy/respawn on every weapon swap is too costly given the assets.
 		Actor->SetEquippedVisibility(false);
 		return;
 	}

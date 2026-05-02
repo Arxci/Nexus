@@ -1,19 +1,20 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
-#include "EMSCompSaveInterface.h"
 
-#include "NexusItemDefinition.h" 
-#include "NexusItemInstance.h"
+#include "EMSCompSaveInterface.h"
 
 #include "NexusInventoryComponent.generated.h"
 
+class UNexusItemDefinition;
+class UNexusItemInstance;
+
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInventoryItemChanged, UNexusItemInstance*, Instance);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInventoryChanged);
+
 
 USTRUCT(BlueprintType)
 struct NEXUS_API FNexusAddItemResult
@@ -43,7 +44,8 @@ class NEXUS_API UNexusInventoryComponent : public UActorComponent, public IEMSCo
 
 public:
 	UNexusInventoryComponent();
-
+	
+public:
 	// Add/Remove
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	FNexusAddItemResult AddItem(UNexusItemDefinition* Definition, int32 Count);
@@ -58,21 +60,18 @@ public:
 	bool AddInstance(UNexusItemInstance* Instance);
 
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	int32 RemoveFromInstance(UNexusItemInstance* Instance, int32 Count);
-
-	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	bool RemoveInstance(UNexusItemInstance* Instance);
-
+	
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void ClearAll();
 
-	
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	int32 RemoveFromInstance(UNexusItemInstance* Instance, int32 Count);
+
+public:
 	// Utility
 	UFUNCTION(BlueprintPure, Category = "Inventory")
-	const TArray<UNexusItemInstance*>& GetItems() const
-	{
-		return reinterpret_cast<const TArray<UNexusItemInstance*>&>(Items);
-	}
+	const TArray<UNexusItemInstance*>& GetItems() const { return Items; }
 
 	UFUNCTION(BlueprintPure, Category = "Inventory")
 	int32 GetTotalCountForDefinition(const UNexusItemDefinition* Definition) const;
@@ -89,13 +88,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Inventory")
 	UNexusItemInstance* FindFirstByIdentityTag(FGameplayTag IdentityTag) const;
 
-	UFUNCTION(BlueprintPure, Category = "Inventory")
-	bool HasItemWithUnlockTag(FGameplayTag UnlockTag) const;
-
 	template <typename T>
 	void ForEachInstanceWithFragment(TFunctionRef<void(UNexusItemInstance*, const T&)> Fn) const;
 
-	
+public:
 	//Capacity
 	UFUNCTION(BlueprintPure, Category = "Inventory|Capacity")
 	float GetUsedWeight() const;
@@ -112,7 +108,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Inventory|Capacity", meta = (ClampMin = "1"))
 	int32 MaxItemsPerAddCall = 10000;
 
-	
+public:
 	//Delegates
 	UPROPERTY(BlueprintAssignable, Category = "Inventory")
 	FOnInventoryItemChanged OnItemAdded;
@@ -127,9 +123,12 @@ public:
 	FOnInventoryChanged OnInventoryChanged;
 
 protected:
+	//~Start save interface
 	virtual void ComponentSaved_Implementation() override;
 	virtual void ComponentLoaded_Implementation() override;
+	//~End save interface
 
+protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Inventory|Capacity", meta = (ClampMin = "0"))
 	int32 SlotCapacity = 0;
 
@@ -148,6 +147,9 @@ private:
 	void BindInstance(UNexusItemInstance* Instance);
 	void UnbindInstance(UNexusItemInstance* Instance);
 
+	float CachedUsedWeight = 0.0f;
+
+private:
 	struct FPendingChange
 	{
 		TWeakObjectPtr<UNexusItemInstance> Instance;
@@ -157,8 +159,6 @@ private:
 	TArray<FPendingChange> PendingChanges;
 	int32 BroadcastDeferDepth = 0;
 	bool bFlushInProgress = false;
-	
-	float CachedUsedWeight = 0.0f;
 
 	void EnqueueChange(UNexusItemInstance* Instance, bool bAdded, bool bRemoved);
 	void FlushPendingChanges();
@@ -181,17 +181,6 @@ private:
 	};
 };
 
-template <typename T>
-void UNexusInventoryComponent::ForEachInstanceWithFragment(TFunctionRef<void(UNexusItemInstance*, const T&)> Fn) const
-{
-	for (UNexusItemInstance* Instance : Items)
-	{
-		if (!Instance) continue;
-		const UNexusItemDefinition* Def = Instance->GetDefinition();
-		if (!Def) continue;
-		if (const T* Frag = Def-> FindFragment<T>())
-		{
-			Fn(Instance, *Frag);
-		}
-	}
-}
+#if CPP
+#include "Nexus/Inventory/NexusInventoryComponent.inl"
+#endif

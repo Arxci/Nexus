@@ -1,14 +1,19 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+
 #include "GameplayTagContainer.h"
+
 #include "Curves/CurveFloat.h"
+
 #include "Nexus/Inventory/NexusItemFragment.h"
+
 #include "NexusFragment_Weapon.generated.h"
 
 class UCameraShakeBase;
 class UFXSystemAsset;
 class USoundBase;
+
 
 UENUM(BlueprintType)
 enum class ENexusWeaponFireMode : uint8
@@ -30,10 +35,7 @@ USTRUCT(BlueprintType, DisplayName = "Animations")
 struct NEXUS_API FWeaponAnimations
 {
 	GENERATED_BODY()
-
-	// ---- Animation (action montages played by weapon abilities). Pose / equip /
-	// unequip animations live on FNexusFragment_AnimationSet so non-weapon
-	// holdables can use them too. ----
+	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation")
 	TSoftObjectPtr<UAnimMontage> FireMontage;
 
@@ -130,16 +132,11 @@ struct NEXUS_API FWeaponReload
 	/** Fallback duration if the reload montage has no AmmoTransfer notify. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Reload", meta = (ClampMin = "0.0"))
 	float ReloadDuration = 1.5f;
-
-	/**
-	 * Notify name on the reload montage that triggers ammo transfer. If the montage
-	 * fires this notify, ammo is transferred at that exact frame; otherwise the
-	 * transfer happens when ReloadDuration elapses. Default matches the "AmmoTransfer"
-	 * AnimNotify designers should drop on the magazine-clicks-in keyframe.
-	 */
+	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Reload")
 	FName AmmoTransferNotifyName = "AmmoTransfer";
 };
+
 
 USTRUCT(BlueprintType, DisplayName = "Weapon")
 struct NEXUS_API FNexusFragment_Weapon : public FNexusItemFragment

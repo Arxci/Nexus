@@ -1,16 +1,15 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-
-#include "NexusItemPickup.h"
+﻿#include "NexusItemPickup.h"
 
 #include "Components/StaticMeshComponent.h"
+
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
-#include "Kismet/GameplayStatics.h"
-#include "NexusInventoryComponent.h"
-#include "NexusItemDefinition.h"
-#include "NexusItemInstance.h"
 #include "Engine/AssetManager.h"
+#include "Kismet/GameplayStatics.h"
+
+#include "Nexus/Inventory/NexusInventoryComponent.h"
+#include "Nexus/Inventory/NexusItemDefinition.h"
+#include "Nexus/Inventory/NexusItemInstance.h"
 #include "Nexus/Interaction/NexusInteractableComponent.h"
 
 ANexusItemPickup::ANexusItemPickup()
@@ -33,20 +32,7 @@ void ANexusItemPickup::BeginPlay()
 		return;
 	}
 
-	if (Mesh && Definition && !Definition->PickupMesh.IsNull() && !Mesh->GetStaticMesh())
-	{
-		const TSoftObjectPtr<UStaticMesh> MeshPtr = Definition->PickupMesh;
-		FStreamableManager& Streamable = UAssetManager::GetStreamableManager();
-		PickupMeshHandle = Streamable.RequestAsyncLoad(
-			MeshPtr.ToSoftObjectPath(),
-			FStreamableDelegate::CreateWeakLambda(this, [this, MeshPtr]()
-			{
-				if (Mesh && !Mesh->GetStaticMesh())
-				{
-					Mesh->SetStaticMesh(MeshPtr.Get());
-				}
-			}));
-	}
+	RequestPickupMeshLoad();
 
 	if (Interactable)
 	{
@@ -97,6 +83,26 @@ void ANexusItemPickup::ConfigurePickup(UNexusItemDefinition* InDefinition, int32
 {
 	Definition   = InDefinition;
 	InitialCount = FMath::Max(1, InCount);
+	RequestPickupMeshLoad();
+}
+
+void ANexusItemPickup::RequestPickupMeshLoad()
+{
+	if (!Mesh || !Definition || Definition->PickupMesh.IsNull()) return;
+	if (Mesh->GetStaticMesh()) return;
+	if (PickupMeshHandle.IsValid() && !PickupMeshHandle->HasLoadCompleted()) return;
+
+	const TSoftObjectPtr<UStaticMesh> MeshPtr = Definition->PickupMesh;
+	FStreamableManager& Streamable = UAssetManager::GetStreamableManager();
+	PickupMeshHandle = Streamable.RequestAsyncLoad(
+		MeshPtr.ToSoftObjectPath(),
+		FStreamableDelegate::CreateWeakLambda(this, [this, MeshPtr]()
+		{
+			if (Mesh && !Mesh->GetStaticMesh())
+			{
+				Mesh->SetStaticMesh(MeshPtr.Get());
+			}
+		}));
 }
 
 UNexusInventoryComponent* ANexusItemPickup::ResolveInventory(AActor* Interactor) const
@@ -113,14 +119,15 @@ UNexusInventoryComponent* ANexusItemPickup::ResolveInventory(AActor* Interactor)
 	{
 		return PlayerPawn->FindComponentByClass<UNexusInventoryComponent>();
 	}
+	
 	return nullptr;
 }
 
-void ANexusItemPickup::HandleInteractionCompleted()
+void ANexusItemPickup::HandleInteractionCompleted(AActor* Interactor)
 {
 	if (bWasCollected || !Definition) return;
 
-	UNexusInventoryComponent* Inventory = ResolveInventory(nullptr);
+	UNexusInventoryComponent* Inventory = ResolveInventory(Interactor);
 	if (!Inventory) return;
 
 	const FNexusAddItemResult AddResult = Inventory->AddItem(Definition, InitialCount);
@@ -141,7 +148,6 @@ void ANexusItemPickup::HandleInteractionCompleted()
 
 	if (AddResult.Remainder > 0)
 	{
-		// Partial pickup: leave the rest in the world.
 		InitialCount = AddResult.Remainder;
 		return;
 	}

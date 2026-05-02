@@ -2,13 +2,16 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
+
 #include "Nexus/Inventory/NexusItemFragment.h"
+
 #include "NexusFragment_Equippable.generated.h"
 
 class UNexusAbility;
 class ANexusEquippedActor;
 class UAnimInstance;
 class USkeletalMesh;
+
 
 USTRUCT(BlueprintType, DisplayName = "Animation Set")
 struct NEXUS_API FEquippableAnimationSet
@@ -33,6 +36,7 @@ struct NEXUS_API FEquippableAnimationSet
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Montage")
 	TSoftObjectPtr<UAnimMontage> InspectMontage;
 };
+
 
 USTRUCT(BlueprintType, DisplayName = "Equippable")
 struct NEXUS_API FNexusFragment_Equippable : public FNexusItemFragment

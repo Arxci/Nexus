@@ -20,9 +20,9 @@ class NEXUS_API INexusInteractableInterface
 
 public:
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interaction")
-	void TryStartInteraction();
+	void TryStartInteraction(AActor* Interactor);
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interaction")
-	void TryStopInteraction();
+	void TryStopInteraction(AActor* Interactor);
 
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interaction")
 	void OnEnteredPlayerRange();

@@ -22,7 +22,7 @@ class UNexusItemInstance;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnEquipmentChanged, FGameplayTag, SlotTag, UNexusItemInstance*, Instance);
 
 USTRUCT(BlueprintType)
-struct NEXUS_API FNexusResolvedSlotAnims
+struct NEXUS_API FResolvedSlotAnims
 {
 	GENERATED_BODY()
 
@@ -90,14 +90,8 @@ public:
 	bool IsSwapping() const { return bIsSwapping; }
 
 	UFUNCTION(BlueprintPure, Category = "Equipment|Anims")
-	FNexusResolvedSlotAnims GetResolvedSlotAnims(FGameplayTag SlotTag) const;
-
-	/**
-	 * Called by UNexusAnimNotify_HideOutgoingEquipped from the unequip montage.
-	 * Hides the slot whose unequip is currently in flight and clears the
-	 * pending-hide marker. Designer-authored notify is the canonical way to
-	 * synchronize visibility with the holster animation.
-	 */
+	FResolvedSlotAnims GetResolvedSlotAnims(FGameplayTag SlotTag) const;
+	
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Anim Notify")
 	void NotifyHideOutgoingSlot();
 
@@ -127,7 +121,7 @@ protected:
 	TMap<FGameplayTag, TObjectPtr<ANexusEquippedActor>> SpawnedActors;
 
 	UPROPERTY(Transient)
-	TMap<FGameplayTag, FNexusResolvedSlotAnims> SlotAnims;
+	TMap<FGameplayTag, FResolvedSlotAnims> SlotAnims;
 
 	UPROPERTY(Transient)
 	TMap<FGameplayTag, FGameplayTagContainer> AppliedTagsBySlot;
@@ -152,11 +146,7 @@ private:
 
 	UFUNCTION()
 	void HandleSwapLockoutFinished();
-
-	/** Slot whose unequip montage is currently playing and is waiting for its
-	 *  HideOutgoingEquipped notify. Cleared by the notify or by the lockout-end
-	 *  safety net. Stomp-protected: starting a new swap force-hides any
-	 *  previously-pending slot whose montage just got interrupted. */
+	
 	FGameplayTag OutgoingPendingHide;
 
 	FTimerHandle SwapLockoutTimer;

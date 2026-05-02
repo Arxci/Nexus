@@ -1,14 +1,11 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-
-#include "NexusInventoryComponent.h"
+﻿#include "NexusInventoryComponent.h"
 
 #include "EMSData.h"
 #include "EMSFunctionLibrary.h"
-#include "NexusItemDefinition.h"
-#include "NexusItemInstance.h"
-#include "Fragments/NexusFragment_KeyItem.h"
-#include "Fragments/NexusFragment_Stackable.h"
+
+#include "Nexus/Inventory/NexusItemDefinition.h"
+#include "Nexus/Inventory/NexusItemInstance.h"
+#include "Nexus/Inventory/Fragments/NexusFragment_Stackable.h"
 
 namespace
 {
@@ -20,35 +17,12 @@ namespace
 	}
 }
 
+
 UNexusInventoryComponent::UNexusInventoryComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
 }
 
-void UNexusInventoryComponent::BindInstance(UNexusItemInstance* Instance)
-{
-	if (!Instance) return;
-	// AddUniqueDynamic so reparenting an instance never double-subscribes us.
-	Instance->OnInstanceChanged.AddUniqueDynamic(this, &UNexusInventoryComponent::HandleInstanceChanged);
-}
-
-void UNexusInventoryComponent::UnbindInstance(UNexusItemInstance* Instance)
-{
-	if (!Instance) return;
-	Instance->OnInstanceChanged.RemoveDynamic(this, &UNexusInventoryComponent::HandleInstanceChanged);
-}
-
-void UNexusInventoryComponent::HandleInstanceChanged(UNexusItemInstance* Instance)
-{
-	if (!Instance || !Items.Contains(Instance)) return;
-
-	// Stat mutations don't change inventory weight (stack count is the only
-	// driver, and stack changes flow through inventory methods that maintain
-	// the weight cache themselves). All we do here is relay the change so HUD
-	// code can subscribe to the inventory and not every individual instance.
-	FBroadcastScope Scope(this);
-	EnqueueChange(Instance, /*bAdded*/false, /*bRemoved*/false);
-}
 
 // Add/Remove
 FNexusAddItemResult UNexusInventoryComponent::AddItem(UNexusItemDefinition* Definition, int32 Count)
@@ -163,31 +137,6 @@ bool UNexusInventoryComponent::AddInstance(UNexusItemInstance* Instance)
 	return true;
 }
 
-int32 UNexusInventoryComponent::RemoveFromInstance(UNexusItemInstance* Instance, int32 Count)
-{
-	if (!Instance || Count <= 0 || !Items.Contains(Instance)) return 0;
-
-	FBroadcastScope Scope(this);
-
-	const UNexusItemDefinition* Def = Instance->GetDefinition();
-	const float UnitWeight = Def ? Def->Weight : 0.0f;
-
-	const int32 Removed = -Instance->ModifyStack(-Count);
-	CachedUsedWeight = FMath::Max(0.0f, CachedUsedWeight - Removed * UnitWeight);
-
-	if (Instance->IsEmpty())
-	{
-		UnbindInstance(Instance);
-		Items.RemoveSingle(Instance);
-		EnqueueChange(Instance, false, true);
-	}
-	else if (Removed > 0)
-	{
-		EnqueueChange(Instance, false, false);
-	}
-	return Removed;
-}
-
 bool UNexusInventoryComponent::RemoveInstance(UNexusItemInstance* Instance)
 {
 	if (!Instance) return false;
@@ -222,6 +171,33 @@ void UNexusInventoryComponent::ClearAll()
 	}
 }
 
+int32 UNexusInventoryComponent::RemoveFromInstance(UNexusItemInstance* Instance, int32 Count)
+{
+	if (!Instance || Count <= 0 || !Items.Contains(Instance)) return 0;
+
+	FBroadcastScope Scope(this);
+
+	const UNexusItemDefinition* Def = Instance->GetDefinition();
+	const float UnitWeight = Def ? Def->Weight : 0.0f;
+
+	const int32 Removed = -Instance->ModifyStack(-Count);
+	CachedUsedWeight = FMath::Max(0.0f, CachedUsedWeight - Removed * UnitWeight);
+
+	if (Instance->IsEmpty())
+	{
+		UnbindInstance(Instance);
+		Items.RemoveSingle(Instance);
+		EnqueueChange(Instance, false, true);
+	}
+	else if (Removed > 0)
+	{
+		EnqueueChange(Instance, false, false);
+	}
+	return Removed;
+}
+
+
+// Broadcast
 void UNexusInventoryComponent::EnqueueChange(UNexusItemInstance* Instance, bool bAdded, bool bRemoved) 
 {
 	PendingChanges.Add({ Instance, bAdded, bRemoved });
@@ -232,7 +208,7 @@ void UNexusInventoryComponent::FlushPendingChanges()
 	if (bFlushInProgress) return;
 	if (PendingChanges.Num() == 0) return;
 
-	TGuardValue<bool> InProgress(bFlushInProgress, true);
+	TGuardValue InProgress(bFlushInProgress, true);
 
 	while (PendingChanges.Num() > 0)
 	{
@@ -253,6 +229,26 @@ void UNexusInventoryComponent::FlushPendingChanges()
 
 		if (bAnyChange) OnInventoryChanged.Broadcast();
 	}
+}
+
+void UNexusInventoryComponent::BindInstance(UNexusItemInstance* Instance)
+{
+	if (!Instance) return;
+	Instance->OnInstanceChanged.AddUniqueDynamic(this, &UNexusInventoryComponent::HandleInstanceChanged);
+}
+
+void UNexusInventoryComponent::UnbindInstance(UNexusItemInstance* Instance)
+{
+	if (!Instance) return;
+	Instance->OnInstanceChanged.RemoveDynamic(this, &UNexusInventoryComponent::HandleInstanceChanged);
+}
+
+void UNexusInventoryComponent::HandleInstanceChanged(UNexusItemInstance* Instance)
+{
+	if (!Instance || !Items.Contains(Instance)) return;
+	
+	FBroadcastScope Scope(this);
+	EnqueueChange(Instance, false, false);
 }
 
 // Utility
@@ -320,30 +316,6 @@ UNexusItemInstance* UNexusInventoryComponent::FindFirstByIdentityTag(FGameplayTa
 	return nullptr;
 }
 
-bool UNexusInventoryComponent::HasItemWithUnlockTag(FGameplayTag UnlockTag) const
-{
-	if (!UnlockTag.IsValid()) return false;
-	bool bFound = false;
-	ForEachInstanceWithFragment<FNexusFragment_KeyItem>(
-		[&](UNexusItemInstance* /*Instance*/, const FNexusFragment_KeyItem& Key)
-		{
-			if (!bFound && Key.UnlockTag.MatchesTagExact(UnlockTag))
-			{
-				bFound = true;
-			}
-		});
-	return bFound;
-}
-
-
-// Capacity
-float UNexusInventoryComponent::GetUsedWeight() const
-{
-	return CachedUsedWeight;
-}
-
-
-// Utility
 int32 UNexusInventoryComponent::GetMaxStackForDefinition(const UNexusItemDefinition* Definition) const
 {
 	if (!Definition) return 1;
@@ -352,6 +324,13 @@ int32 UNexusInventoryComponent::GetMaxStackForDefinition(const UNexusItemDefinit
 		return FMath::Max(1, Stack->MaxStackSize);
 	}
 	return 1;
+}
+
+
+// Capacity
+float UNexusInventoryComponent::GetUsedWeight() const
+{
+	return CachedUsedWeight;
 }
 
 

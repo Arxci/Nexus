@@ -14,8 +14,8 @@ class UUserWidget;
 class UNexusWorldMarkerWidget;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInteractionProgressed, float, ElapsedTime);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInteractionStarted);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInteractionEnded);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInteractionStarted, AActor*, Interactor);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInteractionEnded, AActor*, Interactor);
 
 
 UCLASS(Blueprintable, BlueprintType, ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
@@ -39,8 +39,8 @@ protected:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 FActorComponentTickFunction* ThisTickFunction) override;
 	
-	virtual void TryStartInteraction_Implementation() override;
-	virtual void TryStopInteraction_Implementation() override;
+	virtual void TryStartInteraction_Implementation(AActor* Interactor) override;
+	virtual void TryStopInteraction_Implementation(AActor* Interactor) override;
 
 	virtual void OnEnteredPlayerRange_Implementation() override;
 	virtual void OnLeftPlayerRange_Implementation() override;

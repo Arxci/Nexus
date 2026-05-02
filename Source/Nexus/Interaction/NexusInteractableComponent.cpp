@@ -40,19 +40,19 @@ float UNexusInteractableComponent::GetElapsedTime() const
 	return 0.0f;
 }
 
-void UNexusInteractableComponent::TryStartInteraction_Implementation()
+void UNexusInteractableComponent::TryStartInteraction_Implementation(AActor* Interactor)
 {
 	if (const UWorld* World = GetWorld())
 	{
 		InteractionStartTime = World->GetTimeSeconds();
 	}
-	OnInteractionStarted.Broadcast();
+	OnInteractionStarted.Broadcast(Interactor);
 	SetComponentTickEnabled(true);
 }
 
-void UNexusInteractableComponent::TryStopInteraction_Implementation()
+void UNexusInteractableComponent::TryStopInteraction_Implementation(AActor* Interactor)
 {
-	OnInteractionEnded.Broadcast();
+	OnInteractionEnded.Broadcast(Interactor);
 
 	SetComponentTickEnabled(false);
 }
