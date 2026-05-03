@@ -27,16 +27,8 @@ class NEXUS_API ANexusCharacterBase : public ACharacter, public INexusAbilitySys
 
 public:
 	ANexusCharacterBase(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
-	
-	virtual UNexusAbilitySystemComponent* GetNexusAbilitySystemComponent() const override;
-	UFUNCTION(BlueprintPure, Category = "Character")
-	UNexusCharacterMovementComponent* GetNexusCharacterMovement() const;
-	UFUNCTION(BlueprintPure, Category = "Character")
-	UNexusInventoryComponent* GetNexusInventoryComponent() const { return NexusInventoryComponent; }
-	UFUNCTION(BlueprintPure, Category = "Character")
-	UNexusEquipmentComponent* GetNexusEquipmentComponent() const { return NexusEquipmentComponent; }
-	
-	
+
+public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
 	TObjectPtr<UNexusAbilitySystemComponent> NexusAbilitySystemComponent;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
@@ -46,6 +38,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
 	TObjectPtr<UNexusEquipmentComponent> NexusEquipmentComponent;
 
+public:
 	//Movement
 	UFUNCTION()
 	void OnStartRun();
@@ -56,7 +49,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Character")
 	void StopRun() const;
 
-
+public:
 	//Utility
 	UFUNCTION(BlueprintPure)
 	bool GetIsCrouched() const;
@@ -65,6 +58,15 @@ public:
 	UFUNCTION(BlueprintPure)
 	bool GetIsGrounded() const;
 
+	virtual UNexusAbilitySystemComponent* GetNexusAbilitySystemComponent() const override { return NexusAbilitySystemComponent; };
+	UFUNCTION(BlueprintPure, Category = "Character")
+	UNexusCharacterMovementComponent* GetNexusCharacterMovement() const { return NexusCharacterMovement; };
+	UFUNCTION(BlueprintPure, Category = "Character")
+	UNexusInventoryComponent* GetNexusInventoryComponent() const { return NexusInventoryComponent; }
+	UFUNCTION(BlueprintPure, Category = "Character")
+	UNexusEquipmentComponent* GetNexusEquipmentComponent() const { return NexusEquipmentComponent; }
+
+public:
 	//Delegates
 	UPROPERTY(BlueprintAssignable)
 	FOnCharacterLoaded OnCharacterLoaded;
@@ -74,10 +76,14 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void UnPossessed() override;
-	
+
+protected:
+	//~Start save interface
 	virtual void ActorPreSave_Implementation() override;
 	virtual void ActorLoaded_Implementation() override;
-	
+	//~Stop save interface
+
+protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
 	TArray<TSubclassOf<UNexusAbility>> DefaultAbilities;
 

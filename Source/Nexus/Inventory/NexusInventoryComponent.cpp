@@ -5,7 +5,7 @@
 
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
-#include "Nexus/Inventory/Fragments/NexusFragment_Stackable.h"
+#include "Nexus/Inventory/Fragments/Stackable/NexusFragment_Stackable.h"
 
 namespace
 {
@@ -16,7 +16,6 @@ namespace
 		return Def ? Def->Weight * Instance->GetStackCount() : 0.0f;
 	}
 }
-
 
 UNexusInventoryComponent::UNexusInventoryComponent()
 {
@@ -152,6 +151,7 @@ bool UNexusInventoryComponent::RemoveInstance(UNexusItemInstance* Instance)
 		EnqueueChange(Instance, false, true);
 		return true;
 	}
+	
 	return false;
 }
 
@@ -198,7 +198,7 @@ int32 UNexusInventoryComponent::RemoveFromInstance(UNexusItemInstance* Instance,
 
 
 // Broadcast
-void UNexusInventoryComponent::EnqueueChange(UNexusItemInstance* Instance, bool bAdded, bool bRemoved) 
+void UNexusInventoryComponent::EnqueueChange(UNexusItemInstance* Instance, const bool bAdded, const bool bRemoved) 
 {
 	PendingChanges.Add({ Instance, bAdded, bRemoved });
 }

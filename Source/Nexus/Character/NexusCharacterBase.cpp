@@ -1,9 +1,7 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+﻿#include "NexusCharacterBase.h"
 
-
-#include "NexusCharacterBase.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
-#include "NexusCharacterMovementComponent.h"
+#include "Nexus/Character/NexusCharacterMovementComponent.h"
 #include "Nexus/AbilitySystem/NexusAbility.h"
 #include "Nexus/NexusGameplayTags.h"
 
@@ -18,16 +16,6 @@ ANexusCharacterBase::ANexusCharacterBase(const FObjectInitializer& ObjectInitial
 	NexusEquipmentComponent     = CreateDefaultSubobject<UNexusEquipmentComponent>(TEXT("EquipmentComponent"));
 
 	GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch = true;
-}
-
-UNexusCharacterMovementComponent* ANexusCharacterBase::GetNexusCharacterMovement() const
-{
-	return NexusCharacterMovement;
-}
-
-UNexusAbilitySystemComponent* ANexusCharacterBase::GetNexusAbilitySystemComponent() const
-{
-	return NexusAbilitySystemComponent;
 }
 
 void ANexusCharacterBase::PossessedBy(AController* NewController)

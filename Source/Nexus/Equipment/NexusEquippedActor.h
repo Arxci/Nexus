@@ -1,21 +1,15 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+
 #include "GameFramework/Actor.h"
+
 #include "NexusEquippedActor.generated.h"
 
 class UNexusItemInstance;
 class USkeletalMeshComponent;
 
-/**
- * Visible 3D representation of an equipped item, attached to the owning
- * character's mesh. Pure presentation — no game state lives here.
- *
- * The default rendering setup is third-person (cast shadows, default primitive
- * type) so AI-held weapons look correct out of the box. Equipment calls
- * ApplyOwnerViewpointRendering() post-spawn to flip into first-person mode
- * for the local player.
- */
+
 UCLASS(Blueprintable)
 class NEXUS_API ANexusEquippedActor : public AActor
 {
@@ -23,8 +17,7 @@ class NEXUS_API ANexusEquippedActor : public AActor
 
 public:
 	ANexusEquippedActor();
-
-	/** Called by EquipmentComponent immediately after Spawn + Attach. */
+	
 	virtual void InitializeFromInstance(UNexusItemInstance* Instance);
 
 	UFUNCTION(BlueprintPure, Category = "Equipped")
@@ -41,18 +34,7 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Equipped")
 	bool IsEquippedVisible() const { return bVisible; }
-
-	/**
-	 * Configure rendering based on who's holding the item:
-	 *   - Local player pawn → first-person primitive type, no shadow casting
-	 *     (avoids the FP weapon casting visible "ghost arm" shadows on walls).
-	 *   - Anyone else (AI, remote) → default primitive type, shadows on
-	 *     (silhouette on the wall is how the player spots a threat at distance).
-	 *
-	 * Equipment calls this once after spawn. Safe to call again on possession
-	 * change — supports future camera-swap or POV-switching mechanics without
-	 * touching Equipment.
-	 */
+	
 	UFUNCTION(BlueprintCallable, Category = "Equipped")
 	void ApplyOwnerViewpointRendering();
 

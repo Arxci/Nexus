@@ -81,6 +81,4 @@ protected:
 
 	UPROPERTY(SaveGame)
 	TMap<FGameplayTag, int32> StatTags;
-	
-
 };

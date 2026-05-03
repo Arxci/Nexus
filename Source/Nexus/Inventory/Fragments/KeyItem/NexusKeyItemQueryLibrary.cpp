@@ -1,6 +1,6 @@
 ﻿#include "NexusKeyItemQueryLibrary.h"
 
-#include "Nexus/Inventory/Fragments/NexusFragment_KeyItem.h"
+#include "Nexus/Inventory/Fragments/KeyItem/NexusFragment_KeyItem.h"
 #include "Nexus/Inventory/NexusInventoryComponent.h"
 
 bool UNexusKeyItemQueryLibrary::InventoryHasUnlockTag(

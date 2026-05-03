@@ -1,8 +1,11 @@
 ﻿#include "NexusEquippedActor.h"
 
 #include "Components/SkeletalMeshComponent.h"
+
 #include "Engine/SkeletalMesh.h"
+
 #include "GameFramework/Pawn.h"
+
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
 #include "Nexus/Inventory/Fragments/NexusFragment_Equippable.h"
@@ -14,10 +17,6 @@ ANexusEquippedActor::ANexusEquippedActor()
 	Mesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Mesh"));
 	SetRootComponent(Mesh);
 	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-
-	// Defaults are third-person: shadows on, default primitive type. The local
-	// player's items are reconfigured via ApplyOwnerViewpointRendering() so AI
-	// and remote pawns render correctly out of the box without any extra setup.
 }
 
 void ANexusEquippedActor::InitializeFromInstance(UNexusItemInstance* Instance)

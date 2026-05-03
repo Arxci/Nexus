@@ -1,16 +1,20 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
+
 #include "Components/ActorComponent.h"
+
 #include "GameplayTagContainer.h"
+
 #include "EMSCompSaveInterface.h"
+
 #include "NexusAbilitySystemComponent.generated.h"
+
 
 class ACharacter;
 class AController;
 class UNexusAbility;
+
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAbilityStateChanged, UNexusAbility*, Ability);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnTagChanged, FGameplayTag, Tag, bool, bAdded);
@@ -168,11 +172,13 @@ public:
 protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
-	// EMS Component Save Interface
+protected:
+	//~Start save interface
 	virtual void ComponentPreSave_Implementation() override;
 	virtual void ComponentSaved_Implementation() override;
 	virtual void ComponentPreLoad_Implementation() override;
 	virtual void ComponentLoaded_Implementation() override;
+	//~Stop save interface
 
 	UPROPERTY(Transient)
 	AController* CachedController = nullptr;

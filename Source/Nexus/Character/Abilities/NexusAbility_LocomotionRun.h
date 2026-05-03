@@ -1,19 +1,19 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
+﻿// NexusAbility_Run.h
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Nexus/AbilitySystem/NexusAbility.h"
-#include "NexusAbility_LocomotionCrouch.generated.h"
+#include "NexusAbility_LocomotionRun.generated.h"
 
-UCLASS()
-class NEXUS_API UNexusAbility_LocomotionCrouch : public UNexusAbility
+UCLASS(Blueprintable)
+class NEXUS_API UNexusAbility_LocomotionRun : public UNexusAbility
 {
 	GENERATED_BODY()
 
 protected:
-	UNexusAbility_LocomotionCrouch();
-	
+	UNexusAbility_LocomotionRun();
+
+protected:
 	virtual bool RequestActivateAbility() override;
 	virtual bool RequestDeactivateAbility(bool bForce) override;
 	virtual void ForceEndAbility() override;
@@ -23,11 +23,14 @@ protected:
 	virtual void TickAbility(float DeltaTime) override;
 	virtual bool CanTick() override;
 
+protected:
+	float BoostThreshold = 0.2f;
+	
+protected:
 	// Save/Restore
 	virtual void OnSaveStateRestored() override;
 	
 private:
-	bool CanCharacterCrouch() const;
-	bool CanCharacterUnCrouch() const;
+	bool CanCharacterRun() const;
+	bool CanCharacterWalk() const;
 };
-	

@@ -3,10 +3,14 @@
 #pragma once
 
 #include "CoreMinimal.h"
+
 #include "EnhancedInputComponent.h"
-#include "Nexus/Character/NexusCharacterBase.h"
 #include "InputActionValue.h"
+
 #include "GameplayTagContainer.h"
+
+#include "Nexus/Character/NexusCharacterBase.h"
+
 #include "NexusHeroCharacter.generated.h"
 
 class UInputMappingContext;
@@ -15,12 +19,14 @@ class USceneComponent;
 class USpringArmComponent;
 class UCameraComponent;
 
+
 UENUM(BlueprintType)
 enum class EInputMode : uint8
 {
 	Hold   UMETA(DisplayName = "Hold"),
 	Toggle UMETA(DisplayName = "Toggle"),
 };
+
 
 UCLASS(PrioritizeCategories = ("Abilities","Camera","Input"))
 class NEXUS_API ANexusHeroCharacter : public ANexusCharacterBase
@@ -31,7 +37,9 @@ public:
 	ANexusHeroCharacter(const FObjectInitializer& ObjectInitializer  = FObjectInitializer::Get());
 
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
-
+	
+public:
+	// Utility
 	UFUNCTION(BlueprintPure)
 	bool GetIsTurning() const;
 	UFUNCTION(BlueprintPure)
@@ -39,6 +47,7 @@ public:
 	UFUNCTION(BlueprintPure)
 	FVector GetAcceleration() const;
 
+	// Input
 	UFUNCTION(BlueprintPure)
 	FVector2D GetLookInput() const;
 	UFUNCTION(BlueprintPure)
@@ -51,6 +60,8 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
+protected:
+	// Components
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Camera")
 	TObjectPtr<USceneComponent> ViewRoot;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Camera")
@@ -60,6 +71,8 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Camera")
 	TObjectPtr<UCameraComponent> FollowCamera;
 
+protected:
+	// Input
 	UPROPERTY(EditAnywhere, Category = "Character|Input")
 	TObjectPtr<UInputMappingContext> DefaultMappingContext;
 	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions")
@@ -91,13 +104,18 @@ protected:
 
 	UEnhancedInputComponent* GetEnhancedInputComponent() const { return EnhancedInputComponent; }
 
+protected:
+	//~Start save interface
 	virtual void ActorPreLoad_Implementation() override;
 	virtual void ActorLoaded_Implementation() override;
+	//~Stop save interface
 
 private:
 	UPROPERTY()
 	TObjectPtr<UEnhancedInputComponent> EnhancedInputComponent;
 
+private:
+	// Input
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 	void OnCrouchInputStarted();

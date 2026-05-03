@@ -1,7 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-
-#include "NexusAbility_Weapon.h"
+﻿#include "NexusAbility_Weapon.h"
 
 #include "Nexus/Equipment/NexusEquipmentComponent.h"
 #include "Nexus/Equipment/NexusEquippedActor.h"

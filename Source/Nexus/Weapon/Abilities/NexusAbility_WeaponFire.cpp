@@ -1,23 +1,28 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-
-#include "NexusAbility_WeaponFire.h"
+﻿#include "NexusAbility_WeaponFire.h"
 
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
+
 #include "Camera/CameraShakeBase.h"
+
 #include "Components/SkeletalMeshComponent.h"
+
 #include "Engine/EngineTypes.h"
 #include "Engine/World.h"
+
 #include "GameFramework/Character.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/PlayerController.h"
+
 #include "HAL/IConsoleManager.h"
+
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
+
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
 #include "Particles/ParticleSystem.h"
+
 #include "Sound/SoundBase.h"
 
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"

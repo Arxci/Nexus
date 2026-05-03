@@ -37,7 +37,6 @@ struct NEXUS_API FEquippableAnimationSet
 	TSoftObjectPtr<UAnimMontage> InspectMontage;
 };
 
-
 USTRUCT(BlueprintType, DisplayName = "Equippable")
 struct NEXUS_API FNexusFragment_Equippable : public FNexusItemFragment
 {

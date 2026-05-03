@@ -1,7 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-
-#include "NexusPlayerCameraManager.h"
+﻿#include "NexusPlayerCameraManager.h"
 
 #include "GameFramework/PlayerController.h"
 
@@ -11,7 +8,6 @@ ANexusPlayerCameraManager::ANexusPlayerCameraManager(const FObjectInitializer& O
 	ViewPitchMin = -80.0f;
 	ViewPitchMax = 80.0f;
 	DefaultFOV   = 70.0f;
-	
 }
 
 void ANexusPlayerCameraManager::BeginPlay()

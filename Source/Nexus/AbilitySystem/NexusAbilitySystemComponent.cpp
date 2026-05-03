@@ -1,10 +1,8 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-
-#include "NexusAbilitySystemComponent.h"
+﻿#include "NexusAbilitySystemComponent.h"
 
 #include "EMSData.h"
 #include "EMSFunctionLibrary.h"
+
 #include "NexusAbility.h" 
 
 
@@ -416,7 +414,7 @@ void UNexusAbilitySystemComponent::CancelAbilitiesWithTags(const FGameplayTagCon
 }
 
 
-// EMS Component Save Interface
+// Save interface
 void UNexusAbilitySystemComponent::ComponentPreSave_Implementation()
 {
 

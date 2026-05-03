@@ -1,11 +1,9 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-// Fill out your copyright notice in the Description page of Project Settings.
-
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
+
 #include "Nexus/AbilitySystem/NexusAbility.h"
+
 #include "NexusAbility_Weapon.generated.h"
 
 class ANexusEquippedActor;
@@ -15,15 +13,7 @@ class UNexusItemDefinition;
 class UNexusItemInstance;
 struct FNexusFragment_Weapon;
 
-/**
- * Shared base for any ability granted by an equipped weapon (Fire, Reload, Aim,
- * Melee, Inspect). Resolves its weapon context from the active equipment slot
- * each call so abilities don't need to cache it across equip/unequip events.
- *
- * Note: this is abstract. Concrete fire/reload/aim subclasses are added in the
- * next slice; the base is shipped now so weapon definitions can compile and
- * reference it from FNexusFragment_Equippable::GrantedAbilities.
- */
+
 UCLASS(Abstract, Blueprintable)
 class NEXUS_API UNexusAbility_Weapon : public UNexusAbility
 {

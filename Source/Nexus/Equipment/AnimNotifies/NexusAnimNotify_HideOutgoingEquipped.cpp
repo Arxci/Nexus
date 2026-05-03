@@ -1,7 +1,9 @@
 ﻿#include "NexusAnimNotify_HideOutgoingEquipped.h"
 
 #include "Components/SkeletalMeshComponent.h"
+
 #include "GameFramework/Actor.h"
+
 #include "Nexus/Equipment/NexusEquipmentComponent.h"
 
 UNexusAnimNotify_HideOutgoingEquipped::UNexusAnimNotify_HideOutgoingEquipped()

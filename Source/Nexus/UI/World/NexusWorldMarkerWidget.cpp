@@ -1,13 +1,9 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-
-#include "NexusWorldMarkerWidget.h"
+﻿#include "NexusWorldMarkerWidget.h"
 
 void UNexusWorldMarkerWidget::SetContext(USceneComponent* InAnchor, AActor* InContextActor)
 {
 	Anchor = InAnchor;
-
-	// If no explicit context actor given, infer from the anchor's owner.
+	
 	ContextActor = InContextActor
 		? InContextActor
 		: (InAnchor ? InAnchor->GetOwner() : nullptr);
@@ -16,6 +12,7 @@ void UNexusWorldMarkerWidget::SetContext(USceneComponent* InAnchor, AActor* InCo
 	K2_OnContextChanged();
 }
 
+//Utility
 FVector UNexusWorldMarkerWidget::GetWorldLocation() const
 {
 	if (const USceneComponent* AnchorPtr = Anchor.Get())
@@ -29,25 +26,25 @@ FVector UNexusWorldMarkerWidget::GetWorldLocation() const
 	return FVector::ZeroVector;
 }
 
-void UNexusWorldMarkerWidget::AddStateTag(FGameplayTag Tag)
+//State
+void UNexusWorldMarkerWidget::AddStateTag(const FGameplayTag Tag)
 {
 	if (!Tag.IsValid() || StateTags.HasTagExact(Tag)) return;
 
 	StateTags.AddTag(Tag);
-	HandleStateTagChanged(Tag, /*bAdded=*/true);
+	HandleStateTagChanged(Tag, true);
 }
 
-void UNexusWorldMarkerWidget::RemoveStateTag(FGameplayTag Tag)
+void UNexusWorldMarkerWidget::RemoveStateTag(const FGameplayTag Tag)
 {
 	if (!Tag.IsValid() || !StateTags.HasTagExact(Tag)) return;
 
 	StateTags.RemoveTag(Tag);
-	HandleStateTagChanged(Tag, /*bAdded=*/false);
+	HandleStateTagChanged(Tag, false);
 }
 
 void UNexusWorldMarkerWidget::SetStateTags(const FGameplayTagContainer& NewTags)
 {
-	// Compute deltas so listeners see per-tag add/remove, not a wholesale replace.
 	FGameplayTagContainer Added;
 	for (const FGameplayTag& Tag : NewTags)
 	{
@@ -66,7 +63,7 @@ void UNexusWorldMarkerWidget::SetStateTags(const FGameplayTagContainer& NewTags)
 	for (const FGameplayTag& Tag : Added)   HandleStateTagChanged(Tag, true);
 }
 
-void UNexusWorldMarkerWidget::HandleStateTagChanged(FGameplayTag Tag, bool bAdded)
+void UNexusWorldMarkerWidget::HandleStateTagChanged(const FGameplayTag Tag, const bool bAdded)
 {
 	OnStateTagChanged.Broadcast(Tag, bAdded);
 	K2_OnStateTagChanged(Tag, bAdded);

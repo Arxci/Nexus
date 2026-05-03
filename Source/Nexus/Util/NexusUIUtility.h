@@ -1,9 +1,12 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+
 #include "Components/Image.h"
 #include "Components/SizeBox.h"
+
 #include "Kismet/BlueprintFunctionLibrary.h"
+
 #include "NexusUIUtility.generated.h"
 
 UCLASS()

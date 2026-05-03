@@ -1,9 +1,9 @@
-﻿
-
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
+
 #include "CommonUserWidget.h"
+
 #include "NexusCommonUserWidget.generated.h"
 
 

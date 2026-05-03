@@ -71,7 +71,10 @@ public:
 public:
 	// Utility
 	UFUNCTION(BlueprintPure, Category = "Inventory")
-	const TArray<UNexusItemInstance*>& GetItems() const { return Items; }
+	const TArray<UNexusItemInstance*>& GetItems() const
+	{
+		return ObjectPtrDecay(Items);
+	}
 
 	UFUNCTION(BlueprintPure, Category = "Inventory")
 	int32 GetTotalCountForDefinition(const UNexusItemDefinition* Definition) const;
@@ -160,7 +163,7 @@ private:
 	int32 BroadcastDeferDepth = 0;
 	bool bFlushInProgress = false;
 
-	void EnqueueChange(UNexusItemInstance* Instance, bool bAdded, bool bRemoved);
+	void EnqueueChange(UNexusItemInstance* Instance, const bool bAdded, const bool bRemoved);
 	void FlushPendingChanges();
 
 	/** RAII guard: defers broadcasts until the outermost guard exits. */

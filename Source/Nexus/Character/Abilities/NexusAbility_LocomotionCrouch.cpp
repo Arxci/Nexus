@@ -1,8 +1,7 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+﻿#include "NexusAbility_LocomotionCrouch.h"
 
-
-#include "NexusAbility_LocomotionCrouch.h"
 #include "GameFramework/Character.h"
+
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 #include "Nexus/NexusGameplayTags.h"
 #include "Nexus/Character/NexusCharacterBase.h"

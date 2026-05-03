@@ -1,14 +1,16 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
+
 #include "Nexus/AbilitySystem/NexusAbility.h"
+
 #include "NexusAbility_Interaction.generated.h"
 
 class UNexusInteractableComponent;
 
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInteractionFocusCleared);
+
 
 UCLASS()
 class NEXUS_API UNexusAbility_Interaction : public UNexusAbility
@@ -27,6 +29,7 @@ public:
 protected:
 	UNexusAbility_Interaction();
 
+protected:
 	virtual void OnDisableAbility() override;
 	virtual void OnEnableAbility() override;
 
@@ -34,6 +37,7 @@ protected:
 	virtual void TickAbility(float DeltaTime) override;
 	virtual bool CanTick() override;
 
+protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float FocusReachDistance;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)

@@ -1,10 +1,15 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
+
 #include "GameplayTagContainer.h"
+
 #include "NexusAbility.generated.h"
+
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FActivationStateChanged, UNexusAbility*, Ability);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FEnabledStateChanged);
+
 
 UENUM(BlueprintType)
 enum class ENexusAbilityActivationState : uint8
@@ -13,22 +18,19 @@ enum class ENexusAbilityActivationState : uint8
 	Active  UMETA(DisplayName = "Active"),
 };
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FActivationStateChanged, UNexusAbility*, Ability);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FEnabledStateChanged);
-
 UCLASS(Blueprintable)
 class NEXUS_API UNexusAbility : public UObject
 {
 	GENERATED_BODY()
 
 	friend class UNexusAbilitySystemComponent;
-
 public:
 	UNexusAbility();
 
 	//Ability life cycle
 	virtual bool RequestActivateAbility();
 	virtual bool RequestDeactivateAbility(bool bForce=false);
+	
 	/**
 	 * Authoritative C++ end. Bypasses the K2 deactivate event (which subclass
 	 * blueprints may not wire up) by invoking CommitAbilityEnd directly. Subclasses
@@ -36,10 +38,8 @@ public:
 	 * Used by load-time reconciliation — do NOT use for normal input-driven flow.
 	 */
 	virtual void ForceEndAbility();
-	
 	virtual void OnEnableAbility();
 	virtual void OnDisableAbility();
-
 	/**
 	* Override if you need custom activation checks. EX: checking if ammo is greater than 0.
 	* Defaults to true.
@@ -48,60 +48,54 @@ public:
 	bool CanActivateAbility() const;
 	virtual bool CanActivateAbility_Implementation() const;
 
-
-	//Ability utility
+public:
+	// Utility
 	/**
 	* Returns a reference to the NexusAbilitySystemComponent that manages this ability instance.
 	**/
 	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Util")
 	UNexusAbilitySystemComponent* GetNexusAbilitySystemComponent() const;
-
 	/**
 	* Returns the actor that owns the NexusAbilitySystemComponent.
 	**/
 	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Util")
     AActor* GetOwner() const;
-
 	/**
 	* Returns the controller that owns the NexusAbilitySystemComponent.
 	**/
 	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Util")
 	AController* GetController() const;
 
-
-	// Ability state
+public:
+	// State
 	/**
 	* Get the current activation state.
 	**/
 	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|State")
 	ENexusAbilityActivationState GetActivationState() const { return ActivationState; }
-
 	/**
 	* Returns true if activation state == ACTIVE.
 	**/
 	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|State")
 	bool IsActive() const { return ActivationState == ENexusAbilityActivationState::Active; }
-
 	/**
 	* Returns true if activation state == IDLE.
 	**/
 	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|State")
 	bool IsIdle() const { return ActivationState == ENexusAbilityActivationState::Idle; }
-
 	/**
 	* Returns whether this ability is enabled.
 	**/
 	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|State")
 	bool IsEnabled() const { return bIsEnabled; }
 
-	
+public:
 	// Cooldown
 	/**
 	* Returns true if this ability is currently on cooldown.
 	**/
 	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Cooldown")
 	bool IsOnCooldown() const { return bIsOnCooldown; }
-
 	/**
 	* Returns true if this ability has a cooldown configured (flat duration > 0).
 	* Override in subclasses that drive cooldown from external data so the ASC's
@@ -109,28 +103,25 @@ public:
 	**/
 	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Cooldown")
 	virtual bool HasCooldown() const;
-	
 	/**
 	* Returns the total cooldown duration in seconds.
 	* Override in subclasses that drive cooldown from external data (e.g. weapon RPM).
 	**/
 	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Cooldown")
 	virtual float GetCooldownTotalDuration() const;
-
 	/**
 	* Returns the remaining cooldown time in seconds. 0 if not on cooldown.
 	**/
 	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Cooldown")
 	float GetCooldownTimeRemaining() const;
-
 	/**
 	* Returns normalized cooldown progress from 0.0 (just started) to 1.0 (complete).
 	**/
 	UFUNCTION(BlueprintCallable, Category = "Nexus Ability|Cooldown")
 	float GetCooldownProgress() const;
 
-	
-	//Delegates
+public:
+	// Delegates
 	UPROPERTY(BlueprintAssignable)
 	FActivationStateChanged OnActivated;
 

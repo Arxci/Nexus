@@ -3,7 +3,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
+
 #include "UObject/Interface.h"
+
 #include "NexusInteractableInterface.generated.h"
 
 
@@ -12,7 +14,6 @@ class UNexusInteractableInterface : public UInterface
 {
 	GENERATED_BODY()
 };
-
 
 class NEXUS_API INexusInteractableInterface
 {

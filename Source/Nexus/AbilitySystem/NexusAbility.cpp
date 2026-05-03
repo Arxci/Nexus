@@ -1,7 +1,5 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+﻿#include "NexusAbility.h"
 
-
-#include "NexusAbility.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 
 UNexusAbility::UNexusAbility()

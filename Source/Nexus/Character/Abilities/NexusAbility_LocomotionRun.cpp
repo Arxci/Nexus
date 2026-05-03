@@ -1,7 +1,5 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+﻿#include "NexusAbility_LocomotionRun.h"
 
-
-#include "NexusAbility_LocomotionRun.h"
 #include "Nexus/Character/NexusCharacterBase.h"
 #include "Nexus/Character/NexusCharacterMovementComponent.h"
 #include "Nexus/NexusGameplayTags.h"

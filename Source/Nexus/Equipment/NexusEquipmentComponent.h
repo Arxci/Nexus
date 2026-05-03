@@ -3,8 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+
 #include "Components/ActorComponent.h"
+
 #include "GameplayTagContainer.h"
+
 #include "EMSCompSaveInterface.h"
 
 #include "NexusEquipmentComponent.generated.h"
@@ -134,9 +137,7 @@ protected:
 private:
 	void ApplyEquipEffects(FGameplayTag SlotTag, UNexusItemInstance* Instance);
 	void RemoveEquipEffects(FGameplayTag SlotTag);
-
-	/** Stow OutgoingSlot (visibility deferred until HideOutgoingEquipped notify),
-	 *  draw IncomingSlot, push the swap lockout. */
+	
 	void HandleActiveSlotTransition(FGameplayTag OutgoingSlot, FGameplayTag IncomingSlot);
 	void AttachActorForSlotState(FGameplayTag SlotTag, bool bActive);
 	float PlayMontageOnOwner(UAnimMontage* Montage) const;

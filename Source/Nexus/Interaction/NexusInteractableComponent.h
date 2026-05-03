@@ -1,17 +1,21 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
+
 #include "NexusInteractableInterface.h"
+
 #include "Components/ActorComponent.h"
+
 #include "ComponentPicker.h"
+
 #include "GameplayTagContainer.h"
+
 #include "NexusInteractableComponent.generated.h"
 
 class UWidgetComponent;
 class UUserWidget;
 class UNexusWorldMarkerWidget;
+
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInteractionProgressed, float, ElapsedTime);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInteractionStarted, AActor*, Interactor);
@@ -38,7 +42,9 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 FActorComponentTickFunction* ThisTickFunction) override;
-	
+
+protected:
+	//~Start interaction interface
 	virtual void TryStartInteraction_Implementation(AActor* Interactor) override;
 	virtual void TryStopInteraction_Implementation(AActor* Interactor) override;
 
@@ -47,6 +53,7 @@ FActorComponentTickFunction* ThisTickFunction) override;
 
 	virtual void OnGainedPlayerFocus_Implementation() override;
 	virtual void OnLostPlayerFocus_Implementation() override;
+	//~Stop interaction interface
 	
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Interaction")
 	void InteractionProgress();
@@ -63,8 +70,8 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Interaction")
 	FOnInteractionStarted OnInteractionStarted;
 
-//Indicator
 protected:
+	//Indicator
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, BlueprintReadOnly, Category = "Interaction|Indicator")
 	bool bDisplayIndicator;
 

@@ -1,44 +1,41 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+﻿#include "NexusAbility_Interaction.h"
 
+#include "Kismet/KismetSystemLibrary.h"
 
-#include "NexusAbility_Interaction.h"
 #include "Nexus/Interaction/NexusInteractableComponent.h"
 #include "Nexus/NexusCollisionChannels.h"
 #include "Nexus/Util/NexusHeroPlayerUtility.h"
 #include "Nexus/Character/NexusCharacterBase.h"
-#include "Kismet/KismetSystemLibrary.h"
 
 namespace
 {
-	// Cached CVar values — refreshed via per-CVar change callbacks so the hot path
-	// reads plain ints/floats instead of going through atomic loads each frame.
 	int32 GShowInteractionFocusReach = 0;
 	int32 GShowInteractionAwareness = 0;
 	float GAwarenessRadiusOverride = -1.0f;
 	float GFocusReachOverride = -1.0f;
 
-	TAutoConsoleVariable<int32> CVarShowInteractionFocusReach(
+	TAutoConsoleVariable CVarShowInteractionFocusReach(
 		TEXT("Nexus.Interaction.Show.FocusReach"),
 		0,
 		TEXT("0: Hide Interaction Show Focus Reach\n1: Show Interaction Show Focus Reach"),
 		ECVF_Cheat
 	);
 
-	TAutoConsoleVariable<int32> CVarShowInteractionAwareness(
+	TAutoConsoleVariable CVarShowInteractionAwareness(
 		TEXT("Nexus.Interaction.Show.Awareness"),
 		0,
 		TEXT("0: Hide Interaction Show Awareness\n1: Show Interaction Show Awareness"),
 		ECVF_Cheat
 	);
 
-	TAutoConsoleVariable<float> CVarAwarenessRadiusOverride(
+	TAutoConsoleVariable CVarAwarenessRadiusOverride(
 		TEXT("Nexus.Interaction.AwarenessRadiusOverride"),
 		-1.0f,
 		TEXT("Override the proximity detection radius. Set to -1 to use default."),
 		ECVF_Cheat
 	);
 
-	TAutoConsoleVariable<float> CVarFocusReachOverride(
+	TAutoConsoleVariable CVarFocusReachOverride(
 		TEXT("Nexus.Interaction.FocusReachOverride"),
 		-1.0f,
 		TEXT("Override the focus reach distance. Set to -1 to use default."),
@@ -56,13 +53,13 @@ namespace
 			GFocusReachOverride        = CVarFocusReachOverride.GetValueOnGameThread();
 
 			CVarShowInteractionFocusReach.AsVariable()->SetOnChangedCallback(
-				FConsoleVariableDelegate::CreateLambda([](IConsoleVariable* V){ GShowInteractionFocusReach = V->GetInt(); }));
+				FConsoleVariableDelegate::CreateLambda([](const IConsoleVariable* V){ GShowInteractionFocusReach = V->GetInt(); }));
 			CVarShowInteractionAwareness.AsVariable()->SetOnChangedCallback(
-				FConsoleVariableDelegate::CreateLambda([](IConsoleVariable* V){ GShowInteractionAwareness = V->GetInt(); }));
+				FConsoleVariableDelegate::CreateLambda([](const IConsoleVariable* V){ GShowInteractionAwareness = V->GetInt(); }));
 			CVarAwarenessRadiusOverride.AsVariable()->SetOnChangedCallback(
-				FConsoleVariableDelegate::CreateLambda([](IConsoleVariable* V){ GAwarenessRadiusOverride = V->GetFloat(); }));
+				FConsoleVariableDelegate::CreateLambda([](const IConsoleVariable* V){ GAwarenessRadiusOverride = V->GetFloat(); }));
 			CVarFocusReachOverride.AsVariable()->SetOnChangedCallback(
-				FConsoleVariableDelegate::CreateLambda([](IConsoleVariable* V){ GFocusReachOverride = V->GetFloat(); }));
+				FConsoleVariableDelegate::CreateLambda([](const IConsoleVariable* V){ GFocusReachOverride = V->GetFloat(); }));
 		}
 	};
 	static FInteractionCVarBinder GInteractionCVarBinder;
@@ -243,7 +240,7 @@ void UNexusAbility_Interaction::UpdateNearbyInteractables()
 	TSet<TWeakObjectPtr<AActor>> NewNearbyInteractables;
 	NewNearbyInteractables.Reserve(Hits.Num());
 
-	auto FireOnComponents = [](AActor* Actor, bool bEntered)
+	auto FireOnComponents = [](const AActor* Actor, bool bEntered)
 	{
 		TInlineComponentArray <UNexusInteractableComponent*> Comps;
 		Actor->GetComponents(Comps);
