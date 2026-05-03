@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+
 #include "GameplayTagContainer.h"
 
 #include "Nexus/Inventory/NexusItemFragment.h"
@@ -17,23 +18,29 @@ USTRUCT(BlueprintType, DisplayName = "Animation Set")
 struct NEXUS_API FEquippableAnimationSet
 {
 	GENERATED_BODY()
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Pose")
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Pose",
+		meta = (AssetBundles = "Equipped"))
 	TSoftObjectPtr<UAnimSequence> IdlePose;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Loops")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Loops",
+		meta = (AssetBundles = "Equipped"))
 	TSoftObjectPtr<UAnimSequence> IdleLoop;
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Pose")
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Pose",
+		meta = (AssetBundles = "Equipped"))
 	TSoftObjectPtr<UAnimSequence> RunLoop;
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Montage")
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Montage",
+		meta = (AssetBundles = "Equipped"))
 	TSoftObjectPtr<UAnimMontage> EquipMontage;
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Montage")
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Montage",
+		meta = (AssetBundles = "Equipped"))
 	TSoftObjectPtr<UAnimMontage> UnequipMontage;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Montage")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Montage",
+		meta = (AssetBundles = "Equipped"))
 	TSoftObjectPtr<UAnimMontage> InspectMontage;
 };
 
@@ -45,10 +52,12 @@ struct NEXUS_API FNexusFragment_Equippable : public FNexusItemFragment
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Categories = "Equipment.Slot"))
 	FGameplayTag SlotTag;
 	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
+		meta = (AssetBundles = "Equipped"))
 	TSoftClassPtr<ANexusEquippedActor> EquippedActorClass;
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
+		meta = (AssetBundles = "Equipped"))
 	TSoftObjectPtr<USkeletalMesh> WorldMesh;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)

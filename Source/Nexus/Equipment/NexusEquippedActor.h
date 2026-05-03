@@ -38,6 +38,25 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Equipped")
 	void ApplyOwnerViewpointRendering();
 
+public:
+	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
+	TObjectPtr<UAnimSequence> IdlePose;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
+	TObjectPtr<UAnimSequence> IdleLoop;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
+	TObjectPtr<UAnimSequence> RunLoop;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
+	TObjectPtr<UAnimMontage> EquipMontage;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
+	TObjectPtr<UAnimMontage> UnequipMontage;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
+	TObjectPtr<UAnimMontage> InspectMontage;
+
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipped")
 	TObjectPtr<USkeletalMeshComponent> Mesh;

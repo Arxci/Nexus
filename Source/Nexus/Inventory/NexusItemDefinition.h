@@ -40,7 +40,7 @@ public:
 	FText Description;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Identity")
-	TSoftObjectPtr<UTexture2D> Icon;
+	TObjectPtr<UTexture2D> Icon;
 
 	// Inventory footprint
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Inventory", meta = (ClampMin = "0.0"))

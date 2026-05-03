@@ -1,7 +1,9 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+
 #include "Components/ActorComponent.h"
+
 #include "GameplayTagContainer.h"
 
 #include "EMSCompSaveInterface.h"
@@ -142,14 +144,13 @@ protected:
 	TArray<TObjectPtr<UNexusItemInstance>> Items;
 
 private:
-	int32 GetMaxStackForDefinition(const UNexusItemDefinition* Definition) const;
+	static int32 GetMaxStackForDefinition(const UNexusItemDefinition* Definition);
 
 	UFUNCTION()
 	void HandleInstanceChanged(UNexusItemInstance* Instance);
-	
 	void BindInstance(UNexusItemInstance* Instance);
 	void UnbindInstance(UNexusItemInstance* Instance);
-
+	
 	float CachedUsedWeight = 0.0f;
 
 private:

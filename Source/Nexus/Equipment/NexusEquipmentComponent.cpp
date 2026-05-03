@@ -2,6 +2,8 @@
 
 #include "NexusEquipmentComponent.h"
 
+#include "Engine/AssetManager.h"
+
 #include "GameFramework/Character.h"
 
 #include "Components/SkeletalMeshComponent.h"
@@ -19,7 +21,7 @@
 #include "Nexus/Inventory/NexusInventoryComponent.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
-#include "Nexus/Inventory/Fragments/NexusFragment_Equippable.h"
+#include "Nexus/Inventory/Fragments/Equippable/NexusFragment_Equippable.h"
 
 UNexusEquipmentComponent::UNexusEquipmentComponent()
 {
@@ -29,10 +31,16 @@ UNexusEquipmentComponent::UNexusEquipmentComponent()
 void UNexusEquipmentComponent::BeginPlay()
 {
 	Super::BeginPlay();
-	
+
 	if (UNexusInventoryComponent* Inventory = GetInventory())
 	{
+		Inventory->OnItemAdded.AddDynamic(this, &UNexusEquipmentComponent::HandleInventoryItemAdded);
 		Inventory->OnItemRemoved.AddDynamic(this, &UNexusEquipmentComponent::HandleInventoryItemRemoved);
+		
+		for (UNexusItemInstance* Existing : Inventory->GetItems())
+		{
+			RequestEquippedBundleLoad(Existing);
+		}
 	}
 }
 
@@ -40,10 +48,12 @@ void UNexusEquipmentComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	if (UNexusInventoryComponent* Inventory = GetInventory())
 	{
+		Inventory->OnItemAdded.RemoveDynamic(this, &UNexusEquipmentComponent::HandleInventoryItemAdded);
 		Inventory->OnItemRemoved.RemoveDynamic(this, &UNexusEquipmentComponent::HandleInventoryItemRemoved);
 	}
+	EquippableLoadHandles.Empty();
 
-	if (UWorld* World = GetWorld())
+	if (const UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(SwapLockoutTimer);
 	}
@@ -56,6 +66,8 @@ void UNexusEquipmentComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 void UNexusEquipmentComponent::HandleInventoryItemRemoved(UNexusItemInstance* RemovedInstance)
 {
 	if (!RemovedInstance) return;
+	ReleaseEquippedBundleLoad(RemovedInstance);
+	
 	if (EquippedSlots.Num() == 0) return;
 
 	TArray<TPair<FGameplayTag, TObjectPtr<UNexusItemInstance>>, TInlineAllocator<4>> Snapshot;
@@ -72,6 +84,39 @@ void UNexusEquipmentComponent::HandleInventoryItemRemoved(UNexusItemInstance* Re
 			UnequipSlot(Pair.Key);
 		}
 	}
+}
+
+void UNexusEquipmentComponent::HandleInventoryItemAdded(UNexusItemInstance* Instance)
+{
+	RequestEquippedBundleLoad(Instance);
+}
+
+void UNexusEquipmentComponent::RequestEquippedBundleLoad(UNexusItemInstance* Instance)
+{
+	if (!Instance) return;
+	if (EquippableLoadHandles.Contains(Instance)) return;
+
+	const UNexusItemDefinition* Def = Instance->GetDefinition();
+	if (!Def) return;
+	
+	if (!Def->FindFragment<FNexusFragment_Equippable>()) return;
+
+	const FPrimaryAssetId AssetId = Def->GetPrimaryAssetId();
+	if (!AssetId.IsValid()) return;
+
+	UAssetManager& AM = UAssetManager::Get();
+	TArray<FName> Bundles { TEXT("Equipped") };
+	TSharedPtr<FStreamableHandle> Handle = AM.LoadPrimaryAsset(AssetId, Bundles);
+	if (Handle.IsValid())
+	{
+		EquippableLoadHandles.Add(Instance, Handle);
+	}
+}
+
+void UNexusEquipmentComponent::ReleaseEquippedBundleLoad(UNexusItemInstance* Instance)
+{
+	if (!Instance) return;
+	EquippableLoadHandles.Remove(Instance);
 }
 
 UNexusAbilitySystemComponent* UNexusEquipmentComponent::GetASC() const
@@ -117,7 +162,7 @@ bool UNexusEquipmentComponent::EquipInstance(UNexusItemInstance* Instance)
 	}
 	else
 	{
-		AttachActorForSlotState(SlotTag, /*bActive*/false);
+		AttachActorForSlotState(SlotTag,false);
 	}
 	return true;
 }
@@ -137,6 +182,7 @@ UNexusItemInstance* UNexusEquipmentComponent::TryEquipFirstCompatibleForSlot(FGa
 	for (UNexusItemInstance* Inst : Inventory->GetItems())
 	{
 		if (!Inst) continue;
+		
 		const UNexusItemDefinition* Definition = Inst->GetDefinition();
 		if (!Definition) continue;
 
@@ -214,15 +260,6 @@ UNexusItemInstance* UNexusEquipmentComponent::GetActiveInstance() const
 	return GetEquippedInSlot(ActiveSlot);
 }
 
-FResolvedSlotAnims UNexusEquipmentComponent::GetResolvedSlotAnims(FGameplayTag SlotTag) const
-{
-	if (const FResolvedSlotAnims* Found = SlotAnims.Find(SlotTag))
-	{
-		return *Found;
-	}
-	return FResolvedSlotAnims();
-}
-
 
 // Effects
 void UNexusEquipmentComponent::ApplyEquipEffects(FGameplayTag SlotTag, UNexusItemInstance* Instance)
@@ -270,18 +307,6 @@ void UNexusEquipmentComponent::ApplyEquipEffects(FGameplayTag SlotTag, UNexusIte
 		}
 		AppliedTagsBySlot.Add(SlotTag, Pushed);
 	}
-	
-	FResolvedSlotAnims Resolved;
-	const FEquippableAnimationSet& AnimationSet = Eq->Animations;
-
-	Resolved.IdlePose        = AnimationSet.IdlePose.LoadSynchronous();
-	Resolved.IdleLoop        = AnimationSet.IdleLoop.LoadSynchronous();
-	Resolved.RunLoop         = AnimationSet.RunLoop.LoadSynchronous();
-	Resolved.EquipMontage    = AnimationSet.EquipMontage.LoadSynchronous();
-	Resolved.UnequipMontage  = AnimationSet.UnequipMontage.LoadSynchronous();
-	Resolved.InspectMontage  = AnimationSet.InspectMontage.LoadSynchronous();
-
-	SlotAnims.Add(SlotTag, Resolved);
 }
 
 
@@ -308,7 +333,7 @@ void UNexusEquipmentComponent::RemoveEquipEffects(FGameplayTag SlotTag)
 		AppliedTagsBySlot.Remove(SlotTag);
 	}
 
-	if (TObjectPtr<ANexusEquippedActor> Actor = SpawnedActors.FindRef(SlotTag))
+	if (const TObjectPtr<ANexusEquippedActor> Actor = SpawnedActors.FindRef(SlotTag))
 	{
 		Actor->Destroy();
 	}
@@ -318,15 +343,13 @@ void UNexusEquipmentComponent::RemoveEquipEffects(FGameplayTag SlotTag)
 	{
 		OutgoingPendingHide = FGameplayTag();
 	}
-
-	SlotAnims.Remove(SlotTag);
 }
 
 void UNexusEquipmentComponent::HandleActiveSlotTransition(FGameplayTag OutgoingSlot, FGameplayTag IncomingSlot)
 {
 	if (OutgoingPendingHide.IsValid() && !OutgoingPendingHide.MatchesTagExact(OutgoingSlot))
 	{
-		AttachActorForSlotState(OutgoingPendingHide, /*bActive*/false);
+		AttachActorForSlotState(OutgoingPendingHide, false);
 		OutgoingPendingHide = FGameplayTag();
 	}
 
@@ -336,9 +359,9 @@ void UNexusEquipmentComponent::HandleActiveSlotTransition(FGameplayTag OutgoingS
 	if (OutgoingSlot.IsValid())
 	{
 		UAnimMontage* UnequipMontage = nullptr;
-		if (const FResolvedSlotAnims* Anims = SlotAnims.Find(OutgoingSlot))
+		if (const ANexusEquippedActor* OutActor = SpawnedActors.FindRef(OutgoingSlot))
 		{
-			UnequipMontage = Anims->UnequipMontage;
+			UnequipMontage = OutActor->UnequipMontage;
 		}
 		UnequipLength = PlayMontageOnOwner(UnequipMontage);
 
@@ -348,17 +371,16 @@ void UNexusEquipmentComponent::HandleActiveSlotTransition(FGameplayTag OutgoingS
 		}
 		else
 		{
-
 			AttachActorForSlotState(OutgoingSlot, false);
 		}
 	}
 	
 	if (IncomingSlot.IsValid())
 	{
-		AttachActorForSlotState(IncomingSlot, /*bActive*/true);
-		if (const FResolvedSlotAnims* Anims = SlotAnims.Find(IncomingSlot))
+		AttachActorForSlotState(IncomingSlot, true);
+		if (const ANexusEquippedActor* InActor = SpawnedActors.FindRef(IncomingSlot))
 		{
-			EquipLength = PlayMontageOnOwner(Anims->EquipMontage);
+			EquipLength = PlayMontageOnOwner(InActor->EquipMontage);
 		}
 	}
 	
@@ -378,7 +400,7 @@ void UNexusEquipmentComponent::HandleActiveSlotTransition(FGameplayTag OutgoingS
 			World->GetTimerManager().SetTimer(
 				SwapLockoutTimer, this,
 				&UNexusEquipmentComponent::HandleSwapLockoutFinished,
-				LockoutDuration, /*bLoop*/false);
+				LockoutDuration, false);
 		}
 	}
 	else
@@ -393,7 +415,7 @@ void UNexusEquipmentComponent::NotifyHideOutgoingSlot()
 
 	const FGameplayTag SlotToHide = OutgoingPendingHide;
 	OutgoingPendingHide = FGameplayTag();
-	AttachActorForSlotState(SlotToHide, /*bActive*/false);
+	AttachActorForSlotState(SlotToHide, false);
 }
 
 void UNexusEquipmentComponent::HandleSwapLockoutFinished()
@@ -402,7 +424,7 @@ void UNexusEquipmentComponent::HandleSwapLockoutFinished()
 	{
 		const FGameplayTag SlotToHide = OutgoingPendingHide;
 		OutgoingPendingHide = FGameplayTag();
-		AttachActorForSlotState(SlotToHide, /*bActive*/false);
+		AttachActorForSlotState(SlotToHide, false);
 	}
 
 	if (!bIsSwapping) return;
@@ -413,7 +435,7 @@ void UNexusEquipmentComponent::HandleSwapLockoutFinished()
 	}
 }
 
-void UNexusEquipmentComponent::AttachActorForSlotState(FGameplayTag SlotTag, bool bActive)
+void UNexusEquipmentComponent::AttachActorForSlotState(const FGameplayTag SlotTag, const bool bActive) const
 {
 	ANexusEquippedActor* Actor = SpawnedActors.FindRef(SlotTag);
 	if (!Actor) return;
@@ -446,8 +468,10 @@ float UNexusEquipmentComponent::PlayMontageOnOwner(UAnimMontage* Montage) const
 
 	const ACharacter* Character = Cast<ACharacter>(GetOwner());
 	if (!Character) return 0.0f;
+	
 	const USkeletalMeshComponent* Mesh = Character->GetMesh();
 	if (!Mesh) return 0.0f;
+	
 	UAnimInstance* AnimInstance = Mesh->GetAnimInstance();
 	if (!AnimInstance) return 0.0f;
 

@@ -2,19 +2,24 @@
 
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
+
 #include "Components/SkeletalMeshComponent.h"
+
 #include "Engine/World.h"
+
 #include "GameFramework/Character.h"
+
 #include "Kismet/GameplayStatics.h"
+
 #include "Sound/SoundBase.h"
+
 #include "TimerManager.h"
 
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 #include "Nexus/Inventory/NexusInventoryComponent.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
 #include "Nexus/NexusGameplayTags.h"
-#include "Nexus/Inventory/Fragments/NexusFragment_Weapon.h"
-#include "Nexus/Weapon/NexusWeaponEquippedActor.h"
+#include "Nexus/Inventory/Fragments/Weapon/NexusFragment_Weapon.h"
 
 UNexusAbility_WeaponReload::UNexusAbility_WeaponReload()
 {
@@ -64,12 +69,11 @@ void UNexusAbility_WeaponReload::CommitAbility()
 	if (!Weapon) { CommitAbilityEnd(); return; }
 
 	bAmmoTransferred = false;
-	const ANexusWeaponEquippedActor* WeaponActor = GetEquippedWeaponActor();
 
 	UAnimInstance* ReloadAnimInstance = nullptr;
 	float MontageDuration = 0.0f;
 
-	if (UAnimMontage* Montage = WeaponActor ? WeaponActor->CachedReloadMontage.Get() : Weapon->Animations.ReloadMontage.LoadSynchronous())
+	if (UAnimMontage* Montage = Weapon->Animations.ReloadMontage.LoadSynchronous())
 	{
 		if (const ACharacter* Char = Cast<ACharacter>(GetOwner()))
 		{
@@ -80,10 +84,6 @@ void UNexusAbility_WeaponReload::CommitAbility()
 					MontageDuration = AnimInstance->Montage_Play(Montage);
 					if (MontageDuration > 0.0f)
 					{
-						// Bind the AmmoTransfer notify so the ammo move snaps to the
-						// magazine-clicks-in keyframe instead of waiting on the timer
-						// fallback. Stored on a TWeakObjectPtr so we can unbind cleanly
-						// in CommitAbilityEnd even if the mesh/AnimInstance has died.
 						ReloadAnimInstance = AnimInstance;
 						AnimInstance->OnPlayMontageNotifyBegin.AddUniqueDynamic(
 							this, &UNexusAbility_WeaponReload::HandleNotifyBegin);
@@ -95,7 +95,7 @@ void UNexusAbility_WeaponReload::CommitAbility()
 
 	BoundAnimInstance = ReloadAnimInstance;
 
-	if (USoundBase* ReloadSound = WeaponActor ? WeaponActor->CachedReloadSound.Get() : Weapon->Presentation.ReloadSound.LoadSynchronous())
+	if (USoundBase* ReloadSound = Weapon->Presentation.ReloadSound.LoadSynchronous())
 	{
 		if (const AActor* Owner = GetOwner())
 		{
@@ -120,7 +120,7 @@ void UNexusAbility_WeaponReload::CommitAbility()
 
 void UNexusAbility_WeaponReload::CommitAbilityEnd()
 {
-	if (UWorld* World = GetWorld())
+	if (const UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(TimerHandle_ReloadFinish);
 	}
@@ -134,7 +134,7 @@ void UNexusAbility_WeaponReload::CommitAbilityEnd()
 	Super::CommitAbilityEnd();
 }
 
-void UNexusAbility_WeaponReload::HandleNotifyBegin(FName NotifyName, const FBranchingPointNotifyPayload& Payload)
+void UNexusAbility_WeaponReload::HandleNotifyBegin(const FName NotifyName, const FBranchingPointNotifyPayload& Payload)
 {
 	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
 	if (!Weapon) return;
@@ -183,11 +183,13 @@ int32 UNexusAbility_WeaponReload::GetReserveAmmo() const
 	return 0;
 }
 
-int32 UNexusAbility_WeaponReload::ConsumeReserveAmmo(int32 Amount)
+int32 UNexusAbility_WeaponReload::ConsumeReserveAmmo(const int32 Amount) const
 {
 	if (Amount <= 0) return 0;
+	
 	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
-	AActor* Owner                  = GetOwner();
+	const AActor* Owner = GetOwner();
+	
 	if (!Weapon || !Owner || !Weapon->Ammo.AmmoIdentityTag.IsValid()) return 0;
 
 	UNexusInventoryComponent* Inventory = Owner->FindComponentByClass<UNexusInventoryComponent>();
@@ -210,10 +212,7 @@ int32 UNexusAbility_WeaponReload::ConsumeReserveAmmo(int32 Amount)
 void UNexusAbility_WeaponReload::OnSaveStateRestored()
 {
 	Super::OnSaveStateRestored();
-
-	// Timers are transient. If the player saved mid-reload, the activation state is
-	// loaded as Active but no timer is running — they'd be stuck Reloading forever
-	// with Fire blocked. Abort the reload; the player can re-press Reload to retry.
+	
 	if (IsActive())
 	{
 		ForceEndAbility();

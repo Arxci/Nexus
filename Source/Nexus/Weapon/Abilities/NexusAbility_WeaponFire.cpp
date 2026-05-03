@@ -28,12 +28,11 @@
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 #include "Nexus/Combat/NexusDamageContext.h"
 #include "Nexus/Combat/NexusDamageReceiverInterface.h"
-#include "Nexus/Equipment/NexusEquippedActor.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
 #include "Nexus/NexusCollisionChannels.h"
 #include "Nexus/NexusGameplayTags.h"
-#include "Nexus/Inventory/Fragments/NexusFragment_Weapon.h"
-#include "Nexus/Weapon/NexusWeaponEquippedActor.h"
+#include "Nexus/Equipment/NexusEquippedActor.h"
+#include "Nexus/Inventory/Fragments/Weapon/NexusFragment_Weapon.h"
 
 
 namespace
@@ -125,10 +124,6 @@ bool UNexusAbility_WeaponFire::RequestActivateAbility()
 	const bool bHasAmmo      = Instance->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0) > 0;
 	if (bRequiresAmmo && !bHasAmmo)
 	{
-		// Cap dry-fire spam at the weapon's fire interval. Re-uses the standard
-		// cooldown machinery so trigger-mash can't strobe the SFX/anim. The
-		// IsOnCooldown() check at the top of this function blocks subsequent
-		// presses until the interval elapses.
 		HandleDryFire();
 		RestartCooldown();
 		return false;
@@ -139,7 +134,7 @@ bool UNexusAbility_WeaponFire::RequestActivateAbility()
 	return true;
 }
 
-void UNexusAbility_WeaponFire::FireShot()
+void UNexusAbility_WeaponFire::FireShot() const
 {
 	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
 	UNexusItemInstance* Instance       = GetActiveInstance();
@@ -176,25 +171,22 @@ void UNexusAbility_WeaponFire::FireShot()
 		}
 	}
 
-	const ANexusWeaponEquippedActor* WeaponActor = GetEquippedWeaponActor();
+	const ANexusEquippedActor* EquippedActor = GetEquippedActor();
 
-	PlayMontage(WeaponActor ? WeaponActor->CachedFireMontage.Get() : Weapon->Animations.FireMontage.LoadSynchronous());
+	PlayMontage(Weapon->Animations.FireMontage.LoadSynchronous());
 
-	if (USoundBase* S = WeaponActor ? WeaponActor->CachedFireSound.Get() : Weapon->Presentation.FireSound.LoadSynchronous())
+	if (USoundBase* S = Weapon->Presentation.FireSound.LoadSynchronous())
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, S, ViewLoc);
 	}
-
-	if (UFXSystemAsset* FX = WeaponActor ? WeaponActor->CachedMuzzleFlash.Get() : Weapon->Presentation.MuzzleFlash.LoadSynchronous())
+	
+	if (UFXSystemAsset* FX = Weapon->Presentation.MuzzleFlash.LoadSynchronous())
 	{
-		// Falls back to the view location so the FX still spawns on a weapon
-		// definition that doesn't use ANexusWeaponEquippedActor. The first-person
-		// rifle case (the common one) takes the muzzle-socket path.
 		FVector MuzzleLoc = ViewLoc;
 		FRotator MuzzleRot = ViewRot;
-		if (WeaponActor)
+		if (EquippedActor)
 		{
-			const FTransform MuzzleXf = WeaponActor->GetSocketTransform(Weapon->Presentation.MuzzleSocketName);
+			const FTransform MuzzleXf = EquippedActor->GetSocketTransform(Weapon->Presentation.MuzzleSocketName);
 			MuzzleLoc = MuzzleXf.GetLocation();
 			MuzzleRot = MuzzleXf.Rotator();
 		}
@@ -202,12 +194,12 @@ void UNexusAbility_WeaponFire::FireShot()
 	}
 }
 
-void UNexusAbility_WeaponFire::FireOnePellet(const FVector& ViewLoc, const FRotator& ViewRot)
+void UNexusAbility_WeaponFire::FireOnePellet(const FVector& ViewLoc, const FRotator& ViewRot) const
 {
 	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
 	if (!Weapon) return;
 
-	UWorld* World = GetWorld();
+	const UWorld* World = GetWorld();
 	if (!World) return;
 
 	bool bAiming = false;
@@ -308,11 +300,9 @@ void UNexusAbility_WeaponFire::HandleDryFire() const
 	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
 	if (!Weapon) return;
 
-	const ANexusWeaponEquippedActor* WeaponActor = GetEquippedWeaponActor();
+	PlayMontage(Weapon->Animations.DryFireMontage.LoadSynchronous());
 
-	PlayMontage(WeaponActor ? WeaponActor->CachedDryFireMontage.Get() : Weapon->Animations.DryFireMontage.LoadSynchronous());
-
-	if (USoundBase* S = WeaponActor ? WeaponActor->CachedDryFireSound.Get() : Weapon->Presentation.DryFireSound.LoadSynchronous())
+	if (USoundBase* S = Weapon->Presentation.DryFireSound.LoadSynchronous())
 	{
 		if (const AActor* Owner = GetOwner())
 		{

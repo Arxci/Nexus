@@ -8,7 +8,7 @@
 
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
-#include "Nexus/Inventory/Fragments/NexusFragment_Equippable.h"
+#include "Nexus/Inventory/Fragments/Equippable/NexusFragment_Equippable.h"
 
 ANexusEquippedActor::ANexusEquippedActor()
 {
@@ -33,6 +33,13 @@ void ANexusEquippedActor::InitializeFromInstance(UNexusItemInstance* Instance)
 		{
 			Mesh->SetSkeletalMesh(Loaded);
 		}
+
+		IdlePose       = Eq->Animations.IdlePose.LoadSynchronous();
+		IdleLoop       = Eq->Animations.IdleLoop.LoadSynchronous();
+		RunLoop        = Eq->Animations.RunLoop.LoadSynchronous();
+		EquipMontage   = Eq->Animations.EquipMontage.LoadSynchronous();
+		UnequipMontage = Eq->Animations.UnequipMontage.LoadSynchronous();
+		InspectMontage = Eq->Animations.InspectMontage.LoadSynchronous();
 	}
 
 	K2_OnInitializedFromInstance();

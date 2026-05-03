@@ -316,7 +316,7 @@ UNexusItemInstance* UNexusInventoryComponent::FindFirstByIdentityTag(FGameplayTa
 	return nullptr;
 }
 
-int32 UNexusInventoryComponent::GetMaxStackForDefinition(const UNexusItemDefinition* Definition) const
+int32 UNexusInventoryComponent::GetMaxStackForDefinition(const UNexusItemDefinition* Definition)
 {
 	if (!Definition) return 1;
 	if (const FNexusFragment_Stackable* Stack = Definition->FindFragment<FNexusFragment_Stackable>())

@@ -23,14 +23,15 @@ protected:
 	virtual bool CanActivateAbility_Implementation() const override;
 	virtual void OnSaveStateRestored() override;
 
+protected:
 	void TransferAmmo();
 	void FinishReload();
 
 	int32 GetReserveAmmo() const;
-	int32 ConsumeReserveAmmo(int32 Amount);
+	int32 ConsumeReserveAmmo(int32 Amount) const;
 
 	UFUNCTION()
-	void HandleNotifyBegin(FName NotifyName, const FBranchingPointNotifyPayload& Payload);
+	void HandleNotifyBegin(const FName NotifyName, const FBranchingPointNotifyPayload& Payload);
 
 private:
 	FTimerHandle TimerHandle_ReloadFinish;

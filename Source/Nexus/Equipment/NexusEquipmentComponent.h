@@ -4,6 +4,8 @@
 
 #include "CoreMinimal.h"
 
+#include "Engine/StreamableManager.h"
+
 #include "Components/ActorComponent.h"
 
 #include "GameplayTagContainer.h"
@@ -23,30 +25,6 @@ class UNexusInventoryComponent;
 class UNexusItemInstance;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnEquipmentChanged, FGameplayTag, SlotTag, UNexusItemInstance*, Instance);
-
-USTRUCT(BlueprintType)
-struct NEXUS_API FResolvedSlotAnims
-{
-	GENERATED_BODY()
-
-	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
-	TObjectPtr<UAnimSequence> IdlePose;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
-	TObjectPtr<UAnimSequence> IdleLoop;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
-	TObjectPtr<UAnimSequence> RunLoop;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
-	TObjectPtr<UAnimMontage> EquipMontage;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
-	TObjectPtr<UAnimMontage> UnequipMontage;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
-	TObjectPtr<UAnimMontage> InspectMontage;
-};
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class NEXUS_API UNexusEquipmentComponent : public UActorComponent, public IEMSCompSaveInterface
@@ -91,9 +69,6 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Equipment")
 	bool IsSwapping() const { return bIsSwapping; }
-
-	UFUNCTION(BlueprintPure, Category = "Equipment|Anims")
-	FResolvedSlotAnims GetResolvedSlotAnims(FGameplayTag SlotTag) const;
 	
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Anim Notify")
 	void NotifyHideOutgoingSlot();
@@ -124,9 +99,6 @@ protected:
 	TMap<FGameplayTag, TObjectPtr<ANexusEquippedActor>> SpawnedActors;
 
 	UPROPERTY(Transient)
-	TMap<FGameplayTag, FResolvedSlotAnims> SlotAnims;
-
-	UPROPERTY(Transient)
 	TMap<FGameplayTag, FGameplayTagContainer> AppliedTagsBySlot;
 
 	TMap<FGameplayTag, TArray<TSubclassOf<UNexusAbility>>> AppliedAbilitiesBySlot;
@@ -139,11 +111,18 @@ private:
 	void RemoveEquipEffects(FGameplayTag SlotTag);
 	
 	void HandleActiveSlotTransition(FGameplayTag OutgoingSlot, FGameplayTag IncomingSlot);
-	void AttachActorForSlotState(FGameplayTag SlotTag, bool bActive);
+	void AttachActorForSlotState(const FGameplayTag SlotTag, const bool bActive) const;
 	float PlayMontageOnOwner(UAnimMontage* Montage) const;
 
 	UFUNCTION()
 	void HandleInventoryItemRemoved(UNexusItemInstance* RemovedInstance);
+
+	UFUNCTION()
+	void HandleInventoryItemAdded(UNexusItemInstance* Instance);
+	void RequestEquippedBundleLoad(UNexusItemInstance* Instance);
+	void ReleaseEquippedBundleLoad(UNexusItemInstance* Instance);
+	
+	TMap<TObjectPtr<UNexusItemInstance>, TSharedPtr<FStreamableHandle>> EquippableLoadHandles;
 
 	UFUNCTION()
 	void HandleSwapLockoutFinished();

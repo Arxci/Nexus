@@ -13,6 +13,7 @@
 class UCameraShakeBase;
 class UFXSystemAsset;
 class USoundBase;
+class UAnimMontage;
 
 
 UENUM(BlueprintType)
@@ -36,13 +37,16 @@ struct NEXUS_API FWeaponAnimations
 {
 	GENERATED_BODY()
 	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation",
+		meta = (AssetBundles = "Equipped"))
 	TSoftObjectPtr<UAnimMontage> FireMontage;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation",
+		meta = (AssetBundles = "Equipped"))
 	TSoftObjectPtr<UAnimMontage> DryFireMontage;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation",
+		meta = (AssetBundles = "Equipped"))
 	TSoftObjectPtr<UAnimMontage> ReloadMontage;
 };
 
@@ -90,22 +94,28 @@ struct NEXUS_API FWeaponPresentation
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation")
 	FName MuzzleSocketName = "muzzle";
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation",
+		meta = (AssetBundles = "Equipped"))
 	TSoftObjectPtr<USoundBase> FireSound;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation",
+		meta = (AssetBundles = "Equipped"))
 	TSoftObjectPtr<USoundBase> DryFireSound;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation",
+		meta = (AssetBundles = "Equipped"))
 	TSoftObjectPtr<USoundBase> ReloadSound;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation",
+		meta = (AssetBundles = "Equipped"))
 	TSoftObjectPtr<UFXSystemAsset> MuzzleFlash;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation",
+		meta = (AssetBundles = "Equipped"))
 	TSoftObjectPtr<UFXSystemAsset> ImpactFX;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation",
+		meta = (AssetBundles = "Equipped"))
 	TSoftObjectPtr<USoundBase> ImpactSound;
 };
 
