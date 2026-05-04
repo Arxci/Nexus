@@ -1,6 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-#include "NexusEquipmentComponent.h"
+﻿#include "NexusEquipmentComponent.h"
 
 #include "Engine/AssetManager.h"
 
@@ -31,16 +29,10 @@ UNexusEquipmentComponent::UNexusEquipmentComponent()
 void UNexusEquipmentComponent::BeginPlay()
 {
 	Super::BeginPlay();
-
+	
 	if (UNexusInventoryComponent* Inventory = GetInventory())
 	{
-		Inventory->OnItemAdded.AddDynamic(this, &UNexusEquipmentComponent::HandleInventoryItemAdded);
 		Inventory->OnItemRemoved.AddDynamic(this, &UNexusEquipmentComponent::HandleInventoryItemRemoved);
-		
-		for (UNexusItemInstance* Existing : Inventory->GetItems())
-		{
-			RequestEquippedBundleLoad(Existing);
-		}
 	}
 }
 
@@ -48,7 +40,6 @@ void UNexusEquipmentComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	if (UNexusInventoryComponent* Inventory = GetInventory())
 	{
-		Inventory->OnItemAdded.RemoveDynamic(this, &UNexusEquipmentComponent::HandleInventoryItemAdded);
 		Inventory->OnItemRemoved.RemoveDynamic(this, &UNexusEquipmentComponent::HandleInventoryItemRemoved);
 	}
 	EquippableLoadHandles.Empty();
@@ -66,10 +57,8 @@ void UNexusEquipmentComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 void UNexusEquipmentComponent::HandleInventoryItemRemoved(UNexusItemInstance* RemovedInstance)
 {
 	if (!RemovedInstance) return;
-	ReleaseEquippedBundleLoad(RemovedInstance);
-	
 	if (EquippedSlots.Num() == 0) return;
-
+	
 	TArray<TPair<FGameplayTag, TObjectPtr<UNexusItemInstance>>, TInlineAllocator<4>> Snapshot;
 	Snapshot.Reserve(EquippedSlots.Num());
 	for (const TPair<FGameplayTag, TObjectPtr<UNexusItemInstance>>& Pair : EquippedSlots)
@@ -84,39 +73,6 @@ void UNexusEquipmentComponent::HandleInventoryItemRemoved(UNexusItemInstance* Re
 			UnequipSlot(Pair.Key);
 		}
 	}
-}
-
-void UNexusEquipmentComponent::HandleInventoryItemAdded(UNexusItemInstance* Instance)
-{
-	RequestEquippedBundleLoad(Instance);
-}
-
-void UNexusEquipmentComponent::RequestEquippedBundleLoad(UNexusItemInstance* Instance)
-{
-	if (!Instance) return;
-	if (EquippableLoadHandles.Contains(Instance)) return;
-
-	const UNexusItemDefinition* Def = Instance->GetDefinition();
-	if (!Def) return;
-	
-	if (!Def->FindFragment<FNexusFragment_Equippable>()) return;
-
-	const FPrimaryAssetId AssetId = Def->GetPrimaryAssetId();
-	if (!AssetId.IsValid()) return;
-
-	UAssetManager& AM = UAssetManager::Get();
-	TArray<FName> Bundles { TEXT("Equipped") };
-	TSharedPtr<FStreamableHandle> Handle = AM.LoadPrimaryAsset(AssetId, Bundles);
-	if (Handle.IsValid())
-	{
-		EquippableLoadHandles.Add(Instance, Handle);
-	}
-}
-
-void UNexusEquipmentComponent::ReleaseEquippedBundleLoad(UNexusItemInstance* Instance)
-{
-	if (!Instance) return;
-	EquippableLoadHandles.Remove(Instance);
 }
 
 UNexusAbilitySystemComponent* UNexusEquipmentComponent::GetASC() const
@@ -137,34 +93,54 @@ UNexusInventoryComponent* UNexusEquipmentComponent::GetInventory() const
 // Lifecycle
 bool UNexusEquipmentComponent::EquipInstance(UNexusItemInstance* Instance)
 {
-	if (!Instance) return false;
-	const UNexusItemDefinition* Definition = Instance->GetDefinition();
-	if (!Definition) return false;
+    if (!Instance) return false;
+    const UNexusItemDefinition* Definition = Instance->GetDefinition();
+    if (!Definition) return false;
 
-	const FNexusFragment_Equippable* Eq = Definition->FindFragment<FNexusFragment_Equippable>();
-	if (!Eq || !Eq->SlotTag.IsValid()) return false;
+    const FNexusFragment_Equippable* Eq = Definition->FindFragment<FNexusFragment_Equippable>();
+    if (!Eq || !Eq->SlotTag.IsValid()) return false;
 
-	const FGameplayTag SlotTag = Eq->SlotTag;
+    const FGameplayTag SlotTag = Eq->SlotTag;
 
-	if (IsSlotOccupied(SlotTag))
-	{
-		UnequipSlot(SlotTag);
-	}
+    if (IsSlotOccupied(SlotTag))
+    {
+        UnequipSlot(SlotTag);
+    }
+	
+    EquippedSlots.Add(SlotTag, Instance);
+	
+    TWeakObjectPtr WeakSelf(this);
+    TWeakObjectPtr WeakInstance(Instance);
+    const FStreamableDelegate OnReady = FStreamableDelegate::CreateLambda(
+        [WeakSelf, WeakInstance, SlotTag]()
+        {
+            UNexusEquipmentComponent* Self = WeakSelf.Get();
+            UNexusItemInstance* Inst = WeakInstance.Get();
+            if (!Self || !Inst) return;
+            if (Self->EquippedSlots.FindRef(SlotTag) != Inst) return;
+            Self->FinalizeEquip(SlotTag, Inst);
+        });
 
-	EquippedSlots.Add(SlotTag, Instance);
-	ApplyEquipEffects(SlotTag, Instance);
+    const FPrimaryAssetId AssetId = Definition->GetPrimaryAssetId();
+    if (!AssetId.IsValid())
+    {
+        OnReady.ExecuteIfBound();
+        return true;
+    }
+	
+    UAssetManager& AM = UAssetManager::Get();
+    const TSharedPtr<FStreamableHandle> Handle = AM.LoadPrimaryAsset(
+        AssetId, TArray<FName>{ TEXT("Equipped") }, OnReady);
+    if (Handle.IsValid())
+    {
+        EquippableLoadHandles.Add(Instance, Handle);
+    }
+    else
+    {
+        OnReady.ExecuteIfBound();
+    }
 
-	OnEquipped.Broadcast(SlotTag, Instance);
-
-	if (!ActiveSlot.IsValid())
-	{
-		SetActiveSlot(SlotTag);
-	}
-	else
-	{
-		AttachActorForSlotState(SlotTag,false);
-	}
-	return true;
+    return true;
 }
 
 UNexusItemInstance* UNexusEquipmentComponent::TryEquipFirstCompatibleForSlot(FGameplayTag SlotTag)
@@ -195,6 +171,22 @@ UNexusItemInstance* UNexusEquipmentComponent::TryEquipFirstCompatibleForSlot(FGa
 	return nullptr;
 }
 
+void UNexusEquipmentComponent::FinalizeEquip(FGameplayTag SlotTag, UNexusItemInstance* Instance)
+{
+	ApplyEquipEffects(SlotTag, Instance);
+
+	OnEquipped.Broadcast(SlotTag, Instance);
+
+	if (!ActiveSlot.IsValid())
+	{
+		SetActiveSlot(SlotTag);
+	}
+	else
+	{
+		AttachActorForSlotState(SlotTag, false);
+	}
+}
+
 bool UNexusEquipmentComponent::UnequipSlot(FGameplayTag SlotTag)
 {
 	UNexusItemInstance* Instance = EquippedSlots.FindRef(SlotTag);
@@ -204,6 +196,8 @@ bool UNexusEquipmentComponent::UnequipSlot(FGameplayTag SlotTag)
 
 	RemoveEquipEffects(SlotTag);
 	EquippedSlots.Remove(SlotTag);
+	
+	EquippableLoadHandles.Remove(Instance);
 
 	OnUnequipped.Broadcast(SlotTag, Instance);
 
@@ -264,49 +258,55 @@ UNexusItemInstance* UNexusEquipmentComponent::GetActiveInstance() const
 // Effects
 void UNexusEquipmentComponent::ApplyEquipEffects(FGameplayTag SlotTag, UNexusItemInstance* Instance)
 {
-	const UNexusItemDefinition* Definition = Instance ? Instance->GetDefinition() : nullptr;
-	if (!Definition) return;
+    const UNexusItemDefinition* Definition = Instance ? Instance->GetDefinition() : nullptr;
+    if (!Definition) return;
 
-	const FNexusFragment_Equippable* Eq = Definition->FindFragment<FNexusFragment_Equippable>();
-	if (!Eq) return;
-
-	UClass* ActorClass = Eq->EquippedActorClass.LoadSynchronous();
-	if (!ActorClass) ActorClass = ANexusEquippedActor::StaticClass();
-
-	if (UWorld* World = GetWorld())
-	{
-		FActorSpawnParameters Params;
-		Params.Owner                          = GetOwner();
-		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		ANexusEquippedActor* Spawned          = World->SpawnActor<ANexusEquippedActor>(ActorClass, Params);
-		if (Spawned)
-		{
-			Spawned->InitializeFromInstance(Instance);
-			Spawned->ApplyOwnerViewpointRendering();
-			SpawnedActors.Add(SlotTag, Spawned);
-		}
-	}
+    const FNexusFragment_Equippable* Eq = Definition->FindFragment<FNexusFragment_Equippable>();
+    if (!Eq) return;
 	
-	if (UNexusAbilitySystemComponent* ASC = GetASC())
-	{
-		TArray<TSubclassOf<UNexusAbility>>& Granted = AppliedAbilitiesBySlot.FindOrAdd(SlotTag);
-		for (const TSubclassOf<UNexusAbility>& AbilityClass : Eq->GrantedAbilities)
-		{
-			if (AbilityClass && ASC->GiveAbility(AbilityClass))
-			{
-				Granted.Add(AbilityClass);
-			}
-		}
+    UClass* ActorClass = Eq->EquippedActorClass.Get();
+    if (!ActorClass)
+    {
+        ensureMsgf(Eq->EquippedActorClass.IsNull(),
+            TEXT("EquippedActorClass not resident for %s — Equipped bundle was not awaited"),
+            *Definition->GetName());
+        ActorClass = ANexusEquippedActor::StaticClass();
+    }
 
-		FGameplayTagContainer Pushed;
-		Pushed.AddTag(SlotTag);
-		Pushed.AppendTags(Eq->OwnedTagsWhileEquipped);
-		for (const FGameplayTag& Tag : Pushed)
-		{
-			ASC->AddLooseGameplayTag(Tag);
-		}
-		AppliedTagsBySlot.Add(SlotTag, Pushed);
-	}
+    if (UWorld* World = GetWorld())
+    {
+        ANexusEquippedActor* Spawned = World->SpawnActorDeferred<ANexusEquippedActor>(
+            ActorClass, FTransform::Identity, GetOwner(), nullptr,
+            ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+        if (Spawned)
+        {
+            Spawned->InitializeFromInstance(Instance);
+            Spawned->ApplyOwnerViewpointRendering();
+            Spawned->FinishSpawning(FTransform::Identity, true);
+            SpawnedActors.Add(SlotTag, Spawned);
+        }
+    }
+
+    if (UNexusAbilitySystemComponent* ASC = GetASC())
+    {
+        TArray<TSubclassOf<UNexusAbility>>& Granted = AppliedAbilitiesBySlot.FindOrAdd(SlotTag);
+        for (const TSubclassOf<UNexusAbility>& AbilityClass : Eq->GrantedAbilities)
+        {
+            if (AbilityClass && ASC->GiveAbility(AbilityClass))
+            {
+                Granted.Add(AbilityClass);
+            }
+        }
+
+        FGameplayTagContainer Pushed;
+        Pushed.AddTag(SlotTag);
+        Pushed.AppendTags(Eq->OwnedTagsWhileEquipped);
+        for (const FGameplayTag& Tag : Pushed)
+        {
+            ASC->AddLooseGameplayTag(Tag);
+        }
+        AppliedTagsBySlot.Add(SlotTag, Pushed);
+    }
 }
 
 
@@ -487,27 +487,50 @@ void UNexusEquipmentComponent::ComponentPreLoad_Implementation()
 
 void UNexusEquipmentComponent::ComponentLoaded_Implementation()
 {
-	const FGameplayTag SavedActiveSlot = ActiveSlot;
-	ActiveSlot = FGameplayTag();
+    const FGameplayTag SavedActiveSlot = ActiveSlot;
+    ActiveSlot = FGameplayTag();
 
-	TArray<FGameplayTag, TInlineAllocator<4>> Slots;
-	EquippedSlots.GetKeys(Slots);
-	for (const FGameplayTag& SlotTag : Slots)
-	{
-		if (UNexusItemInstance* Instance = EquippedSlots.FindRef(SlotTag))
-		{
-			ApplyEquipEffects(SlotTag, Instance);
-			AttachActorForSlotState(SlotTag, /*bActive*/false);
-		}
-	}
+    TArray<FGameplayTag, TInlineAllocator<4>> Slots;
+    EquippedSlots.GetKeys(Slots);
+	
+    UAssetManager& AM = UAssetManager::Get();
+    for (const FGameplayTag& SlotTag : Slots)
+    {
+        UNexusItemInstance* Instance = EquippedSlots.FindRef(SlotTag);
+        if (!Instance) continue;
+        const UNexusItemDefinition* Def = Instance->GetDefinition();
+        if (!Def) continue;
+        const FPrimaryAssetId Id = Def->GetPrimaryAssetId();
+        if (!Id.IsValid()) continue;
 
-	// Snap to the saved active slot — no draw montage, no lockout. Player just
-	// loaded; don't make them wait for a holster animation before they can fire.
-	if (SavedActiveSlot.IsValid() && EquippedSlots.Contains(SavedActiveSlot))
-	{
-		ActiveSlot = SavedActiveSlot;
-		AttachActorForSlotState(SavedActiveSlot, /*bActive*/true);
-	}
+        if (TSharedPtr<FStreamableHandle> Handle = AM.LoadPrimaryAsset(
+            Id, TArray<FName>{ TEXT("Equipped") }))
+        {
+            EquippableLoadHandles.Add(Instance, Handle);
+        }
+    }
+    for (const TPair<TObjectPtr<UNexusItemInstance>, TSharedPtr<FStreamableHandle>>& Pair : EquippableLoadHandles)
+    {
+        if (Pair.Value.IsValid() && !Pair.Value->HasLoadCompleted())
+        {
+            Pair.Value->WaitUntilComplete();
+        }
+    }
 
-	OnActiveSlotChanged.Broadcast(ActiveSlot, GetEquippedInSlot(ActiveSlot));
+    for (const FGameplayTag& SlotTag : Slots)
+    {
+        if (UNexusItemInstance* Instance = EquippedSlots.FindRef(SlotTag))
+        {
+            ApplyEquipEffects(SlotTag, Instance);
+            AttachActorForSlotState(SlotTag, false);
+        }
+    }
+	
+    if (SavedActiveSlot.IsValid() && EquippedSlots.Contains(SavedActiveSlot))
+    {
+        ActiveSlot = SavedActiveSlot;
+        AttachActorForSlotState(SavedActiveSlot, true);
+    }
+
+    OnActiveSlotChanged.Broadcast(ActiveSlot, GetEquippedInSlot(ActiveSlot));
 }

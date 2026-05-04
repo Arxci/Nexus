@@ -109,6 +109,8 @@ protected:
 private:
 	void ApplyEquipEffects(FGameplayTag SlotTag, UNexusItemInstance* Instance);
 	void RemoveEquipEffects(FGameplayTag SlotTag);
+
+	void FinalizeEquip(FGameplayTag SlotTag, UNexusItemInstance* Instance);
 	
 	void HandleActiveSlotTransition(FGameplayTag OutgoingSlot, FGameplayTag IncomingSlot);
 	void AttachActorForSlotState(const FGameplayTag SlotTag, const bool bActive) const;
@@ -116,11 +118,6 @@ private:
 
 	UFUNCTION()
 	void HandleInventoryItemRemoved(UNexusItemInstance* RemovedInstance);
-
-	UFUNCTION()
-	void HandleInventoryItemAdded(UNexusItemInstance* Instance);
-	void RequestEquippedBundleLoad(UNexusItemInstance* Instance);
-	void ReleaseEquippedBundleLoad(UNexusItemInstance* Instance);
 	
 	TMap<TObjectPtr<UNexusItemInstance>, TSharedPtr<FStreamableHandle>> EquippableLoadHandles;
 

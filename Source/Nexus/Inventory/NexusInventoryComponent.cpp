@@ -327,6 +327,7 @@ int32 UNexusInventoryComponent::GetMaxStackForDefinition(const UNexusItemDefinit
 }
 
 
+
 // Capacity
 float UNexusInventoryComponent::GetUsedWeight() const
 {

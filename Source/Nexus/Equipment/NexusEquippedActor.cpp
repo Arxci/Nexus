@@ -29,17 +29,23 @@ void ANexusEquippedActor::InitializeFromInstance(UNexusItemInstance* Instance)
 
 	if (const FNexusFragment_Equippable* Eq = DefinitionData->FindFragment<FNexusFragment_Equippable>())
 	{
-		if (USkeletalMesh* Loaded = Eq->WorldMesh.LoadSynchronous())
+		if (USkeletalMesh* Loaded = Eq->WorldMesh.Get())
 		{
 			Mesh->SetSkeletalMesh(Loaded);
 		}
+		else
+		{
+			ensureMsgf(Eq->WorldMesh.IsNull(),
+				TEXT("WorldMesh not resident for %s — Equipped bundle was not awaited before InitializeFromInstance"),
+				*DefinitionData->GetName());
+		}
 
-		IdlePose       = Eq->Animations.IdlePose.LoadSynchronous();
-		IdleLoop       = Eq->Animations.IdleLoop.LoadSynchronous();
-		RunLoop        = Eq->Animations.RunLoop.LoadSynchronous();
-		EquipMontage   = Eq->Animations.EquipMontage.LoadSynchronous();
-		UnequipMontage = Eq->Animations.UnequipMontage.LoadSynchronous();
-		InspectMontage = Eq->Animations.InspectMontage.LoadSynchronous();
+		IdlePose       = Eq->Animations.IdlePose.Get();
+		IdleLoop       = Eq->Animations.IdleLoop.Get();
+		RunLoop        = Eq->Animations.RunLoop.Get();
+		EquipMontage   = Eq->Animations.EquipMontage.Get();
+		UnequipMontage = Eq->Animations.UnequipMontage.Get();
+		InspectMontage = Eq->Animations.InspectMontage.Get();
 	}
 
 	K2_OnInitializedFromInstance();

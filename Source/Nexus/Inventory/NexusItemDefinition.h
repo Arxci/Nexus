@@ -39,8 +39,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Identity", meta = (MultiLine = "true"))
 	FText Description;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Identity")
-	TObjectPtr<UTexture2D> Icon;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Identity",
+		meta = (AssetBundles = "UI"))
+	TSoftObjectPtr<UTexture2D> Icon;
 
 	// Inventory footprint
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Inventory", meta = (ClampMin = "0.0"))
@@ -49,7 +50,8 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Inventory")
 	bool bDropOnDeath = true;
 	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Pickup")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Pickup",
+		meta = (AssetBundles = "Pickup"))
 	TSoftObjectPtr<UStaticMesh> PickupMesh;
 
 	// Fragments

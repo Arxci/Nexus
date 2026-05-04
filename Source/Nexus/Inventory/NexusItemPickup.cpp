@@ -92,15 +92,21 @@ void ANexusItemPickup::RequestPickupMeshLoad()
 	if (Mesh->GetStaticMesh()) return;
 	if (PickupMeshHandle.IsValid() && !PickupMeshHandle->HasLoadCompleted()) return;
 
-	const TSoftObjectPtr<UStaticMesh> MeshPtr = Definition->PickupMesh;
-	FStreamableManager& Streamable = UAssetManager::GetStreamableManager();
-	PickupMeshHandle = Streamable.RequestAsyncLoad(
-		MeshPtr.ToSoftObjectPath(),
-		FStreamableDelegate::CreateWeakLambda(this, [this, MeshPtr]()
+	const FPrimaryAssetId AssetId = Definition->GetPrimaryAssetId();
+	if (!AssetId.IsValid()) return;
+
+	TWeakObjectPtr<ANexusItemPickup> WeakSelf(this);
+	UAssetManager& AM = UAssetManager::Get();
+	PickupMeshHandle = AM.LoadPrimaryAsset(
+		AssetId, TArray<FName>{ TEXT("Pickup") },
+		FStreamableDelegate::CreateLambda([WeakSelf]()
 		{
-			if (Mesh && !Mesh->GetStaticMesh())
+			ANexusItemPickup* Self = WeakSelf.Get();
+			if (!Self || !Self->Mesh || !Self->Definition) return;
+			if (Self->Mesh->GetStaticMesh()) return;
+			if (UStaticMesh* Loaded = Self->Definition->PickupMesh.Get())
 			{
-				Mesh->SetStaticMesh(MeshPtr.Get());
+				Self->Mesh->SetStaticMesh(Loaded);
 			}
 		}));
 }
