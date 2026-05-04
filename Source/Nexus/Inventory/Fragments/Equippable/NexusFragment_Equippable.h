@@ -49,8 +49,16 @@ struct NEXUS_API FNexusFragment_Equippable : public FNexusItemFragment
 {
 	GENERATED_BODY()
 	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Categories = "Equipment.Slot"))
-	FGameplayTag SlotTag;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
+		meta = (Categories = "Equipment.Slot"))
+	FGameplayTagContainer AllowedSlots;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
+	meta = (Categories = "Equipment.Slot"))
+	FGameplayTag PreferredSlot;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	bool bAutoAssignOnPickup = false;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
 		meta = (AssetBundles = "Equipped"))
@@ -71,4 +79,9 @@ struct NEXUS_API FNexusFragment_Equippable : public FNexusItemFragment
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animations")
 	FEquippableAnimationSet Animations;
+
+	bool CanFitInSlot(const FGameplayTag SlotTag) const
+	{
+		return SlotTag.IsValid() && AllowedSlots.HasTagExact(SlotTag);
+	}
 };

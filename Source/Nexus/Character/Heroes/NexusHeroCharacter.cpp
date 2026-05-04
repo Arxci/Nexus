@@ -178,28 +178,11 @@ void ANexusHeroCharacter::OnSlotSecondaryInputStarted()
 void ANexusHeroCharacter::HandleSlotInput(FGameplayTag SlotTag)
 {
 	if (!NexusEquipmentComponent) return;
-	if (NexusEquipmentComponent->IsSwapping()) return; // ignore mash during draw/holster
 
-	// Snapshot the active slot BEFORE TryEquip — equipping into an empty setup
-	// auto-activates the new slot, so reading GetActiveSlot() after the fact
-	// would always make the toggle check below see "already active" and
-	// immediately holster what we just drew.
-	const FGameplayTag PreviousActive = NexusEquipmentComponent->GetActiveSlot();
-
-	NexusEquipmentComponent->TryEquipFirstCompatibleForSlot(SlotTag);
-
-	// RE-style toggle: tap an already-active slot key to holster.
-	if (PreviousActive.MatchesTagExact(SlotTag))
-	{
-		NexusEquipmentComponent->SetActiveSlot(FGameplayTag());
-	}
-	else
-	{
-		// Either nothing was active, a different slot was active, or this slot
-		// was equipped-but-inactive. Activate it. (Idempotent if EquipInstance
-		// just auto-activated it — SetActiveSlot early-outs on no-op.)
-		NexusEquipmentComponent->SetActiveSlot(SlotTag);
-	}
+	// All toggle / mid-swap-queue logic lives in the component (single source
+	// of truth). The character is intentionally just a translator from input
+	// action → slot tag.
+	NexusEquipmentComponent->RequestActivateSlot(SlotTag);
 }
 
 void ANexusHeroCharacter::OnCrouchInputStarted()

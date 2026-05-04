@@ -67,18 +67,10 @@ void ANexusEquippedActor::SetEquippedVisibility(bool bNewVisible)
 
 	if (bChanged)
 	{
-		// Hide the whole actor (including any BP-added child components like
-		// FX, lights) rather than touching just the mesh — keeps weapon laser /
-		// lights behaving sanely.
 		SetActorHiddenInGame(!bNewVisible);
 		K2_OnEquippedVisibilityChanged(bNewVisible);
 	}
-
-	// Always sync the anim-tick option (no early-return). On the first equip,
-	// bVisible defaulted to true and the change-guard above would otherwise skip
-	// this — leaving the skeletal mesh on USkeletalMeshComponent's default tick
-	// mode, which only ticks the anim graph during montages. FP weapons need
-	// idle sway / breath bob to update every frame regardless.
+	
 	if (Mesh)
 	{
 		Mesh->VisibilityBasedAnimTickOption = bNewVisible
