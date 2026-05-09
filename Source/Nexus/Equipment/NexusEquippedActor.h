@@ -41,6 +41,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Equipped")
 	void ApplyOwnerViewpointRendering();
 
+	/**
+	 * Apply the actor's currently-resolved viewpoint state (cast-shadow,
+	 * first-person primitive type) to a single mesh. Called from both
+	 * ApplyOwnerViewpointRendering and from the assembly component when a
+	 * new attachment mesh is spawned, so attachments don't miss the
+	 * initial viewpoint pass.
+	 */
+	void ApplyViewpointToMesh(USkeletalMeshComponent* TargetMesh) const;
+
+	UFUNCTION(BlueprintPure, Category = "Equipped")
+	bool IsRenderedFirstPerson() const { return bIsFirstPersonView; }
+
 
 	// Weapon-mesh animation. The weapon mesh has its own AnimInstance running
 	// the AnimBP authored on the equippable definition; arms-side notifies
@@ -106,6 +118,9 @@ protected:
 
 	UPROPERTY(Transient)
 	bool bVisible = true;
+
+	UPROPERTY(Transient)
+	bool bIsFirstPersonView = false;
 
 	/** BP-only hook for FX/audio after init (e.g. light cone setup, hover anim). */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Equipped",

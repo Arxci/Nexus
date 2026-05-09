@@ -118,7 +118,8 @@ void UNexusAbility_WeaponReload::CommitAbility()
 		}
 	}
 
-	BoundAnimInstance = ReloadAnimInstance;
+	BoundAnimInstance   = ReloadAnimInstance;
+	BoundReloadMontage  = ArmsReload;
 
 	if (USoundBase* ReloadSound = Weapon->Presentation.ReloadSound.LoadSynchronous())
 	{
@@ -160,7 +161,8 @@ void UNexusAbility_WeaponReload::CommitAbilityEnd()
 	{
 		AnimInstance->OnPlayMontageNotifyBegin.RemoveDynamic(this, &UNexusAbility_WeaponReload::HandleNotifyBegin);
 	}
-	BoundAnimInstance = nullptr;
+	BoundAnimInstance  = nullptr;
+	BoundReloadMontage = nullptr;
 
 	Super::CommitAbilityEnd();
 }
@@ -170,6 +172,14 @@ void UNexusAbility_WeaponReload::HandleNotifyBegin(const FName NotifyName, const
 	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
 	if (!Weapon) return;
 	if (NotifyName != Weapon->Reload.AmmoTransferNotifyName) return;
+
+	// OnPlayMontageNotifyBegin fires for any notify on any montage on the bound
+	// AnimInstance. Verify our reload montage is still the one playing — another
+	// montage with a coincidentally-named "AmmoTransfer" notify shouldn't transfer.
+	UAnimInstance* AI = BoundAnimInstance.Get();
+	UAnimMontage* Bound = BoundReloadMontage.Get();
+	if (!AI || !Bound) return;
+	if (!AI->Montage_IsPlaying(Bound)) return;
 
 	TransferAmmo();
 }

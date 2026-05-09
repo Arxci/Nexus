@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#pragma once
+
 #include "CoreMinimal.h"
 #include "Animation/AnimInstance.h"
 #include "Nexus/Weapon/Abilities/NexusAbility_Weapon.h"
@@ -37,6 +39,14 @@ private:
 	FTimerHandle TimerHandle_ReloadFinish;
 
 	TWeakObjectPtr<UAnimInstance> BoundAnimInstance;
+
+	/**
+	 * The specific montage we asked to play at reload start. The
+	 * OnPlayMontageNotifyBegin delegate fires for any notify on any montage
+	 * playing on the bound AnimInstance, so we additionally verify that the
+	 * triggering montage is still our reload before consuming reserve ammo.
+	 */
+	TWeakObjectPtr<UAnimMontage> BoundReloadMontage;
 
 	bool bAmmoTransferred = false;
 };

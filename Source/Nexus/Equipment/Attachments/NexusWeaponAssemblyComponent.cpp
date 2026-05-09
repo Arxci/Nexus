@@ -51,10 +51,18 @@ const FWeaponSlotDefinition* UNexusWeaponAssemblyComponent::FindSlotDefinition(c
 	return SlotDefinitions.Find(SlotID);
 }
 
+FGameplayTag UNexusWeaponAssemblyComponent::FindParentSlotFor(const FGameplayTag SlotID) const
+{
+	if (const FGameplayTag* Found = SlotParents.Find(SlotID)) return *Found;
+	return FGameplayTag();
+}
+
 
 // Lifecycle
 void UNexusWeaponAssemblyComponent::ClearAssembly()
 {
+	TGuardValue SuppressGuard(bSuppressBroadcasts, true);
+
 	TArray<FGameplayTag> Slots;
 	Attached.GetKeys(Slots);
 	for (const FGameplayTag& SlotID : Slots)
@@ -63,29 +71,45 @@ void UNexusWeaponAssemblyComponent::ClearAssembly()
 	}
 
 	SlotDefinitions.Reset();
+	SlotParents.Reset();
 	SlotLoadHandles.Reset();
 	Attached.Reset();
+
+	InvalidateStatCache();
 }
 
 void UNexusWeaponAssemblyComponent::RebuildFromInstance()
 {
-	ClearAssembly();
-
-	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
-	if (!Weapon) return;
-
-	UNexusItemInstance* Instance = GetSourceInstance();
-
-	// Stage 1: register the weapon's top-level slots (no parent).
-	for (const FWeaponSlotDefinition& Slot : Weapon->Slots)
 	{
-		if (!Slot.SlotID.IsValid()) continue;
-		RegisterSlotDefinition(Slot, FGameplayTag());
+		TGuardValue SuppressGuard(bSuppressBroadcasts, true);
+
+		ClearAssembly();
+
+		if (const FNexusFragment_Weapon* Weapon = GetWeaponFragment())
+		{
+			// Stage 1: register the weapon's top-level slots.
+			for (const FWeaponSlotDefinition& Slot : Weapon->Slots)
+			{
+				if (!Slot.SlotID.IsValid()) continue;
+				RegisterSlotDefinition(Slot);
+			}
+
+			// Stage 2: install attachments — persisted instance config wins, otherwise default.
+			FillMissingDefaults();
+		}
 	}
 
-	// Stage 2: install attachments. Persisted instance config wins; otherwise
-	// the slot's DefaultAttachment is used. We loop because a freshly-installed
-	// attachment can introduce more sub-slots that themselves want filling.
+	// One consolidated broadcast — fires even on teardown-only paths so UI
+	// listeners stay in sync with the cleared state.
+	BroadcastChanged();
+}
+
+void UNexusWeaponAssemblyComponent::FillMissingDefaults()
+{
+	UNexusItemInstance* Instance = GetSourceInstance();
+
+	// Fix-point loop: a freshly-installed attachment can introduce more sub-slots
+	// that themselves want filling.
 	bool bChanged;
 	do
 	{
@@ -111,24 +135,25 @@ void UNexusWeaponAssemblyComponent::RebuildFromInstance()
 			}
 			if (ToInstall.IsNull()) continue;
 
-			// LoadSynchronous here is acceptable for assembly-time setup —
-			// the equipment component already gates equipping behind an async
-			// load of the "Equipped" bundle, which includes attachment soft refs
-			// reachable from the fragment. For runtime player-driven attaches,
-			// AttachItem() goes through the Asset Manager async path.
-			UNexusAttachmentDefinition* Definition = ToInstall.LoadSynchronous();
+			// Both persisted refs and slot defaults are reachable from the
+			// "Equipped" bundle that the equipment component awaited before
+			// invoking us, so the asset should already be resident. Get() is
+			// expected; LoadSynchronous fallback is defensive only.
+			UNexusAttachmentDefinition* Definition = ToInstall.Get();
+			if (!Definition) Definition = ToInstall.LoadSynchronous();
 			if (!Definition) continue;
+
 			if (!CanAttachItem(SlotID, Definition)) continue;
 
-			AttachItem(SlotID, Definition);
+			// bPersist=false here — defaults shouldn't pollute the player's
+			// per-instance attachment map. Only player-driven AttachItem persists.
+			AttachItem(SlotID, Definition, /*bPersist*/ false);
 			bChanged = true;
 		}
 	} while (bChanged);
-
-	BroadcastChanged();
 }
 
-void UNexusWeaponAssemblyComponent::RegisterSlotDefinition(const FWeaponSlotDefinition& Slot, const FGameplayTag /*ParentSlotID*/)
+void UNexusWeaponAssemblyComponent::RegisterSlotDefinition(const FWeaponSlotDefinition& Slot)
 {
 	if (!Slot.SlotID.IsValid()) return;
 	if (SlotDefinitions.Contains(Slot.SlotID))
@@ -142,9 +167,6 @@ void UNexusWeaponAssemblyComponent::RegisterSlotDefinition(const FWeaponSlotDefi
 		return;
 	}
 
-	// Parent linkage is tracked on the FNexusAttachmentInstance during
-	// AttachItem (it scans Attached for the contributor), so SlotDefinitions
-	// only needs the per-slot fields the slot author wrote down.
 	SlotDefinitions.Add(Slot.SlotID, Slot);
 }
 
@@ -157,13 +179,29 @@ bool UNexusWeaponAssemblyComponent::CanAttachItem(const FGameplayTag SlotID, con
 	const FWeaponSlotDefinition* SlotDef = FindSlotDefinition(SlotID);
 	if (!SlotDef) return false;
 
-	// Empty AcceptedTags = "anything fits" — useful for prototype/test slots.
-	if (SlotDef->AcceptedTags.IsEmpty()) return true;
+	if (SlotDef->bAcceptsAny) return true;
+
+	if (SlotDef->AcceptedTags.IsEmpty())
+	{
+		// Legacy behaviour: empty AcceptedTags used to mean "anything fits".
+		// Preserve it but warn once per slot so authors migrate to bAcceptsAny.
+		static TSet<FGameplayTag> WarnedSlots;
+		bool bAlreadyWarned;
+		WarnedSlots.Add(SlotID, &bAlreadyWarned);
+		if (!bAlreadyWarned)
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("[WeaponAssembly] Slot %s has empty AcceptedTags and bAcceptsAny=false; treating as wildcard. ")
+				TEXT("Set bAcceptsAny=true on the slot definition to silence this warning."),
+				*SlotID.ToString());
+		}
+		return true;
+	}
 
 	return Definition->FitsSlot(SlotDef->AcceptedTags);
 }
 
-bool UNexusWeaponAssemblyComponent::AttachItem(const FGameplayTag SlotID, UNexusAttachmentDefinition* Definition)
+bool UNexusWeaponAssemblyComponent::AttachItem(const FGameplayTag SlotID, UNexusAttachmentDefinition* Definition, const bool bPersist)
 {
 	if (!Definition) return false;
 	if (!CanAttachItem(SlotID, Definition)) return false;
@@ -171,86 +209,89 @@ bool UNexusWeaponAssemblyComponent::AttachItem(const FGameplayTag SlotID, UNexus
 	const FWeaponSlotDefinition* SlotDef = FindSlotDefinition(SlotID);
 	if (!SlotDef) return false;
 
-	// Determine the parent slot, if any. A slot is a child when it was
-	// contributed by an attachment further up the tree — i.e. when an existing
-	// installed attachment lists this SlotID inside its ProvidedSlots.
-	FGameplayTag ParentSlotID;
-	for (const TPair<FGameplayTag, FNexusAttachmentInstance>& Pair : Attached)
+	const FGameplayTag ParentSlotID = FindParentSlotFor(SlotID);
+
 	{
-		const UNexusAttachmentDefinition* ParentDef = Pair.Value.Definition;
-		if (!ParentDef) continue;
-		for (const FWeaponSlotDefinition& Provided : ParentDef->ProvidedSlots)
+		// Suppress broadcasts during the swap so we emit one event for the whole
+		// change (and so a recursive FillMissingDefaults pass doesn't fire its
+		// own intermediate broadcasts).
+		TGuardValue SuppressGuard(bSuppressBroadcasts, true);
+
+		// Replace any existing attachment in this slot before installing the new one.
+		if (Attached.Contains(SlotID))
 		{
-			if (Provided.SlotID == SlotID)
+			DetachSubtree(SlotID);
+		}
+
+		FNexusAttachmentInstance Record;
+		Record.SlotID        = SlotID;
+		Record.ParentSlotID  = ParentSlotID;
+		Record.Definition    = Definition;
+		Record.AttachSocket  = SlotDef->AttachSocket;
+
+		Attached.Add(SlotID, Record);
+
+		// Register the new attachment's provided sub-slots so future passes can fill them.
+		for (const FWeaponSlotDefinition& SubSlot : Definition->ProvidedSlots)
+		{
+			if (!SubSlot.SlotID.IsValid()) continue;
+			RegisterSlotDefinition(SubSlot);
+			SlotParents.Add(SubSlot.SlotID, SlotID);
+		}
+
+		if (bPersist)
+		{
+			if (UNexusItemInstance* Instance = GetSourceInstance())
 			{
-				ParentSlotID = Pair.Key;
-				break;
+				Instance->SetAttachmentForSlot(SlotID, Definition);
 			}
 		}
-		if (ParentSlotID.IsValid()) break;
-	}
 
-	// Replace any existing attachment in this slot before installing the new one.
-	if (Attached.Contains(SlotID))
-	{
-		DetachSubtree(SlotID);
-	}
-
-	FNexusAttachmentInstance Record;
-	Record.SlotID        = SlotID;
-	Record.ParentSlotID  = ParentSlotID;
-	Record.Definition    = Definition;
-	Record.AttachSocket  = SlotDef->AttachSocket;
-
-	Attached.Add(SlotID, Record);
-
-	// Register the new attachment's provided sub-slots so future passes (or
-	// player-driven attaches) can fill them.
-	for (const FWeaponSlotDefinition& SubSlot : Definition->ProvidedSlots)
-	{
-		if (!SubSlot.SlotID.IsValid()) continue;
-		RegisterSlotDefinition(SubSlot, SlotID);
-	}
-
-	if (UNexusItemInstance* Instance = GetSourceInstance())
-	{
-		Instance->SetAttachmentForSlot(SlotID, Definition);
-	}
-
-	// Async-load the visual via the Asset Manager and spawn the mesh component
-	// when ready. If the asset manager has nothing for this id (designer hasn't
-	// registered the Attachment primary type), we fall back to spawning
-	// straight from the resolved definition.
-	const FPrimaryAssetId AssetId = Definition->GetPrimaryAssetId();
-	if (AssetId.IsValid())
-	{
-		UAssetManager& AM = UAssetManager::Get();
-		TWeakObjectPtr<UNexusWeaponAssemblyComponent> WeakSelf(this);
-		const FStreamableDelegate OnReady = FStreamableDelegate::CreateLambda(
-			[WeakSelf, SlotID]()
-			{
-				if (UNexusWeaponAssemblyComponent* Self = WeakSelf.Get())
-				{
-					Self->HandleAttachmentLoaded(SlotID);
-				}
-			});
-
-		const TSharedPtr<FStreamableHandle> Handle = AM.LoadPrimaryAsset(
-			AssetId, TArray<FName>{ TEXT("Equipped") }, OnReady);
-		if (Handle.IsValid())
+		// Async-load the visual via the Asset Manager and spawn the mesh component
+		// when ready. If the asset manager has nothing for this id (designer hasn't
+		// registered the Attachment primary type), we fall back to spawning
+		// straight from the resolved definition.
+		const FPrimaryAssetId AssetId = Definition->GetPrimaryAssetId();
+		if (AssetId.IsValid())
 		{
-			SlotLoadHandles.Add(SlotID, Handle);
+			UAssetManager& AM = UAssetManager::Get();
+			TWeakObjectPtr WeakSelf(this);
+			const FStreamableDelegate OnReady = FStreamableDelegate::CreateLambda(
+				[WeakSelf, SlotID]()
+				{
+					if (UNexusWeaponAssemblyComponent* Self = WeakSelf.Get())
+					{
+						Self->HandleAttachmentLoaded(SlotID);
+					}
+				});
+
+			const TSharedPtr<FStreamableHandle> Handle = AM.LoadPrimaryAsset(
+				AssetId, TArray<FName>{ TEXT("Equipped") }, OnReady);
+			if (Handle.IsValid())
+			{
+				SlotLoadHandles.Add(SlotID, Handle);
+			}
+			else
+			{
+				HandleAttachmentLoaded(SlotID);
+			}
 		}
 		else
 		{
 			HandleAttachmentLoaded(SlotID);
 		}
-	}
-	else
-	{
-		HandleAttachmentLoaded(SlotID);
+
+		InvalidateStatCache();
+
+		// If the new attachment exposed sub-slots, fill their defaults so a
+		// runtime swap (UI-driven) behaves the same as the initial Rebuild.
+		if (Definition->ProvidedSlots.Num() > 0)
+		{
+			FillMissingDefaults();
+		}
 	}
 
+	// One consolidated broadcast after all internal mutations.
 	BroadcastChanged();
 	return true;
 }
@@ -259,11 +300,16 @@ bool UNexusWeaponAssemblyComponent::DetachItem(const FGameplayTag SlotID)
 {
 	if (!Attached.Contains(SlotID)) return false;
 
-	DetachSubtree(SlotID);
-
-	if (UNexusItemInstance* Instance = GetSourceInstance())
 	{
-		Instance->ClearAttachmentForSlot(SlotID);
+		TGuardValue SuppressGuard(bSuppressBroadcasts, true);
+		DetachSubtree(SlotID);
+
+		if (UNexusItemInstance* Instance = GetSourceInstance())
+		{
+			Instance->ClearAttachmentForSlot(SlotID);
+		}
+
+		InvalidateStatCache();
 	}
 
 	BroadcastChanged();
@@ -301,6 +347,7 @@ void UNexusWeaponAssemblyComponent::DetachSubtree(const FGameplayTag SlotID)
 			for (const FWeaponSlotDefinition& SubSlot : Definition->ProvidedSlots)
 			{
 				SlotDefinitions.Remove(SubSlot.SlotID);
+				SlotParents.Remove(SubSlot.SlotID);
 			}
 		}
 
@@ -308,6 +355,7 @@ void UNexusWeaponAssemblyComponent::DetachSubtree(const FGameplayTag SlotID)
 	}
 
 	SlotLoadHandles.Remove(SlotID);
+	InvalidateStatCache();
 }
 
 UNexusAttachmentDefinition* UNexusWeaponAssemblyComponent::GetAttachment(const FGameplayTag SlotID) const
@@ -320,6 +368,17 @@ TArray<FGameplayTag> UNexusWeaponAssemblyComponent::GetAllSlotIDs() const
 {
 	TArray<FGameplayTag> Out;
 	SlotDefinitions.GetKeys(Out);
+	return Out;
+}
+
+TArray<USkeletalMeshComponent*> UNexusWeaponAssemblyComponent::GetAttachmentMeshes() const
+{
+	TArray<USkeletalMeshComponent*> Out;
+	Out.Reserve(Attached.Num());
+	for (const TPair<FGameplayTag, FNexusAttachmentInstance>& Pair : Attached)
+	{
+		if (USkeletalMeshComponent* M = Pair.Value.Mesh) Out.Add(M);
+	}
 	return Out;
 }
 
@@ -349,9 +408,19 @@ void UNexusWeaponAssemblyComponent::SpawnMeshForAttachment(FNexusAttachmentInsta
 	if (!Record.Definition) return;
 
 	UMeshComponent* ParentMesh = GetParentMeshComponentForSlot(Record.ParentSlotID);
-	if (!ParentMesh) return;
+	if (!ParentMesh) return; // Parent not ready yet; we'll retry from HandleAttachmentLoaded.
 
-	USkeletalMesh* MeshAsset = Record.Definition->Mesh.LoadSynchronous();
+	// Mesh + AnimInstance class come from the "Equipped" bundle that
+	// AttachItem just LoadPrimaryAsset'd, so they should be resident. Get()
+	// is expected; ensureAlways flags any missed bundle-await.
+	USkeletalMesh* MeshAsset = Record.Definition->Mesh.Get();
+	if (!MeshAsset)
+	{
+		ensureAlwaysMsgf(Record.Definition->Mesh.IsNull(),
+			TEXT("[WeaponAssembly] Mesh for attachment %s not resident; bundle 'Equipped' was not awaited"),
+			*GetNameSafe(Record.Definition));
+		MeshAsset = Record.Definition->Mesh.LoadSynchronous();
+	}
 	if (!MeshAsset) return;
 
 	AActor* Outer = GetOwner();
@@ -362,25 +431,30 @@ void UNexusWeaponAssemblyComponent::SpawnMeshForAttachment(FNexusAttachmentInsta
 
 	NewMesh->SetSkeletalMesh(MeshAsset);
 	NewMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	NewMesh->SetCastShadow(false);
 
-	if (UClass* AnimClass = Record.Definition->AnimInstanceClass.LoadSynchronous())
+	UClass* AnimClass = Record.Definition->AnimInstanceClass.Get();
+	if (!AnimClass && !Record.Definition->AnimInstanceClass.IsNull())
+	{
+		ensureAlwaysMsgf(false,
+			TEXT("[WeaponAssembly] AnimInstance class for attachment %s not resident; bundle 'Equipped' was not awaited"),
+			*GetNameSafe(Record.Definition));
+		AnimClass = Record.Definition->AnimInstanceClass.LoadSynchronous();
+	}
+	if (AnimClass)
 	{
 		NewMesh->SetAnimInstanceClass(AnimClass);
 	}
 
-	NewMesh->SetupAttachment(ParentMesh, Record.AttachSocket);
+	// Register, then attach. SetupAttachment is for unregistered components only;
+	// after RegisterComponent the attachment is finalized via AttachToComponent.
 	NewMesh->RegisterComponent();
 	NewMesh->AttachToComponent(ParentMesh,
 		FAttachmentTransformRules::SnapToTargetNotIncludingScale, Record.AttachSocket);
 
-	// Mirror the equipped actor's first-person rendering treatment.
-	if (const ANexusEquippedActor* Actor = GetEquippedActor())
+	// Mirror viewpoint state (cast-shadow + first-person primitive) from the actor.
+	if (ANexusEquippedActor* Actor = GetEquippedActor())
 	{
-		if (const USkeletalMeshComponent* ActorMesh = Actor->GetMesh())
-		{
-			NewMesh->FirstPersonPrimitiveType = ActorMesh->FirstPersonPrimitiveType;
-		}
+		Actor->ApplyViewpointToMesh(NewMesh);
 	}
 
 	Record.Mesh = NewMesh;
@@ -392,27 +466,58 @@ void UNexusWeaponAssemblyComponent::HandleAttachmentLoaded(const FGameplayTag Sl
 	if (!Record) return;
 
 	SpawnMeshForAttachment(*Record);
+
+	// If this slot's mesh just appeared, any child whose parent was waiting on
+	// it can now spawn — async load order is non-deterministic and a child
+	// callback may have arrived before its parent's.
+	if (Record->Mesh)
+	{
+		for (TPair<FGameplayTag, FNexusAttachmentInstance>& Pair : Attached)
+		{
+			if (Pair.Value.ParentSlotID == SlotID && !Pair.Value.Mesh)
+			{
+				SpawnMeshForAttachment(Pair.Value);
+			}
+		}
+	}
+
 	BroadcastChanged();
 }
 
 
 // Resolution
-FResolvedWeaponStats UNexusWeaponAssemblyComponent::ResolveStats() const
+namespace
 {
-	FResolvedWeaponStats Out;
+	void SeedBaseStat(TMap<FGameplayTag, float>& Out, const FGameplayTag& Tag, const float Value)
+	{
+		Out.Add(Tag, Value);
+	}
+}
+
+void UNexusWeaponAssemblyComponent::RebuildStatCache() const
+{
+	CachedStats.Values.Reset();
 
 	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
-	if (!Weapon) return Out;
+	if (!Weapon) { bStatCacheValid = true; return; }
 
-	// Seed with the weapon's authored base values. Each lives as a
-	// well-known Stat.Weapon.* tag so attachments can layer on them generically.
-	Out.Values.Add(NexusGameplayTags::Stat_Weapon_Damage,           Weapon->Combat.BaseDamage);
-	Out.Values.Add(NexusGameplayTags::Stat_Weapon_RPM,              Weapon->Combat.RoundsPerMinute);
-	Out.Values.Add(NexusGameplayTags::Stat_Weapon_MaxRange,         Weapon->Combat.MaxRange);
-	Out.Values.Add(NexusGameplayTags::Stat_Weapon_SpreadHip,        Weapon->Combat.SpreadConeDegrees.X);
-	Out.Values.Add(NexusGameplayTags::Stat_Weapon_SpreadADS,        Weapon->Combat.SpreadConeDegrees.Y);
-	Out.Values.Add(NexusGameplayTags::Stat_Weapon_MagazineSize,     Weapon->Ammo.MagazineSize);
-	Out.Values.Add(NexusGameplayTags::Stat_Weapon_ReloadDuration,   Weapon->Reload.ReloadDuration);
+	// Seed every well-known Stat.Weapon.* tag with the fragment's authored
+	// value (or a sensible neutral default). Multiplicative-only modifiers
+	// applied to non-seeded keys would otherwise multiply against zero and
+	// silently zero the value out.
+	SeedBaseStat(CachedStats.Values, NexusGameplayTags::Stat_Weapon_Damage,           Weapon->Combat.BaseDamage);
+	SeedBaseStat(CachedStats.Values, NexusGameplayTags::Stat_Weapon_RPM,              Weapon->Combat.RoundsPerMinute);
+	SeedBaseStat(CachedStats.Values, NexusGameplayTags::Stat_Weapon_MaxRange,         Weapon->Combat.MaxRange);
+	SeedBaseStat(CachedStats.Values, NexusGameplayTags::Stat_Weapon_SpreadHip,        Weapon->Combat.SpreadConeDegrees.X);
+	SeedBaseStat(CachedStats.Values, NexusGameplayTags::Stat_Weapon_SpreadADS,        Weapon->Combat.SpreadConeDegrees.Y);
+	SeedBaseStat(CachedStats.Values, NexusGameplayTags::Stat_Weapon_MagazineSize,     Weapon->Ammo.MagazineSize);
+	SeedBaseStat(CachedStats.Values, NexusGameplayTags::Stat_Weapon_ReloadDuration,   Weapon->Reload.ReloadDuration);
+
+	// Recoil/ADS-time aren't authored on FWeaponCombat yet, but seed neutrally
+	// so attachments can still meaningfully modify them.
+	SeedBaseStat(CachedStats.Values, NexusGameplayTags::Stat_Weapon_RecoilVertical,   0.0f);
+	SeedBaseStat(CachedStats.Values, NexusGameplayTags::Stat_Weapon_RecoilHorizontal, 0.0f);
+	SeedBaseStat(CachedStats.Values, NexusGameplayTags::Stat_Weapon_ADSTime,          0.0f);
 
 	// Two-pass fold so multiplicative modifiers always apply on top of the
 	// fully-summed additive base — matches how AAA gunsmiths describe their
@@ -428,22 +533,42 @@ FResolvedWeaponStats UNexusWeaponAssemblyComponent::ResolveStats() const
 		{
 			if (!Mod.StatTag.IsValid()) continue;
 			AddSum.FindOrAdd(Mod.StatTag, 0.0f)     += Mod.Add;
-			MulProduct.FindOrAdd(Mod.StatTag, 1.0f) *= (Mod.Mul == 0.0f ? 1.0f : Mod.Mul);
+			MulProduct.FindOrAdd(Mod.StatTag, 1.0f) *= Mod.Mul;
 		}
 	}
 
 	for (const TPair<FGameplayTag, float>& Add : AddSum)
 	{
-		float& Value = Out.Values.FindOrAdd(Add.Key, 0.0f);
-		Value += Add.Value;
+		// Only modify keys we actually seeded — modifiers against unknown stat
+		// tags would otherwise silently invent values.
+		if (float* Value = CachedStats.Values.Find(Add.Key))
+		{
+			*Value += Add.Value;
+		}
 	}
 	for (const TPair<FGameplayTag, float>& Mul : MulProduct)
 	{
-		float& Value = Out.Values.FindOrAdd(Mul.Key, 0.0f);
-		Value *= Mul.Value;
+		if (float* Value = CachedStats.Values.Find(Mul.Key))
+		{
+			*Value *= Mul.Value;
+		}
 	}
 
-	return Out;
+	bStatCacheValid = true;
+}
+
+void UNexusWeaponAssemblyComponent::InvalidateStatCache()
+{
+	bStatCacheValid = false;
+}
+
+const FResolvedWeaponStats& UNexusWeaponAssemblyComponent::ResolveStatsRef() const
+{
+	if (!bStatCacheValid)
+	{
+		RebuildStatCache();
+	}
+	return CachedStats;
 }
 
 UAnimMontage* UNexusWeaponAssemblyComponent::ResolveActionMontage(const FGameplayTag ActionTag) const
@@ -466,8 +591,11 @@ UAnimMontage* UNexusWeaponAssemblyComponent::ResolveActionMontage(const FGamepla
 		return Depth;
 	};
 
-	UAnimMontage* Best = nullptr;
-	int32 BestDepth = -1;
+	// Collect all candidates first so we can pick a deterministic winner on
+	// equal-depth ties (sort by SlotID name). TMap iteration order is otherwise
+	// unspecified and would silently flip winners between runs.
+	struct FCandidate { FGameplayTag SlotID; int32 Depth; };
+	TArray<FCandidate, TInlineAllocator<8>> Candidates;
 
 	for (const TPair<FGameplayTag, FNexusAttachmentInstance>& Pair : Attached)
 	{
@@ -476,18 +604,35 @@ UAnimMontage* UNexusWeaponAssemblyComponent::ResolveActionMontage(const FGamepla
 		const TSoftObjectPtr<UAnimMontage>* OverrideRef = Def->AnimationOverrides.Find(ActionTag);
 		if (!OverrideRef || OverrideRef->IsNull()) continue;
 
-		const int32 Depth = DepthOf(Pair.Key);
-		if (Depth > BestDepth)
-		{
-			if (UAnimMontage* Loaded = OverrideRef->LoadSynchronous())
-			{
-				Best      = Loaded;
-				BestDepth = Depth;
-			}
-		}
+		Candidates.Add({Pair.Key, DepthOf(Pair.Key)});
 	}
 
-	if (Best) return Best;
+	if (Candidates.Num() > 0)
+	{
+		Candidates.Sort([](const FCandidate& A, const FCandidate& B)
+		{
+			if (A.Depth != B.Depth) return A.Depth > B.Depth;
+			return A.SlotID.GetTagName().LexicalLess(B.SlotID.GetTagName());
+		});
+
+		for (const FCandidate& Cand : Candidates)
+		{
+			const FNexusAttachmentInstance* Rec = Attached.Find(Cand.SlotID);
+			if (!Rec || !Rec->Definition) continue;
+			const TSoftObjectPtr<UAnimMontage>* OverrideRef = Rec->Definition->AnimationOverrides.Find(ActionTag);
+			if (!OverrideRef) continue;
+
+			UAnimMontage* Loaded = OverrideRef->Get();
+			if (!Loaded)
+			{
+				ensureAlwaysMsgf(OverrideRef->IsNull(),
+					TEXT("[WeaponAssembly] Animation override for %s on %s not resident; bundle 'Equipped' was not awaited"),
+					*ActionTag.ToString(), *GetNameSafe(Rec->Definition));
+				Loaded = OverrideRef->LoadSynchronous();
+			}
+			if (Loaded) return Loaded;
+		}
+	}
 
 	// Fallback: the equipped actor's authored weapon-mesh action montages
 	// (FEquippableAnimationSet::WeaponActionMontages — populated via
@@ -507,6 +652,7 @@ UAnimMontage* UNexusWeaponAssemblyComponent::ResolveActionMontage(const FGamepla
 // Utility
 void UNexusWeaponAssemblyComponent::BroadcastChanged()
 {
+	if (bSuppressBroadcasts) return;
 	if (!HasBegunPlay()) return;
 	OnAssemblyChanged.Broadcast();
 }

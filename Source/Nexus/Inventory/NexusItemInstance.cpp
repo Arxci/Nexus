@@ -81,6 +81,11 @@ bool UNexusItemInstance::CanStackWith(const UNexusItemInstance* Other) const
 		const int32* OtherVal = Other->StatTags.Find(Pair.Key);
 		if (!OtherVal || *OtherVal != Pair.Value) return false;
 	}
+
+	// Stacking would silently drop one side's attachment configuration.
+	// Refuse stacking if either side carries customizations.
+	if (Attachments.Num() > 0 || Other->Attachments.Num() > 0) return false;
+
 	return true;
 }
 

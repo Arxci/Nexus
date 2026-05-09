@@ -112,11 +112,19 @@ public:
 	/**
 	 * Attempt to install Definition into SlotID. Returns false if the slot
 	 * isn't part of the current tree, or the attachment's ProvidedTags don't
-	 * overlap the slot's AcceptedTags. On success, the change is persisted to
-	 * the source UNexusItemInstance so it survives unequip/save/load.
+	 * overlap the slot's AcceptedTags.
+	 *
+	 * When bPersist is true (the default — runtime/UI path), the change is
+	 * written to the source UNexusItemInstance so it survives unequip/save/load.
+	 * When false (default-fill path during Rebuild), the install is treated as
+	 * "what the slot already wants" and is NOT persisted, so future updates to
+	 * a slot's DefaultAttachment continue to apply.
+	 *
+	 * Sub-slots introduced by the new attachment are auto-filled with their own
+	 * defaults (or the player's persisted choice for those sub-slots).
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Assembly")
-	bool AttachItem(FGameplayTag SlotID, UNexusAttachmentDefinition* Definition);
+	bool AttachItem(FGameplayTag SlotID, UNexusAttachmentDefinition* Definition, bool bPersist = true);
 
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Assembly")
 	bool DetachItem(FGameplayTag SlotID);
@@ -128,8 +136,16 @@ public:
 	bool CanAttachItem(FGameplayTag SlotID, const UNexusAttachmentDefinition* Definition) const;
 
 	// Resolution
+	/**
+	 * Returns the cached effective stat block for the current assembly tree.
+	 * The cache is rebuilt lazily after any AttachItem/DetachItem/Rebuild;
+	 * BP callers get a copy, C++ callers can use ResolveStatsRef() to read in-place.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Assembly")
-	FResolvedWeaponStats ResolveStats() const;
+	FResolvedWeaponStats ResolveStats() const { return ResolveStatsRef(); }
+
+	/** C++-only ref accessor — avoids the BP-exposed copy. */
+	const FResolvedWeaponStats& ResolveStatsRef() const;
 
 	/**
 	 * Returns the most-specific authored override for ActionTag across the
@@ -144,6 +160,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Weapon|Assembly")
 	TArray<FGameplayTag> GetAllSlotIDs() const;
 
+	/** All currently-spawned attachment mesh components (in arbitrary order). */
+	TArray<USkeletalMeshComponent*> GetAttachmentMeshes() const;
+
 	UPROPERTY(BlueprintAssignable, Category = "Weapon|Assembly")
 	FOnWeaponAssemblyChanged OnAssemblyChanged;
 
@@ -157,13 +176,22 @@ private:
 
 	const FWeaponSlotDefinition* FindSlotDefinition(FGameplayTag SlotID) const;
 
-	void RegisterSlotDefinition(const FWeaponSlotDefinition& Slot, FGameplayTag ParentSlotID);
+	void RegisterSlotDefinition(const FWeaponSlotDefinition& Slot);
 	void DetachSubtree(FGameplayTag SlotID);
+
+	/** Walk SlotDefinitions and install persisted/default attachments for any unfilled slot. Fix-point. */
+	void FillMissingDefaults();
 
 	void SpawnMeshForAttachment(FNexusAttachmentInstance& Record);
 	void HandleAttachmentLoaded(FGameplayTag SlotID);
 
 	UMeshComponent* GetParentMeshComponentForSlot(FGameplayTag ParentSlotID) const;
+
+	/** Slot of the attachment that contributes SlotID, or invalid if SlotID is a top-level slot. */
+	FGameplayTag FindParentSlotFor(FGameplayTag SlotID) const;
+
+	void RebuildStatCache() const;
+	void InvalidateStatCache();
 
 	void BroadcastChanged();
 
@@ -176,6 +204,14 @@ private:
 	TMap<FGameplayTag, FWeaponSlotDefinition> SlotDefinitions;
 
 	/**
+	 * Reverse map: child SlotID -> the parent SlotID whose attachment
+	 * contributes it (invalid for top-level slots). Maintained alongside
+	 * SlotDefinitions so AttachItem doesn't need to scan Attached.
+	 */
+	UPROPERTY(Transient)
+	TMap<FGameplayTag, FGameplayTag> SlotParents;
+
+	/**
 	 * Currently-installed attachments, keyed by SlotID. ParentSlotID inside
 	 * each record reconstructs the tree.
 	 */
@@ -184,4 +220,14 @@ private:
 
 	/** Streamable handles keep loaded attachment bundles resident while attached. */
 	TMap<FGameplayTag, TSharedPtr<FStreamableHandle>> SlotLoadHandles;
+
+	/**
+	 * Coalescing flag: while true, BroadcastChanged is a no-op so we can
+	 * batch a multi-step rebuild into a single delegate fire at the end.
+	 */
+	mutable bool bSuppressBroadcasts = false;
+
+	/** Lazy-resolved effective stats; rebuilt on read after invalidation. */
+	mutable FResolvedWeaponStats CachedStats;
+	mutable bool bStatCacheValid = false;
 };

@@ -9,7 +9,6 @@
 class UNexusAttachmentDefinition;
 
 
-
 USTRUCT(BlueprintType, DisplayName = "Attachment Stat Modifier")
 struct NEXUS_API FAttachmentStatModifier
 {
@@ -42,6 +41,16 @@ struct NEXUS_API FWeaponSlotDefinition
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
 		meta = (Categories = "Attachment.Type"))
 	FGameplayTagContainer AcceptedTags;
+
+	/**
+	 * When true, AcceptedTags is ignored and any attachment fits this slot.
+	 * Useful for prototype/test slots; prefer authoring AcceptedTags for ship.
+	 *
+	 * Empty AcceptedTags + bAcceptsAny=false is treated as "accepts any" with a
+	 * one-time warning (legacy compatibility) — set bAcceptsAny=true to silence.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	bool bAcceptsAny = false;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	bool bRequired = false;

@@ -88,11 +88,17 @@ void UNexusAbility_WeaponFire::CommitAbility()
 
 float UNexusAbility_WeaponFire::GetCooldownTotalDuration() const
 {
-	if (const FNexusFragment_Weapon* W = GetWeaponFragment())
+	const FNexusFragment_Weapon* W = GetWeaponFragment();
+	if (!W) return Super::GetCooldownTotalDuration();
+
+	// RPM can be lifted/lowered by attachment modifiers (e.g. lightweight bolt
+	// carrier increases RPM). Read the effective value through the assembly.
+	float Rpm = W->Combat.RoundsPerMinute;
+	if (const ANexusEquippedActor* Equipped = GetEquippedActor())
 	{
-		return FMath::Max(0.0f, W->GetFireInterval());
+		Rpm = Equipped->GetEffectiveStat(NexusGameplayTags::Stat_Weapon_RPM, Rpm);
 	}
-	return Super::GetCooldownTotalDuration();
+	return Rpm > 0.0f ? FMath::Max(0.0f, 60.0f / Rpm) : 0.0f;
 }
 
 bool UNexusAbility_WeaponFire::HasCooldown() const
@@ -207,11 +213,25 @@ void UNexusAbility_WeaponFire::FireOnePellet(const FVector& ViewLoc, const FRota
 	{
 		bAiming = ASC->HasTag(NexusGameplayTags::Character_State_Weapon_Aiming);
 	}
-	const float ConeHalfDeg = bAiming ? Weapon->Combat.SpreadConeDegrees.Y : Weapon->Combat.SpreadConeDegrees.X;
+
+	// Spread + range are attachment-modifiable: a foregrip tightens hip spread,
+	// a long barrel extends max range, etc.
+	const ANexusEquippedActor* Equipped = GetEquippedActor();
+	const float HipSpread = Equipped
+		? Equipped->GetEffectiveStat(NexusGameplayTags::Stat_Weapon_SpreadHip, Weapon->Combat.SpreadConeDegrees.X)
+		: Weapon->Combat.SpreadConeDegrees.X;
+	const float AdsSpread = Equipped
+		? Equipped->GetEffectiveStat(NexusGameplayTags::Stat_Weapon_SpreadADS, Weapon->Combat.SpreadConeDegrees.Y)
+		: Weapon->Combat.SpreadConeDegrees.Y;
+	const float MaxRange = Equipped
+		? Equipped->GetEffectiveStat(NexusGameplayTags::Stat_Weapon_MaxRange, Weapon->Combat.MaxRange)
+		: Weapon->Combat.MaxRange;
+
+	const float ConeHalfDeg = bAiming ? AdsSpread : HipSpread;
 
 	const FVector AimDir = ViewRot.Vector();
 	const FVector Spread = FMath::VRandCone(AimDir, FMath::DegreesToRadians(ConeHalfDeg));
-	const FVector End    = ViewLoc + Spread * Weapon->Combat.MaxRange;
+	const FVector End    = ViewLoc + Spread * MaxRange;
 
 	TArray<AActor*> ActorsToIgnore;
 	if (AActor* Owner = GetOwner()) ActorsToIgnore.Add(Owner);
@@ -248,11 +268,16 @@ void UNexusAbility_WeaponFire::FireOnePellet(const FVector& ViewLoc, const FRota
 
 	if (HitActor->Implements<UNexusDamageReceiver>())
 	{
+		// Damage is attachment-modifiable too (heavy-grain rounds, etc).
+		const float EffectiveDamage = Equipped
+			? Equipped->GetEffectiveStat(NexusGameplayTags::Stat_Weapon_Damage, Weapon->Combat.BaseDamage)
+			: Weapon->Combat.BaseDamage;
+
 		FNexusDamageContext Ctx;
 		Ctx.Instigator       = GetOwner();
 		Ctx.Causer           = GetEquippedActor();
 		Ctx.DamageTypeTag    = Weapon->Combat.DamageTypeTag;
-		Ctx.BaseDamage       = Weapon->Combat.BaseDamage;
+		Ctx.BaseDamage       = EffectiveDamage;
 		Ctx.HitResult        = Hit;
 		Ctx.ImpulseDirection = Spread;
 		Ctx.ImpulseMagnitude = 1000.0f;

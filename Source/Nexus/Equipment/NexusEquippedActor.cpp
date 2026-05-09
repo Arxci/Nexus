@@ -106,8 +106,9 @@ float ANexusEquippedActor::GetEffectiveStat(const FGameplayTag StatTag, const fl
 {
 	if (Assembly)
 	{
-		const FResolvedWeaponStats Stats = Assembly->ResolveStats();
-		return Stats.Get(StatTag, Default);
+		// Hot path (per-shot): read the cached map by reference — avoids the
+		// TMap copy that the BP-facing ResolveStats() return-by-value would do.
+		return Assembly->ResolveStatsRef().Get(StatTag, Default);
 	}
 	return Default;
 }
@@ -141,7 +142,7 @@ FTransform ANexusEquippedActor::GetSocketTransform(const FName SocketName) const
 
 void ANexusEquippedActor::SetEquippedVisibility(bool bNewVisible)
 {
-	const bool bChanged = (bVisible != bNewVisible);
+	const bool bChanged = bVisible != bNewVisible;
 	bVisible = bNewVisible;
 
 	if (bChanged)
@@ -160,26 +161,41 @@ void ANexusEquippedActor::SetEquippedVisibility(bool bNewVisible)
 
 void ANexusEquippedActor::ApplyOwnerViewpointRendering()
 {
-	if (!Mesh) return;
-
 	// "Locally controlled by a player" — true for the singleplayer player pawn,
 	// false for AI (which is locally controlled but not player-controlled) and
 	// false for any future remote players.
 	const APawn* OwnerPawn = Cast<APawn>(GetOwner());
-	const bool bIsFirstPerson = OwnerPawn
+	bIsFirstPersonView = OwnerPawn
 		&& OwnerPawn->IsPlayerControlled()
 		&& OwnerPawn->IsLocallyControlled();
 
-	if (bIsFirstPerson)
+	ApplyViewpointToMesh(Mesh);
+
+	// Propagate to every attachment mesh currently spawned by the assembly so a
+	// view change at runtime updates the whole gun, not just the receiver.
+	if (Assembly)
 	{
-		Mesh->SetCastShadow(false);
-		Mesh->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::FirstPerson;
+		for (USkeletalMeshComponent* AttachMesh : Assembly->GetAttachmentMeshes())
+		{
+			ApplyViewpointToMesh(AttachMesh);
+		}
+	}
+
+	K2_OnOwnerViewpointApplied(bIsFirstPersonView);
+}
+
+void ANexusEquippedActor::ApplyViewpointToMesh(USkeletalMeshComponent* TargetMesh) const
+{
+	if (!TargetMesh) return;
+
+	if (bIsFirstPersonView)
+	{
+		TargetMesh->SetCastShadow(false);
+		TargetMesh->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::FirstPerson;
 	}
 	else
 	{
-		Mesh->SetCastShadow(true);
-		Mesh->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::None;
+		TargetMesh->SetCastShadow(true);
+		TargetMesh->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::None;
 	}
-
-	K2_OnOwnerViewpointApplied(bIsFirstPerson);
 }
