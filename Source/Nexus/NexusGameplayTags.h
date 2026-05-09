@@ -80,4 +80,48 @@ namespace NexusGameplayTags
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Ammo_InMagazine);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Durability);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Charges);
+
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Weapon_Damage);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Weapon_RPM);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Weapon_MagazineSize);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Weapon_MaxRange);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Weapon_RecoilVertical);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Weapon_RecoilHorizontal);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Weapon_SpreadHip);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Weapon_SpreadADS);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Weapon_ADSTime);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Weapon_ReloadDuration);
+
+	// Attachment slot identity (used as keys in FWeaponSlotDefinition::SlotID).
+	// Slot identity is data-driven — these are common roots shipped in C++.
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Slot_Slide);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Slot_Magazine);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Slot_Barrel);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Slot_Trigger);
+
+	// Attachment type taxonomy (used for AcceptedTags / ProvidedTags compatibility).
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Type_Slide);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Type_Magazine);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Type_Barrel);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Type_Trigger);
+
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Identity_Slide_Standard);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Identity_Magazine_Standard);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Identity_Barrel_Standard);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Identity_Trigger_Standard);
+
+	// Weapon-mesh action tags. Used as keys in FEquippableAnimationSet::WeaponActionMontages
+	// AND as identifiers on UNexusAnimNotify_WeaponAction so an arms montage can drive
+	// the gun's own animations at the correct frame.
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_Unholster);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_Holster);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_Inspect);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_Fire);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_DryFire);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_Reload);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_Reload_Empty);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_MagOut);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_MagIn);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_SlideRack);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_BoltClose);
 }

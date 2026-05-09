@@ -6,6 +6,7 @@
 
 #include "NexusItemInstance.generated.h"
 
+class UNexusAttachmentDefinition;
 class UNexusItemDefinition;
 
 
@@ -60,6 +61,32 @@ public:
 	bool HasStat(FGameplayTag StatTag) const;
 
 
+	// Attachments
+	/**
+	 * Persisted attachment configuration. Keyed by FWeaponSlotDefinition::SlotID
+	 * (resolved against the weapon's slot tree). Soft pointers so non-equipped
+	 * inventory items don't pin their attachment assets in memory; the
+	 * UNexusWeaponAssemblyComponent loads them via the Asset Manager when the
+	 * item is equipped.
+	 *
+	 * Nested attachments use dotted slot paths
+	 * (e.g. "Attachment.Slot.UnderBarrel.Laser") so a single flat map can
+	 * persist arbitrarily deep trees.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Item|Attachments")
+	TSoftObjectPtr<UNexusAttachmentDefinition> GetAttachmentForSlot(FGameplayTag SlotPath) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Item|Attachments")
+	void SetAttachmentForSlot(FGameplayTag SlotPath, TSoftObjectPtr<UNexusAttachmentDefinition> Attachment);
+
+	UFUNCTION(BlueprintCallable, Category = "Item|Attachments")
+	void ClearAttachmentForSlot(FGameplayTag SlotPath);
+
+	const TMap<FGameplayTag, TSoftObjectPtr<UNexusAttachmentDefinition>>& GetAttachmentMap() const
+	{
+		return Attachments;
+	}
+
 	//Delegates
 	UPROPERTY(BlueprintAssignable, Category = "Item")
 	FOnItemInstanceChanged OnInstanceChanged;
@@ -81,4 +108,7 @@ protected:
 
 	UPROPERTY(SaveGame)
 	TMap<FGameplayTag, int32> StatTags;
+
+	UPROPERTY(SaveGame)
+	TMap<FGameplayTag, TSoftObjectPtr<UNexusAttachmentDefinition>> Attachments;
 };

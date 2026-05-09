@@ -167,8 +167,6 @@ void ANexusHeroCharacter::OnAimInputCompleted()
 
 void ANexusHeroCharacter::OnSlotPrimaryInputStarted()
 {
-	UE_LOG(LogTemp, Warning, TEXT("Primary input started"))
-	
 	HandleSlotInput(NexusGameplayTags::Equipment_Slot_Primary);
 }
 

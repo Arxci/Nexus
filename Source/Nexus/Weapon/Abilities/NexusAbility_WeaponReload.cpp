@@ -16,6 +16,7 @@
 #include "TimerManager.h"
 
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
+#include "Nexus/Equipment/NexusEquippedActor.h"
 #include "Nexus/Inventory/NexusInventoryComponent.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
 #include "Nexus/NexusGameplayTags.h"
@@ -41,8 +42,19 @@ bool UNexusAbility_WeaponReload::CanActivateAbility_Implementation() const
 	if (!Instance || !Weapon) return false;
 	if (Weapon->Ammo.AmmoModel == ENexusWeaponAmmoModel::None) return false;
 
+	// Read the effective magazine size off the assembly so an extended-mag
+	// attachment lifts the cap; fall back to the fragment's authored value
+	// when no equipped actor is currently spawned.
+	int32 EffectiveMagSize = Weapon->Ammo.MagazineSize;
+	if (const ANexusEquippedActor* Equipped = GetEquippedActor())
+	{
+		EffectiveMagSize = FMath::FloorToInt(
+			Equipped->GetEffectiveStat(NexusGameplayTags::Stat_Weapon_MagazineSize,
+				static_cast<float>(Weapon->Ammo.MagazineSize)));
+	}
+
 	const int32 InMag = Instance->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0);
-	if (InMag >= Weapon->Ammo.MagazineSize) return false;
+	if (InMag >= EffectiveMagSize) return false;
 
 	return GetReserveAmmo() > 0;
 }
@@ -73,7 +85,20 @@ void UNexusAbility_WeaponReload::CommitAbility()
 	UAnimInstance* ReloadAnimInstance = nullptr;
 	float MontageDuration = 0.0f;
 
-	if (UAnimMontage* Montage = Weapon->Animations.ReloadMontage.LoadSynchronous())
+	// The arms-side reload montage. Resolved through the assembly so a
+	// drum-mag attachment can override it via AnimationOverrides; falls back
+	// to the fragment's authored Reload montage.
+	UAnimMontage* ArmsReload = nullptr;
+	if (const ANexusEquippedActor* Equipped = GetEquippedActor())
+	{
+		ArmsReload = Equipped->GetEffectiveActionMontage(NexusGameplayTags::Action_Weapon_Reload);
+	}
+	if (!ArmsReload)
+	{
+		ArmsReload = Weapon->Animations.ReloadMontage.LoadSynchronous();
+	}
+
+	if (ArmsReload)
 	{
 		if (const ACharacter* Char = Cast<ACharacter>(GetOwner()))
 		{
@@ -81,7 +106,7 @@ void UNexusAbility_WeaponReload::CommitAbility()
 			{
 				if (UAnimInstance* AnimInstance = Mesh->GetAnimInstance())
 				{
-					MontageDuration = AnimInstance->Montage_Play(Montage);
+					MontageDuration = AnimInstance->Montage_Play(ArmsReload);
 					if (MontageDuration > 0.0f)
 					{
 						ReloadAnimInstance = AnimInstance;
@@ -103,10 +128,16 @@ void UNexusAbility_WeaponReload::CommitAbility()
 		}
 	}
 
-	// If the montage played, prefer its actual duration over the configured fallback
-	// — keeps ReloadDuration honest if the designer trims the montage in the editor.
-	const float ConfiguredDuration = FMath::Max(0.0f, Weapon->Reload.ReloadDuration);
-	const float Duration = MontageDuration > 0.0f ? MontageDuration : ConfiguredDuration;
+	// Effective reload duration: assembly modifier > montage length > fragment fallback.
+	float EffectiveConfigDuration = Weapon->Reload.ReloadDuration;
+	if (const ANexusEquippedActor* Equipped = GetEquippedActor())
+	{
+		EffectiveConfigDuration = Equipped->GetEffectiveStat(
+			NexusGameplayTags::Stat_Weapon_ReloadDuration, EffectiveConfigDuration);
+	}
+	EffectiveConfigDuration = FMath::Max(0.0f, EffectiveConfigDuration);
+
+	const float Duration = MontageDuration > 0.0f ? MontageDuration : EffectiveConfigDuration;
 	if (Duration <= 0.0f)
 	{
 		FinishReload();
@@ -151,8 +182,16 @@ void UNexusAbility_WeaponReload::TransferAmmo()
 	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
 	if (!Instance || !Weapon) return;
 
+	int32 EffectiveMagSize = Weapon->Ammo.MagazineSize;
+	if (const ANexusEquippedActor* Equipped = GetEquippedActor())
+	{
+		EffectiveMagSize = FMath::FloorToInt(
+			Equipped->GetEffectiveStat(NexusGameplayTags::Stat_Weapon_MagazineSize,
+				static_cast<float>(Weapon->Ammo.MagazineSize)));
+	}
+
 	const int32 CurrentInMag = Instance->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0);
-	const int32 Needed       = FMath::Max(0, Weapon->Ammo.MagazineSize - CurrentInMag);
+	const int32 Needed       = FMath::Max(0, EffectiveMagSize - CurrentInMag);
 	const int32 Available    = GetReserveAmmo();
 	const int32 Transferring = FMath::Min(Needed, Available);
 

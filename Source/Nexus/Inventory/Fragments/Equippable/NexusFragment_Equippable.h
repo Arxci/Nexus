@@ -42,6 +42,21 @@ struct NEXUS_API FEquippableAnimationSet
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Montage",
 		meta = (AssetBundles = "Equipped"))
 	TSoftObjectPtr<UAnimMontage> InspectMontage;
+
+	// Weapon-mesh-side animations (played on the equipped actor's own
+	// SkeletalMeshComponent). The arms montage is the source of truth for
+	// timing; UNexusAnimNotify_WeaponAction notifies on the arms montage relay
+	// to the weapon mesh, which plays the matching action montage so its
+	// slide/bolt/magazine animate in sync.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Mesh",
+		meta = (AssetBundles = "Equipped"))
+	TSoftClassPtr<UAnimInstance> WeaponAnimInstanceClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Mesh",
+		meta = (AssetBundles = "Equipped",
+			Categories = "Action.Weapon",
+			ForceInlineRow))
+	TMap<FGameplayTag, TSoftObjectPtr<UAnimMontage>> WeaponActionMontages;
 };
 
 USTRUCT(BlueprintType, DisplayName = "Equippable")

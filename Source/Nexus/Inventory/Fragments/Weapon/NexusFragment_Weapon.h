@@ -6,6 +6,7 @@
 
 #include "Curves/CurveFloat.h"
 
+#include "Nexus/Equipment/Attachments/NexusAttachmentTypes.h"
 #include "Nexus/Inventory/NexusItemFragment.h"
 
 #include "NexusFragment_Weapon.generated.h"
@@ -167,6 +168,17 @@ struct NEXUS_API FNexusFragment_Weapon : public FNexusItemFragment
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation")
 	FWeaponPresentation Presentation;
+
+	/**
+	 * Attachment slots exposed by this weapon. Each slot declares an attach
+	 * socket on the weapon's skeletal mesh, the GameplayTags it accepts, and
+	 * an optional default attachment installed at spawn time. Attachments can
+	 * themselves provide more slots (rail risers, foregrips with built-in
+	 * lasers), so this list is just the top of the tree — see
+	 * UNexusWeaponAssemblyComponent for runtime resolution.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Attachments")
+	TArray<FWeaponSlotDefinition> Slots;
 
 	float GetFireInterval() const
 	{

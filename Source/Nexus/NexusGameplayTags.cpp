@@ -71,4 +71,43 @@ namespace NexusGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(Stat_Ammo_InMagazine, "Stat.Ammo.InMagazine");
 	UE_DEFINE_GAMEPLAY_TAG(Stat_Durability,      "Stat.Durability");
 	UE_DEFINE_GAMEPLAY_TAG(Stat_Charges,         "Stat.Charges");
+
+	UE_DEFINE_GAMEPLAY_TAG(Stat_Weapon_Damage,           "Stat.Weapon.Damage");
+	UE_DEFINE_GAMEPLAY_TAG(Stat_Weapon_RPM,              "Stat.Weapon.RPM");
+	UE_DEFINE_GAMEPLAY_TAG(Stat_Weapon_MagazineSize,     "Stat.Weapon.MagazineSize");
+	UE_DEFINE_GAMEPLAY_TAG(Stat_Weapon_MaxRange,         "Stat.Weapon.MaxRange");
+	UE_DEFINE_GAMEPLAY_TAG(Stat_Weapon_RecoilVertical,   "Stat.Weapon.RecoilVertical");
+	UE_DEFINE_GAMEPLAY_TAG(Stat_Weapon_RecoilHorizontal, "Stat.Weapon.RecoilHorizontal");
+	UE_DEFINE_GAMEPLAY_TAG(Stat_Weapon_SpreadHip,        "Stat.Weapon.SpreadHip");
+	UE_DEFINE_GAMEPLAY_TAG(Stat_Weapon_SpreadADS,        "Stat.Weapon.SpreadADS");
+	UE_DEFINE_GAMEPLAY_TAG(Stat_Weapon_ADSTime,          "Stat.Weapon.ADSTime");
+	UE_DEFINE_GAMEPLAY_TAG(Stat_Weapon_ReloadDuration,   "Stat.Weapon.ReloadDuration");
+
+	UE_DEFINE_GAMEPLAY_TAG(Attachment_Slot_Slide,       "Attachment.Slot.Slide");
+	UE_DEFINE_GAMEPLAY_TAG(Attachment_Slot_Magazine,    "Attachment.Slot.Magazine");
+	UE_DEFINE_GAMEPLAY_TAG(Attachment_Slot_Barrel,      "Attachment.Slot.Barrel");
+	UE_DEFINE_GAMEPLAY_TAG(Attachment_Slot_Trigger,     "Attachment.Slot.Trigger");
+
+	UE_DEFINE_GAMEPLAY_TAG(Attachment_Type_Slide,     "Attachment.Type.Slide");
+	UE_DEFINE_GAMEPLAY_TAG(Attachment_Type_Magazine,  "Attachment.Type.Magazine");
+	UE_DEFINE_GAMEPLAY_TAG(Attachment_Type_Barrel,    "Attachment.Type.Barrel");
+	UE_DEFINE_GAMEPLAY_TAG(Attachment_Type_Trigger,   "Attachment.Type.Trigger");
+
+	UE_DEFINE_GAMEPLAY_TAG(Attachment_Identity_Slide_Standard,    "Attachment.Identity.Slide.Standard");
+	UE_DEFINE_GAMEPLAY_TAG(Attachment_Identity_Magazine_Standard, "Attachment.Identity.Magazine.Standard");
+	UE_DEFINE_GAMEPLAY_TAG(Attachment_Identity_Barrel_Standard,   "Attachment.Identity.Barrel.Standard");
+	UE_DEFINE_GAMEPLAY_TAG(Attachment_Identity_Trigger_Standard,   "Attachment.Identity.Trigger.Standard");
+
+	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_Unholster,    "Action.Weapon.Unholster");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_Holster,      "Action.Weapon.Holster");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_Inspect,      "Action.Weapon.Inspect");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_Fire,         "Action.Weapon.Fire");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_DryFire,      "Action.Weapon.DryFire");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_Reload,       "Action.Weapon.Reload");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_Reload_Empty, "Action.Weapon.Reload.Empty");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_MagOut,       "Action.Weapon.MagOut");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_MagIn,        "Action.Weapon.MagIn");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_SlideRack,    "Action.Weapon.SlideRack");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_BoltClose,    "Action.Weapon.BoltClose");
 }
+

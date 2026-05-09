@@ -6,6 +6,7 @@
 
 #include "GameFramework/Pawn.h"
 
+#include "Nexus/Equipment/Attachments/NexusWeaponAssemblyComponent.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
 #include "Nexus/Inventory/Fragments/Equippable/NexusFragment_Equippable.h"
@@ -17,6 +18,8 @@ ANexusEquippedActor::ANexusEquippedActor()
 	Mesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Mesh"));
 	SetRootComponent(Mesh);
 	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	Assembly = CreateDefaultSubobject<UNexusWeaponAssemblyComponent>(TEXT("WeaponAssembly"));
 }
 
 void ANexusEquippedActor::InitializeFromInstance(UNexusItemInstance* Instance)
@@ -46,9 +49,85 @@ void ANexusEquippedActor::InitializeFromInstance(UNexusItemInstance* Instance)
 		UnholsterMontage   = Eq->Animations.UnholsterMontage.Get();
 		HolsterMontage = Eq->Animations.HolsterMontage.Get();
 		InspectMontage = Eq->Animations.InspectMontage.Get();
+
+		if (UClass* AnimClass = Eq->Animations.WeaponAnimInstanceClass.Get())
+		{
+			Mesh->SetAnimInstanceClass(AnimClass);
+		}
+
+		WeaponActionMontages.Reserve(Eq->Animations.WeaponActionMontages.Num());
+		for (const TPair<FGameplayTag, TSoftObjectPtr<UAnimMontage>>& Pair : Eq->Animations.WeaponActionMontages)
+		{
+			if (!Pair.Key.IsValid()) continue;
+			if (UAnimMontage* Loaded = Pair.Value.Get())
+			{
+				WeaponActionMontages.Add(Pair.Key, Loaded);
+			}
+		}
+	}
+
+	if (Assembly)
+	{
+		Assembly->RebuildFromInstance();
 	}
 
 	K2_OnInitializedFromInstance();
+}
+
+UAnimMontage* ANexusEquippedActor::PlayWeaponAction(FGameplayTag ActionTag)
+{
+	if (!ActionTag.IsValid()) return nullptr;
+
+	UAnimMontage* Montage = GetEffectiveActionMontage(ActionTag);
+	if (!Montage) return nullptr;
+	if (!Mesh) return nullptr;
+
+	UAnimInstance* AnimInstance = Mesh->GetAnimInstance();
+	if (!AnimInstance) return nullptr;
+
+	if (AnimInstance->Montage_Play(Montage) > 0.0f)
+	{
+		return Montage;
+	}
+	return nullptr;
+}
+
+UAnimMontage* ANexusEquippedActor::GetWeaponActionMontage(const FGameplayTag ActionTag) const
+{
+	if (!ActionTag.IsValid()) return nullptr;
+	if (const TObjectPtr<UAnimMontage>* Found = WeaponActionMontages.Find(ActionTag))
+	{
+		return Found->Get();
+	}
+	return nullptr;
+}
+
+float ANexusEquippedActor::GetEffectiveStat(const FGameplayTag StatTag, const float Default) const
+{
+	if (Assembly)
+	{
+		const FResolvedWeaponStats Stats = Assembly->ResolveStats();
+		return Stats.Get(StatTag, Default);
+	}
+	return Default;
+}
+
+FResolvedWeaponStats ANexusEquippedActor::GetResolvedStats() const
+{
+	if (Assembly) return Assembly->ResolveStats();
+	return FResolvedWeaponStats{};
+}
+
+UAnimMontage* ANexusEquippedActor::GetEffectiveActionMontage(const FGameplayTag ActionTag) const
+{
+	if (Assembly)
+	{
+		if (UAnimMontage* Resolved = Assembly->ResolveActionMontage(ActionTag))
+		{
+			return Resolved;
+		}
+	}
+	return GetWeaponActionMontage(ActionTag);
 }
 
 FTransform ANexusEquippedActor::GetSocketTransform(const FName SocketName) const

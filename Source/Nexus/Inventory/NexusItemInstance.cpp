@@ -1,5 +1,6 @@
 ﻿#include "NexusItemInstance.h"
 
+#include "Nexus/Equipment/Attachments/NexusAttachmentDefinition.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemFragment.h"
 
@@ -118,6 +119,41 @@ int32 UNexusItemInstance::ModifyStat(FGameplayTag StatTag, int32 Delta)
 bool UNexusItemInstance::HasStat(FGameplayTag StatTag) const
 {
 	return StatTags.Contains(StatTag);
+}
+
+// Attachments
+TSoftObjectPtr<UNexusAttachmentDefinition> UNexusItemInstance::GetAttachmentForSlot(FGameplayTag SlotPath) const
+{
+	if (const TSoftObjectPtr<UNexusAttachmentDefinition>* Found = Attachments.Find(SlotPath))
+	{
+		return *Found;
+	}
+	return TSoftObjectPtr<UNexusAttachmentDefinition>();
+}
+
+void UNexusItemInstance::SetAttachmentForSlot(FGameplayTag SlotPath, TSoftObjectPtr<UNexusAttachmentDefinition> Attachment)
+{
+	if (!SlotPath.IsValid()) return;
+
+	if (Attachment.IsNull())
+	{
+		ClearAttachmentForSlot(SlotPath);
+		return;
+	}
+
+	const TSoftObjectPtr<UNexusAttachmentDefinition>* Existing = Attachments.Find(SlotPath);
+	if (Existing && *Existing == Attachment) return;
+
+	Attachments.Add(SlotPath, Attachment);
+	BroadcastChanged();
+}
+
+void UNexusItemInstance::ClearAttachmentForSlot(FGameplayTag SlotPath)
+{
+	if (Attachments.Remove(SlotPath) > 0)
+	{
+		BroadcastChanged();
+	}
 }
 
 void UNexusItemInstance::BroadcastChanged()
