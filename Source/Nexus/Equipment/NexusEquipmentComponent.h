@@ -107,7 +107,7 @@ public:
 public:
 	// Activation (input-driven)
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Activation")
-	bool RequestActivateSlot(FGameplayTag SlotTag);
+	bool RequestActivateSlot(const FGameplayTag SlotTag);
 
 	/** Holster the currently active slot. Queues if a swap is in flight. */
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Activation")
@@ -167,12 +167,7 @@ protected:
 
 	UNexusAbilitySystemComponent* GetASC() const;
 	UNexusInventoryComponent*     GetInventory() const;
-
-	/**
-	 * Slots this component exposes, in display order. Authored per-character
-	 * archetype: a player has Primary/Secondary/Utility/Body, an NPC may only
-	 * have Primary, a vehicle would expose entirely different slots.
-	 */
+	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Equipment|Config",
 		meta = (Categories = "Equipment.Slot"))
 	TArray<FGameplayTag> AvailableSlots;
@@ -196,9 +191,9 @@ private:
 	void RemoveEquipEffects(FGameplayTag SlotTag);
 	void FinalizeAssignment(FGameplayTag SlotTag, UNexusItemInstance* Instance);
 	
-	void BeginSlotTransition(FGameplayTag OutgoingSlot, FGameplayTag IncomingSlot);
-	void BeginHolsterPhase(FGameplayTag OutgoingSlot, FGameplayTag IncomingSlot);
-	void BeginDrawPhase(FGameplayTag IncomingSlot);
+	void BeginSlotTransition(const FGameplayTag OutgoingSlot, const FGameplayTag IncomingSlot);
+	void BeginHolsterPhase(const FGameplayTag OutgoingSlot, const  FGameplayTag IncomingSlot);
+	void BeginDrawPhase(const  FGameplayTag IncomingSlot);
 	void CompleteSwap();
 	void ProcessPendingActivation();
 
@@ -219,26 +214,11 @@ private:
 	TMap<TObjectPtr<UNexusItemInstance>, TSharedPtr<FStreamableHandle>> EquippableLoadHandles;
 	
 	ENexusEquipSwapPhase SwapPhase = ENexusEquipSwapPhase::Idle;
-	FGameplayTag         SwapOutgoingSlot; // valid during Holstering
-	FGameplayTag         SwapIncomingSlot; // valid during Holstering or Drawing
-
-	/**
-	 * Slot the player asked for during an in-flight swap. Optional<> over a
-	 * separate bool to make "no pending vs pending-to-clear" unambiguous.
-	 *
-	 *   pending unset  → no queued request
-	 *   pending = X    → activate X when current swap finishes
-	 *   pending = ()   → holster everything when current swap finishes
-	 */
+	FGameplayTag         SwapOutgoingSlot; 
+	FGameplayTag         SwapIncomingSlot; 
+	
 	TOptional<FGameplayTag> PendingActivation;
-
-	/**
-	 * Slot whose actor still needs to be hidden because the holster montage
-	 * is mid-play and we're waiting on the anim notify (or fallback timer)
-	 * to fire. Separate from SwapOutgoingSlot because the swap can advance
-	 * to the Drawing phase before the hide completes (e.g., concurrent
-	 * holster/draw blends).
-	 */
+	
 	FGameplayTag OutgoingPendingHide;
 
 	FTimerHandle PhaseTimer;

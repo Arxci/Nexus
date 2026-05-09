@@ -33,11 +33,11 @@ struct NEXUS_API FEquippableAnimationSet
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Montage",
 		meta = (AssetBundles = "Equipped"))
-	TSoftObjectPtr<UAnimMontage> EquipMontage;
+	TSoftObjectPtr<UAnimMontage> UnholsterMontage;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Montage",
 		meta = (AssetBundles = "Equipped"))
-	TSoftObjectPtr<UAnimMontage> UnequipMontage;
+	TSoftObjectPtr<UAnimMontage> HolsterMontage;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Montage",
 		meta = (AssetBundles = "Equipped"))

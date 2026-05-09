@@ -49,10 +49,10 @@ public:
 	TObjectPtr<UAnimSequence> RunLoop;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
-	TObjectPtr<UAnimMontage> EquipMontage;
+	TObjectPtr<UAnimMontage> UnholsterMontage;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
-	TObjectPtr<UAnimMontage> UnequipMontage;
+	TObjectPtr<UAnimMontage> HolsterMontage;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
 	TObjectPtr<UAnimMontage> InspectMontage;

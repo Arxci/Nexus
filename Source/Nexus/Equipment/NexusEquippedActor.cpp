@@ -43,8 +43,8 @@ void ANexusEquippedActor::InitializeFromInstance(UNexusItemInstance* Instance)
 		IdlePose       = Eq->Animations.IdlePose.Get();
 		IdleLoop       = Eq->Animations.IdleLoop.Get();
 		RunLoop        = Eq->Animations.RunLoop.Get();
-		EquipMontage   = Eq->Animations.EquipMontage.Get();
-		UnequipMontage = Eq->Animations.UnequipMontage.Get();
+		UnholsterMontage   = Eq->Animations.UnholsterMontage.Get();
+		HolsterMontage = Eq->Animations.HolsterMontage.Get();
 		InspectMontage = Eq->Animations.InspectMontage.Get();
 	}
 

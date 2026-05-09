@@ -265,7 +265,7 @@ bool UNexusEquipmentComponent::MoveAssignment(FGameplayTag FromSlot, FGameplayTa
 
 
 // Activation (input-driven)
-bool UNexusEquipmentComponent::RequestActivateSlot(FGameplayTag SlotTag)
+bool UNexusEquipmentComponent::RequestActivateSlot(const FGameplayTag SlotTag)
 {
 	if (!SlotTag.IsValid())
 	{
@@ -287,6 +287,7 @@ bool UNexusEquipmentComponent::RequestActivateSlot(FGameplayTag SlotTag)
 	
 	if (!IsSlotOccupied(SlotTag)) return false;
 
+	
 	BeginSlotTransition(ActiveSlot, SlotTag);
 	return true;
 }
@@ -306,9 +307,8 @@ bool UNexusEquipmentComponent::RequestHolster()
 }
 
 
-
 // Transition state machine
-void UNexusEquipmentComponent::BeginSlotTransition(FGameplayTag OutgoingSlot, FGameplayTag IncomingSlot)
+void UNexusEquipmentComponent::BeginSlotTransition(const FGameplayTag OutgoingSlot, const FGameplayTag IncomingSlot)
 {
 	if (OutgoingSlot.IsValid() && SpawnedActors.Contains(OutgoingSlot))
 	{
@@ -325,7 +325,7 @@ void UNexusEquipmentComponent::BeginSlotTransition(FGameplayTag OutgoingSlot, FG
 	CompleteSwap();
 }
 
-void UNexusEquipmentComponent::BeginHolsterPhase(FGameplayTag OutgoingSlot, FGameplayTag IncomingSlot)
+void UNexusEquipmentComponent::BeginHolsterPhase(const FGameplayTag OutgoingSlot, const  FGameplayTag IncomingSlot)
 {
 	SwapPhase        = ENexusEquipSwapPhase::Holstering;
 	SwapOutgoingSlot = OutgoingSlot;
@@ -335,14 +335,14 @@ void UNexusEquipmentComponent::BeginHolsterPhase(FGameplayTag OutgoingSlot, FGam
 	UAnimMontage* Unequip = nullptr;
 	if (const ANexusEquippedActor* OutActor = SpawnedActors.FindRef(OutgoingSlot))
 	{
-		Unequip = OutActor->UnequipMontage;
+		Unequip = OutActor->HolsterMontage;
 	}
 	const float Duration = PlayMontageOnOwner(Unequip);
 
 	if (Duration > 0.0f)
 	{
 		OutgoingPendingHide = OutgoingSlot;
-		if (UWorld* World = GetWorld())
+		if (const UWorld* World = GetWorld())
 		{
 			World->GetTimerManager().SetTimer(
 				PhaseTimer, this,
@@ -391,7 +391,7 @@ void UNexusEquipmentComponent::HandleHolsterPhaseFinished()
 	CompleteSwap();
 }
 
-void UNexusEquipmentComponent::BeginDrawPhase(FGameplayTag IncomingSlot)
+void UNexusEquipmentComponent::BeginDrawPhase(const  FGameplayTag IncomingSlot)
 {
 	SwapPhase        = ENexusEquipSwapPhase::Drawing;
 	SwapIncomingSlot = IncomingSlot;
@@ -404,7 +404,7 @@ void UNexusEquipmentComponent::BeginDrawPhase(FGameplayTag IncomingSlot)
 	UAnimMontage* Equip = nullptr;
 	if (const ANexusEquippedActor* InActor = SpawnedActors.FindRef(IncomingSlot))
 	{
-		Equip = InActor->EquipMontage;
+		Equip = InActor->UnholsterMontage;
 	}
 	const float Duration = PlayMontageOnOwner(Equip);
 

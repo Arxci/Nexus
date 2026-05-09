@@ -167,6 +167,8 @@ void ANexusHeroCharacter::OnAimInputCompleted()
 
 void ANexusHeroCharacter::OnSlotPrimaryInputStarted()
 {
+	UE_LOG(LogTemp, Warning, TEXT("Primary input started"))
+	
 	HandleSlotInput(NexusGameplayTags::Equipment_Slot_Primary);
 }
 
@@ -178,10 +180,7 @@ void ANexusHeroCharacter::OnSlotSecondaryInputStarted()
 void ANexusHeroCharacter::HandleSlotInput(FGameplayTag SlotTag)
 {
 	if (!NexusEquipmentComponent) return;
-
-	// All toggle / mid-swap-queue logic lives in the component (single source
-	// of truth). The character is intentionally just a translator from input
-	// action → slot tag.
+	
 	NexusEquipmentComponent->RequestActivateSlot(SlotTag);
 }
 
