@@ -2,6 +2,7 @@
 
 #include "Components/CapsuleComponent.h"
 #include "Components/SceneComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Camera/CameraComponent.h"
 
 #include "GameFramework/SpringArmComponent.h"
@@ -44,6 +45,16 @@ ANexusHeroCharacter::ANexusHeroCharacter(const FObjectInitializer& ObjectInitial
 	FollowCamera->SetFirstPersonScale(0.6);
 	FollowCamera->SetEnableFirstPersonFieldOfView(true);
 	FollowCamera->SetEnableFirstPersonScale(true);
+
+	FirstPersonArms = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonArms"));
+	FirstPersonArms->SetupAttachment(FollowCamera);
+	FirstPersonArms->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	FirstPersonArms->SetCollisionProfileName(FName("NoCollision"));
+	FirstPersonArms->SetCastShadow(false);
+	FirstPersonArms->SetFirstPersonPrimitiveType(EFirstPersonPrimitiveType::FirstPerson);
+	FirstPersonArms->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+	FirstPersonArms->SetRelativeLocation(FVector(0, 0, -162.575263f));
+	FirstPersonArms->SetRelativeRotation(FRotator(0, 0, -90));
 }
 
 void ANexusHeroCharacter::BeginPlay()
@@ -56,6 +67,15 @@ void ANexusHeroCharacter::BeginPlay()
 		{
 			Subsystem->AddMappingContext(DefaultMappingContext, 0); 
 		}
+	}
+
+	if (FirstPersonArms && GetMesh())
+	{
+		if (!FirstPersonArms->GetSkeletalMeshAsset())
+		{
+			FirstPersonArms->SetSkeletalMeshAsset(GetMesh()->GetSkeletalMeshAsset());
+		}
+		FirstPersonArms->SetLeaderPoseComponent(GetMesh());
 	}
 }
 
@@ -78,13 +98,13 @@ void ANexusHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnAimInputCompleted);
 		EnhancedInputComponent->BindAction(SlotPrimaryAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnSlotPrimaryInputStarted);
 		EnhancedInputComponent->BindAction(SlotSecondaryAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnSlotSecondaryInputStarted);
-		
-		if (LookAction)   LookBinding   = &EIC->BindActionValue(LookAction);
-		if (MoveAction)   MoveBinding   = &EIC->BindActionValue(MoveAction);
-		if (RunAction)    RunBinding    = &EIC->BindActionValue(RunAction);
-		if (CrouchAction) CrouchBinding = &EIC->BindActionValue(CrouchAction);
-		if (FireAction)   FireBinding =   &EIC->BindActionValue(FireAction);
-		if (AimAction)    AimBinding  =   &EIC->BindActionValue(AimAction);
+
+		if (LookAction)   EIC->BindActionValue(LookAction);
+		if (MoveAction)   EIC->BindActionValue(MoveAction);
+		if (RunAction)    EIC->BindActionValue(RunAction);
+		if (CrouchAction) EIC->BindActionValue(CrouchAction);
+		if (FireAction)   EIC->BindActionValue(FireAction);
+		if (AimAction)    EIC->BindActionValue(AimAction);
 	}
 }
 
@@ -115,24 +135,23 @@ bool ANexusHeroCharacter::GetIsTurning() const
 
 FVector2D ANexusHeroCharacter::GetLookInput() const
 {
-	return LookBinding ? LookBinding->GetValue().Get<FVector2D>() : FVector2D::ZeroVector;
+	return EnhancedInputComponent ? EnhancedInputComponent->GetBoundActionValue(LookAction).Get<FVector2D>() : FVector2D::ZeroVector;
 }
 
 FVector2D ANexusHeroCharacter::GetMoveInput() const
 {
-	return MoveBinding ? MoveBinding->GetValue().Get<FVector2D>() : FVector2D::ZeroVector;
+	return EnhancedInputComponent ? EnhancedInputComponent->GetBoundActionValue(MoveAction).Get<FVector2D>() : FVector2D::ZeroVector;
 }
 
 bool ANexusHeroCharacter::GetRunInput() const
 {
-	return RunBinding ? RunBinding->GetValue().Get<bool>() : false;
+	return EnhancedInputComponent ? EnhancedInputComponent->GetBoundActionValue(RunAction).Get<bool>() : false;
 }
 
 bool ANexusHeroCharacter::GetCrouchInput() const
 {
-	return CrouchBinding ? CrouchBinding->GetValue().Get<bool>() : false;
+	return EnhancedInputComponent ? EnhancedInputComponent->GetBoundActionValue(CrouchAction).Get<bool>() : false;
 }
-
 
 // Player Input
 void ANexusHeroCharacter::OnFireInputStarted()

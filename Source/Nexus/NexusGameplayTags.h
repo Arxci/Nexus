@@ -110,7 +110,7 @@ namespace NexusGameplayTags
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Identity_Barrel_Standard);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Identity_Trigger_Standard);
 
-	// Weapon-mesh action tags. Used as keys in FEquippableAnimationSet::WeaponActionMontages
+	// Weapon-mesh action tags. Used as keys in FWeaponAnimations::ActionMontages
 	// AND as identifiers on UNexusAnimNotify_WeaponAction so an arms montage can drive
 	// the gun's own animations at the correct frame.
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_Unholster);

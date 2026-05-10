@@ -1,13 +1,20 @@
 ﻿#include "NexusEquippedActor.h"
 
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
+
 #include "Components/SkeletalMeshComponent.h"
 
 #include "Engine/SkeletalMesh.h"
 
 #include "GameFramework/Pawn.h"
 
+#include "StructUtils/InstancedStruct.h"
+
 #include "Nexus/Equipment/Attachments/NexusWeaponAssemblyComponent.h"
+#include "Nexus/Equipment/NexusEquippedActorBehavior.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
+#include "Nexus/Inventory/NexusItemFragment.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
 #include "Nexus/Inventory/Fragments/Equippable/NexusFragment_Equippable.h"
 
@@ -43,27 +50,26 @@ void ANexusEquippedActor::InitializeFromInstance(UNexusItemInstance* Instance)
 				*DefinitionData->GetName());
 		}
 
-		IdlePose       = Eq->Animations.IdlePose.Get();
-		IdleLoop       = Eq->Animations.IdleLoop.Get();
-		RunLoop        = Eq->Animations.RunLoop.Get();
-		UnholsterMontage   = Eq->Animations.UnholsterMontage.Get();
-		HolsterMontage = Eq->Animations.HolsterMontage.Get();
-		InspectMontage = Eq->Animations.InspectMontage.Get();
+		IdlePose         = Eq->Animations.IdlePose.Get();
+		IdleLoop         = Eq->Animations.IdleLoop.Get();
+		RunLoop          = Eq->Animations.RunLoop.Get();
+		UnholsterMontage = Eq->Animations.UnholsterMontage.Get();
+		HolsterMontage   = Eq->Animations.HolsterMontage.Get();
+		InspectMontage   = Eq->Animations.InspectMontage.Get();
 
-		if (UClass* AnimClass = Eq->Animations.WeaponAnimInstanceClass.Get())
+		if (UClass* AnimClass = Eq->Animations.MeshAnimInstanceClass.Get())
 		{
 			Mesh->SetAnimInstanceClass(AnimClass);
 		}
+	}
 
-		WeaponActionMontages.Reserve(Eq->Animations.WeaponActionMontages.Num());
-		for (const TPair<FGameplayTag, TSoftObjectPtr<UAnimMontage>>& Pair : Eq->Animations.WeaponActionMontages)
-		{
-			if (!Pair.Key.IsValid()) continue;
-			if (UAnimMontage* Loaded = Pair.Value.Get())
-			{
-				WeaponActionMontages.Add(Pair.Key, Loaded);
-			}
-		}
+	// Fragments install their actor-side behaviors (e.g. weapon fragment adds
+	// UNexusWeaponBehaviorComponent). Done before assembly rebuild so behaviors
+	// are present when OnAssemblyChanged first broadcasts.
+	for (const TInstancedStruct<FNexusItemFragment>& Frag : DefinitionData->Fragments)
+	{
+		if (!Frag.IsValid()) continue;
+		Frag.Get().OnInstall(this);
 	}
 
 	if (Assembly)
@@ -74,7 +80,27 @@ void ANexusEquippedActor::InitializeFromInstance(UNexusItemInstance* Instance)
 	K2_OnInitializedFromInstance();
 }
 
-UAnimMontage* ANexusEquippedActor::PlayWeaponAction(FGameplayTag ActionTag)
+void ANexusEquippedActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// Mirror InitializeFromInstance: walk fragments and let each uninstall its
+	// behavior. Defensive — DestroyActor will tear behaviors down anyway, but
+	// fragment-driven cleanup gives us a hook for non-component side effects.
+	if (SourceInstance)
+	{
+		if (const UNexusItemDefinition* DefinitionData = SourceInstance->GetDefinition())
+		{
+			for (const TInstancedStruct<FNexusItemFragment>& Frag : DefinitionData->Fragments)
+			{
+				if (!Frag.IsValid()) continue;
+				Frag.Get().OnUninstall(this);
+			}
+		}
+	}
+
+	Super::EndPlay(EndPlayReason);
+}
+
+UAnimMontage* ANexusEquippedActor::PlayActionMontage(FGameplayTag ActionTag)
 {
 	if (!ActionTag.IsValid()) return nullptr;
 
@@ -92,13 +118,31 @@ UAnimMontage* ANexusEquippedActor::PlayWeaponAction(FGameplayTag ActionTag)
 	return nullptr;
 }
 
-UAnimMontage* ANexusEquippedActor::GetWeaponActionMontage(const FGameplayTag ActionTag) const
+UAnimMontage* ANexusEquippedActor::GetEffectiveActionMontage(const FGameplayTag ActionTag) const
 {
-	if (!ActionTag.IsValid()) return nullptr;
-	if (const TObjectPtr<UAnimMontage>* Found = WeaponActionMontages.Find(ActionTag))
+	// Attachment overrides win first (assembly walks the tree depth-first).
+	if (Assembly)
 	{
-		return Found->Get();
+		if (UAnimMontage* Resolved = Assembly->ResolveActionMontage(ActionTag))
+		{
+			return Resolved;
+		}
 	}
+
+	// Fall back to behaviors. Each behavior services the Action.* tags it owns
+	// (UNexusWeaponBehaviorComponent owns Action.Weapon.*). The actor stays
+	// agnostic to the tag taxonomy.
+	TArray<UNexusEquippedActorBehavior*> Behaviors;
+	GetComponents<UNexusEquippedActorBehavior>(Behaviors);
+	for (const UNexusEquippedActorBehavior* Behavior : Behaviors)
+	{
+		if (!Behavior) continue;
+		if (UAnimMontage* Found = Behavior->GetActionMontage(ActionTag))
+		{
+			return Found;
+		}
+	}
+
 	return nullptr;
 }
 
@@ -117,18 +161,6 @@ FResolvedWeaponStats ANexusEquippedActor::GetResolvedStats() const
 {
 	if (Assembly) return Assembly->ResolveStats();
 	return FResolvedWeaponStats{};
-}
-
-UAnimMontage* ANexusEquippedActor::GetEffectiveActionMontage(const FGameplayTag ActionTag) const
-{
-	if (Assembly)
-	{
-		if (UAnimMontage* Resolved = Assembly->ResolveActionMontage(ActionTag))
-		{
-			return Resolved;
-		}
-	}
-	return GetWeaponActionMontage(ActionTag);
 }
 
 FTransform ANexusEquippedActor::GetSocketTransform(const FName SocketName) const
@@ -150,7 +182,7 @@ void ANexusEquippedActor::SetEquippedVisibility(bool bNewVisible)
 		SetActorHiddenInGame(!bNewVisible);
 		K2_OnEquippedVisibilityChanged(bNewVisible);
 	}
-	
+
 	if (Mesh)
 	{
 		Mesh->VisibilityBasedAnimTickOption = bNewVisible
@@ -179,6 +211,15 @@ void ANexusEquippedActor::ApplyOwnerViewpointRendering()
 		{
 			ApplyViewpointToMesh(AttachMesh);
 		}
+	}
+
+	// Behavior components own their own meshes (chamber round, future
+	// flashlight cone, etc.) — let each apply viewpoint to its own children.
+	TArray<UNexusEquippedActorBehavior*> Behaviors;
+	GetComponents<UNexusEquippedActorBehavior>(Behaviors);
+	for (UNexusEquippedActorBehavior* Behavior : Behaviors)
+	{
+		if (Behavior) Behavior->ApplyViewpoint(bIsFirstPersonView);
 	}
 
 	K2_OnOwnerViewpointApplied(bIsFirstPersonView);

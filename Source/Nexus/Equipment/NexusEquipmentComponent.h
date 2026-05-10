@@ -102,7 +102,7 @@ public:
 
 	/** Configurable slots this owner exposes (e.g., player has Primary/Secondary/Utility/Body). */
 	UFUNCTION(BlueprintPure, Category = "Equipment|Loadout")
-	const TArray<FGameplayTag>& GetAvailableSlots() const { return AvailableSlots; }
+	const TArray<FGameplayTag>& GetAvailableSlots() const { return AvailableSlots; } 
 
 public:
 	// Activation (input-driven)

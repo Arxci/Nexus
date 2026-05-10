@@ -2,5 +2,5 @@
 
 FPrimaryAssetId UNexusAttachmentDefinition::GetPrimaryAssetId() const
 {
-	return FPrimaryAssetId(TEXT("Attachment"), GetFName());
+	return FPrimaryAssetId(TEXT("NexusAttachmentDefinition"), GetFName());
 }

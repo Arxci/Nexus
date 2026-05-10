@@ -20,7 +20,7 @@ class NEXUS_API ANexusEquippedActor : public AActor
 
 public:
 	ANexusEquippedActor();
-	
+
 	virtual void InitializeFromInstance(UNexusItemInstance* Instance);
 
 	UFUNCTION(BlueprintPure, Category = "Equipped")
@@ -37,7 +37,7 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Equipped")
 	bool IsEquippedVisible() const { return bVisible; }
-	
+
 	UFUNCTION(BlueprintCallable, Category = "Equipped")
 	void ApplyOwnerViewpointRendering();
 
@@ -54,32 +54,45 @@ public:
 	bool IsRenderedFirstPerson() const { return bIsFirstPersonView; }
 
 
-	// Weapon-mesh animation. The weapon mesh has its own AnimInstance running
-	// the AnimBP authored on the equippable definition; arms-side notifies
-	// (UNexusAnimNotify_WeaponAction) call PlayWeaponAction so the gun's
-	// slide/bolt/magazine animate in lockstep with the player's reload/fire/etc.
+	/**
+	 * Generic action-montage entry point. Resolves the right montage by:
+	 *   1. Asking the assembly (so attachment overrides win), and
+	 *   2. Falling back to each installed UNexusEquippedActorBehavior in
+	 *      registration order.
+	 *
+	 * The actor doesn't know about Action.Weapon.* vs. future Action.Flashlight.*
+	 * vs. anything else — fragments install the behavior that owns those
+	 * action montages, and the actor just relays.
+	 *
+	 * Called by UNexusAnimNotify_WeaponAction so an arms montage can drive the
+	 * equipped mesh's slide/bolt/magazine animations in lockstep.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Equipped|Anim")
-	UAnimMontage* PlayWeaponAction(FGameplayTag ActionTag);
+	UAnimMontage* PlayActionMontage(FGameplayTag ActionTag);
 
 	UFUNCTION(BlueprintPure, Category = "Equipped|Anim")
-	UAnimMontage* GetWeaponActionMontage(FGameplayTag ActionTag) const;
+	UAnimMontage* GetEffectiveActionMontage(FGameplayTag ActionTag) const;
 
-	// Effective stat / montage helpers. Read through the assembly so attachment
-	// modifiers and overrides are applied; fall back to the weapon fragment
-	// (or the equippable's WeaponActionMontages) when no assembly is present.
+	// Effective stat helpers. Read through the assembly so attachment modifiers apply.
 	UFUNCTION(BlueprintPure, Category = "Equipped|Stats")
 	float GetEffectiveStat(FGameplayTag StatTag, float Default = 0.0f) const;
 
 	UFUNCTION(BlueprintPure, Category = "Equipped|Stats")
 	FResolvedWeaponStats GetResolvedStats() const;
 
-	UFUNCTION(BlueprintPure, Category = "Equipped|Anim")
-	UAnimMontage* GetEffectiveActionMontage(FGameplayTag ActionTag) const;
-
 	UFUNCTION(BlueprintPure, Category = "Equipped|Assembly")
 	UNexusWeaponAssemblyComponent* GetAssembly() const { return Assembly; }
 
 public:
+	/**
+	 * Generic equipment-side anim cache, populated from FNexusFragment_Equippable::Animations
+	 * at InitializeFromInstance. These apply to any equipment type (a flashlight
+	 * has an unholster, a radio has an inspect) — kept on the actor so the
+	 * equipment component can read swap timing without walking fragments.
+	 *
+	 * Weapon-specific action montages (Action.Weapon.*) are NOT here; they live
+	 * on UNexusWeaponBehaviorComponent and route through PlayActionMontage.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")
 	TObjectPtr<UAnimSequence> IdlePose;
 
@@ -99,6 +112,8 @@ public:
 	TObjectPtr<UAnimMontage> InspectMontage;
 
 protected:
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipped")
 	TObjectPtr<USkeletalMeshComponent> Mesh;
 
@@ -107,14 +122,6 @@ protected:
 
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Equipped")
 	TObjectPtr<UNexusItemInstance> SourceInstance;
-
-	/**
-	 * Resolved arms-side action montages cached at init from the equippable
-	 * fragment (FEquippableAnimationSet::WeaponActionMontages). Keyed by
-	 * Action.Weapon.* tag.
-	 */
-	UPROPERTY(Transient, BlueprintReadOnly, Category = "Equipment|Anims")
-	TMap<FGameplayTag, TObjectPtr<UAnimMontage>> WeaponActionMontages;
 
 	UPROPERTY(Transient)
 	bool bVisible = true;

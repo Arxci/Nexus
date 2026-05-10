@@ -15,6 +15,7 @@ class UCameraShakeBase;
 class UFXSystemAsset;
 class USoundBase;
 class UAnimMontage;
+class UStaticMesh;
 
 
 UENUM(BlueprintType)
@@ -37,7 +38,7 @@ USTRUCT(BlueprintType, DisplayName = "Animations")
 struct NEXUS_API FWeaponAnimations
 {
 	GENERATED_BODY()
-	
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation",
 		meta = (AssetBundles = "Equipped"))
 	TSoftObjectPtr<UAnimMontage> FireMontage;
@@ -49,6 +50,41 @@ struct NEXUS_API FWeaponAnimations
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation",
 		meta = (AssetBundles = "Equipped"))
 	TSoftObjectPtr<UAnimMontage> ReloadMontage;
+
+	/**
+	 * Weapon-mesh-side action montages, played on the equipped actor's own
+	 * SkeletalMeshComponent in lockstep with the arms montage. Keyed by
+	 * Action.Weapon.* tag; UNexusAnimNotify_WeaponAction on the arms montage
+	 * triggers playback at the right frame so the slide/bolt/magazine animate
+	 * in sync. Attachments override individual entries via
+	 * UNexusAttachmentDefinition::AnimationOverrides (deeper attachments win).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation",
+		meta = (AssetBundles = "Equipped",
+			Categories = "Action.Weapon",
+			ForceInlineRow))
+	TMap<FGameplayTag, TSoftObjectPtr<UAnimMontage>> ActionMontages;
+};
+
+/**
+ * Authoring data for the "chambered round" visual — the bullet that briefly
+ * appears between the magazine and chamber during the unholster/chamber/reload
+ * windows. Sequencer authoring uses a static mesh attached to the gun's ammo
+ * bone; UNexusAnimNotifyState_ShowChamberRound uses the same mesh + socket at
+ * runtime, driven by UNexusWeaponBehaviorComponent.
+ */
+USTRUCT(BlueprintType, DisplayName = "Ammo Visual")
+struct NEXUS_API FAmmoVisualSpec
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ammo Visual",
+		meta = (AssetBundles = "Equipped"))
+	TSoftObjectPtr<UStaticMesh> RoundMesh;
+
+	/** Socket on the equipped actor's main mesh that the round attaches to. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ammo Visual")
+	FName AmmoSocket = "ammo";
 };
 
 USTRUCT(BlueprintType, DisplayName = "Combat")
@@ -165,7 +201,10 @@ struct NEXUS_API FNexusFragment_Weapon : public FNexusItemFragment
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation")
 	FWeaponAnimations Animations;
-	
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ammo Visual")
+	FAmmoVisualSpec AmmoVisual;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation")
 	FWeaponPresentation Presentation;
 
@@ -186,4 +225,8 @@ struct NEXUS_API FNexusFragment_Weapon : public FNexusItemFragment
 	}
 
 	virtual void InitializeInstance(UNexusItemInstance* Instance) const override;
+
+	/** Installs UNexusWeaponBehaviorComponent on the equipped actor. */
+	virtual void OnInstall(ANexusEquippedActor* EquippedActor) const override;
+	virtual void OnUninstall(ANexusEquippedActor* EquippedActor) const override;
 };

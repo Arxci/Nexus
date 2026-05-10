@@ -163,6 +163,13 @@ public:
 	/** All currently-spawned attachment mesh components (in arbitrary order). */
 	TArray<USkeletalMeshComponent*> GetAttachmentMeshes() const;
 
+	/**
+	 * C++-only accessor for iterating the live attachment tree. Used by
+	 * UNexusWeaponBehaviorComponent to find magazine-fragment-bearing
+	 * attachments without baking magazine slot tags into the assembly.
+	 */
+	const TMap<FGameplayTag, FNexusAttachmentInstance>& GetAttachedRecordsRef() const { return Attached; }
+
 	UPROPERTY(BlueprintAssignable, Category = "Weapon|Assembly")
 	FOnWeaponAssemblyChanged OnAssemblyChanged;
 

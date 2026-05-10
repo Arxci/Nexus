@@ -2,13 +2,14 @@
 
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
+#include "Animation/Skeleton.h"
 
 #include "Components/SkeletalMeshComponent.h"
 
 #include "Engine/AssetManager.h"
 #include "Engine/SkeletalMesh.h"
-#include "Engine/World.h"
 
+#include "Nexus/Weapon/NexusWeaponBehaviorComponent.h"
 #include "Nexus/Equipment/Attachments/NexusAttachmentDefinition.h"
 #include "Nexus/Equipment/NexusEquippedActor.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
@@ -432,17 +433,40 @@ void UNexusWeaponAssemblyComponent::SpawnMeshForAttachment(FNexusAttachmentInsta
 	NewMesh->SetSkeletalMesh(MeshAsset);
 	NewMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-	UClass* AnimClass = Record.Definition->AnimInstanceClass.Get();
-	if (!AnimClass && !Record.Definition->AnimInstanceClass.IsNull())
+	// Modular weapon: when the attachment shares its skeleton with the host
+	// weapon mesh (frame), drive its pose from the host via Leader Pose Component.
+	// The frame's montage animates a single skeleton; the magazine, slide, etc.
+	// follow without their own AnimBP/montage. AAA-standard for split-mesh
+	// weapons (Lyra, modern shooter pipelines).
+	bool bUsedLeaderPose = false;
+	if (USkeletalMeshComponent* HostSkeletalMesh = Cast<USkeletalMeshComponent>(ParentMesh))
 	{
-		ensureAlwaysMsgf(false,
-			TEXT("[WeaponAssembly] AnimInstance class for attachment %s not resident; bundle 'Equipped' was not awaited"),
-			*GetNameSafe(Record.Definition));
-		AnimClass = Record.Definition->AnimInstanceClass.LoadSynchronous();
+		const USkeleton* HostSkeleton = HostSkeletalMesh->GetSkeletalMeshAsset()
+			? HostSkeletalMesh->GetSkeletalMeshAsset()->GetSkeleton()
+			: nullptr;
+		const USkeleton* AttachSkeleton = MeshAsset->GetSkeleton();
+		if (HostSkeleton && AttachSkeleton == HostSkeleton)
+		{
+			NewMesh->SetLeaderPoseComponent(HostSkeletalMesh, /*bForceUpdate*/ true);
+			bUsedLeaderPose = true;
+		}
 	}
-	if (AnimClass)
+
+	if (!bUsedLeaderPose)
 	{
-		NewMesh->SetAnimInstanceClass(AnimClass);
+		// Independent skeleton — attachment runs its own AnimInstance if authored.
+		UClass* AnimClass = Record.Definition->AnimInstanceClass.Get();
+		if (!AnimClass && !Record.Definition->AnimInstanceClass.IsNull())
+		{
+			ensureAlwaysMsgf(false,
+				TEXT("[WeaponAssembly] AnimInstance class for attachment %s not resident; bundle 'Equipped' was not awaited"),
+				*GetNameSafe(Record.Definition));
+			AnimClass = Record.Definition->AnimInstanceClass.LoadSynchronous();
+		}
+		if (AnimClass)
+		{
+			NewMesh->SetAnimInstanceClass(AnimClass);
+		}
 	}
 
 	// Register, then attach. SetupAttachment is for unregistered components only;
@@ -634,14 +658,17 @@ UAnimMontage* UNexusWeaponAssemblyComponent::ResolveActionMontage(const FGamepla
 		}
 	}
 
-	// Fallback: the equipped actor's authored weapon-mesh action montages
-	// (FEquippableAnimationSet::WeaponActionMontages — populated via
-	// ANexusEquippedActor on init).
+	// Fallback: the weapon behavior's cached action montages
+	// (FNexusFragment_Weapon::Animations::ActionMontages — populated when
+	// FNexusFragment_Weapon::OnInstall installed the weapon behavior).
 	if (const ANexusEquippedActor* Actor = GetEquippedActor())
 	{
-		if (UAnimMontage* WeaponSelfMontage = Actor->GetWeaponActionMontage(ActionTag))
+		if (const UNexusWeaponBehaviorComponent* WeaponBehavior = Actor->FindComponentByClass<UNexusWeaponBehaviorComponent>())
 		{
-			return WeaponSelfMontage;
+			if (UAnimMontage* BehaviorMontage = WeaponBehavior->GetActionMontage(ActionTag))
+			{
+				return BehaviorMontage;
+			}
 		}
 	}
 

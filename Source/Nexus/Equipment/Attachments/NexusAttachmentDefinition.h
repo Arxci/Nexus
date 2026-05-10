@@ -6,6 +6,9 @@
 
 #include "GameplayTagContainer.h"
 
+#include "StructUtils/InstancedStruct.h"
+
+#include "NexusAttachmentFragment.h"
 #include "NexusAttachmentTypes.h"
 
 #include "NexusAttachmentDefinition.generated.h"
@@ -66,9 +69,44 @@ public:
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Slots")
 	TArray<FWeaponSlotDefinition> ProvidedSlots;
-	
+
+	/**
+	 * Attachment-type-specific data, authored by the designer via instanced
+	 * structs. Mirrors UNexusItemDefinition::Fragments — keeps this base class
+	 * free of one-off magazine/scope/laser fields and lets new attachment
+	 * categories ship as data-only additions.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Fragments",
+		meta = (ExcludeBaseStruct))
+	TArray<TInstancedStruct<FNexusAttachmentFragment>> Fragments;
+
 	bool FitsSlot(const FGameplayTagContainer& SlotAcceptedTags) const
 	{
 		return ProvidedTags.HasAny(SlotAcceptedTags);
+	}
+
+	template <typename T>
+	const T* FindFragment() const
+	{
+		static_assert(TIsDerivedFrom<T, FNexusAttachmentFragment>::IsDerived,
+			"T must derive from FNexusAttachmentFragment");
+
+		const UScriptStruct* Target = T::StaticStruct();
+		for (const TInstancedStruct<FNexusAttachmentFragment>& Frag : Fragments)
+		{
+			if (!Frag.IsValid()) continue;
+			const UScriptStruct* Type = Frag.GetScriptStruct();
+			if (Type && Type->IsChildOf(Target))
+			{
+				return Frag.GetPtr<const T>();
+			}
+		}
+		return nullptr;
+	}
+
+	template <typename T>
+	bool HasFragment() const
+	{
+		return FindFragment<T>() != nullptr;
 	}
 };

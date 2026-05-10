@@ -38,6 +38,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
 	TObjectPtr<UNexusEquipmentComponent> NexusEquipmentComponent;
 
+	UFUNCTION(BlueprintPure, Category = "Character")
+	virtual USkeletalMeshComponent* GetEquipmentAttachMesh() const { return GetMesh(); }
+
 public:
 	//Movement
 	UFUNCTION()

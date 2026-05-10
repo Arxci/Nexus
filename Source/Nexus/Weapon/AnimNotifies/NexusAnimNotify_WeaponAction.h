@@ -13,9 +13,10 @@
  * Place this notify on an arms-side AnimMontage (Unholster, Reload, Fire, ...)
  * at the exact frame where the weapon mesh should react. The notify walks
  * through the owning character's UNexusEquipmentComponent to the active
- * ANexusEquippedActor and calls PlayWeaponAction(ActionTag), which resolves
+ * ANexusEquippedActor and calls PlayActionMontage(ActionTag), which resolves
  * the right montage through the weapon assembly (so attachment overrides win
- * automatically) and plays it on the gun's own AnimInstance.
+ * automatically) and falls back to UNexusWeaponBehaviorComponent's cached
+ * ActionMontages map. The resolved montage plays on the gun's own AnimInstance.
  *
  * Author authoring example: place this notify at frame 7 of a pistol's reload
  * animation with ActionTag = Action.Weapon.MagOut. The arms drop the magazine

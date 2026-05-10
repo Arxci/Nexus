@@ -17,6 +17,7 @@ class UInputMappingContext;
 class UInputAction;
 class USceneComponent;
 class USpringArmComponent;
+class USkeletalMeshComponent;
 class UCameraComponent;
 
 
@@ -37,6 +38,8 @@ public:
 	ANexusHeroCharacter(const FObjectInitializer& ObjectInitializer  = FObjectInitializer::Get());
 
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
+
+	virtual USkeletalMeshComponent* GetEquipmentAttachMesh() const override { return FirstPersonArms ? ObjectPtrDecay(FirstPersonArms) : Super::GetEquipmentAttachMesh(); }
 	
 public:
 	// Utility
@@ -70,6 +73,9 @@ protected:
 	TObjectPtr<USceneComponent> ViewSource;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Camera")
 	TObjectPtr<UCameraComponent> FollowCamera;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Arms")
+	TObjectPtr<USkeletalMeshComponent> FirstPersonArms;
 
 protected:
 	// Input
@@ -131,11 +137,4 @@ private:
 	void HandleSlotInput(FGameplayTag SlotTag);
 
 	void HandleToggleAbilityInput(const FGameplayTag AbilityTag, const FGameplayTag DeactivateIntentTag);
-
-	const FEnhancedInputActionValueBinding* FireBinding   = nullptr;
-	const FEnhancedInputActionValueBinding* AimBinding    = nullptr;
-	const FEnhancedInputActionValueBinding* LookBinding   = nullptr;
-	const FEnhancedInputActionValueBinding* MoveBinding   = nullptr;
-	const FEnhancedInputActionValueBinding* RunBinding    = nullptr;
-	const FEnhancedInputActionValueBinding* CrouchBinding = nullptr;
 };

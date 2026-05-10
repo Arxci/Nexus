@@ -12,6 +12,7 @@
 #include "Animation/AnimSequence.h"
 
 #include "NexusEquippedActor.h"
+#include "Nexus/Character/NexusCharacterBase.h"
 #include "Nexus/NexusGameplayTags.h"
 #include "Nexus/AbilitySystem/NexusAbility.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
@@ -588,9 +589,9 @@ void UNexusEquipmentComponent::AttachActorForSlotState(const FGameplayTag SlotTa
 		? Definition->FindFragment<FNexusFragment_Equippable>() : nullptr;
 	if (!Eq) return;
 
-	const ACharacter* Character = Cast<ACharacter>(GetOwner());
+	const ANexusCharacterBase* Character = Cast<ANexusCharacterBase>(GetOwner());
 	if (!Character) return;
-	USkeletalMeshComponent* CharacterMesh = Character->GetMesh();
+	USkeletalMeshComponent* CharacterMesh = Character->GetEquipmentAttachMesh();
 	if (!CharacterMesh) return;
 
 	Actor->AttachToComponent(CharacterMesh,
