@@ -252,6 +252,23 @@ void UNexusInventoryComponent::HandleInstanceChanged(UNexusItemInstance* Instanc
 }
 
 // Utility
+bool UNexusInventoryComponent::HasSeenItemDefinition(const UNexusItemDefinition* Definition) const
+{
+	if (!Definition) return false;
+	const FPrimaryAssetId Id = Definition->GetPrimaryAssetId();
+	return Id.IsValid() && SeenItemDefinitions.Contains(Id);
+}
+
+void UNexusInventoryComponent::MarkItemDefinitionSeen(const UNexusItemDefinition* Definition)
+{
+	if (!Definition) return;
+	const FPrimaryAssetId Id = Definition->GetPrimaryAssetId();
+	if (Id.IsValid())
+	{
+		SeenItemDefinitions.Add(Id);
+	}
+}
+
 int32 UNexusInventoryComponent::GetTotalCountForDefinition(const UNexusItemDefinition* Definition) const
 {
 	if (!Definition) return 0;

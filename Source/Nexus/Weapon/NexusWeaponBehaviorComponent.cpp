@@ -1,7 +1,5 @@
 ﻿#include "NexusWeaponBehaviorComponent.h"
 
-#include "Animation/AnimMontage.h"
-
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 
@@ -28,8 +26,7 @@ void UNexusWeaponBehaviorComponent::OnInstalled(ANexusEquippedActor* InEquippedA
 
 	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
 	if (!Weapon) return;
-
-	CacheActionMontages(*Weapon);
+	
 	SpawnChamberRoundMesh(*Weapon);
 
 	if (UNexusItemInstance* Instance = EquippedActor ? EquippedActor->GetSourceInstance() : nullptr)
@@ -74,8 +71,7 @@ void UNexusWeaponBehaviorComponent::OnUninstalled()
 		ChamberRoundMesh->DestroyComponent();
 		ChamberRoundMesh = nullptr;
 	}
-
-	ActionMontages.Reset();
+	
 	LastInMagazine = -1;
 
 	Super::OnUninstalled();
@@ -99,34 +95,10 @@ void UNexusWeaponBehaviorComponent::EndPlay(const EEndPlayReason::Type EndPlayRe
 	Super::EndPlay(EndPlayReason);
 }
 
-UAnimMontage* UNexusWeaponBehaviorComponent::GetActionMontage(FGameplayTag ActionTag) const
-{
-	if (!ActionTag.IsValid()) return nullptr;
-	if (const TObjectPtr<UAnimMontage>* Found = ActionMontages.Find(ActionTag))
-	{
-		return Found->Get();
-	}
-	return nullptr;
-}
-
 void UNexusWeaponBehaviorComponent::SetChamberRoundVisible(bool bVisible)
 {
 	if (!ChamberRoundMesh) return;
 	ChamberRoundMesh->SetVisibility(bVisible, /*bPropagateToChildren*/ true);
-}
-
-void UNexusWeaponBehaviorComponent::CacheActionMontages(const FNexusFragment_Weapon& WeaponFragment)
-{
-	ActionMontages.Reset();
-	ActionMontages.Reserve(WeaponFragment.Animations.ActionMontages.Num());
-	for (const TPair<FGameplayTag, TSoftObjectPtr<UAnimMontage>>& Pair : WeaponFragment.Animations.ActionMontages)
-	{
-		if (!Pair.Key.IsValid()) continue;
-		if (UAnimMontage* Loaded = Pair.Value.Get())
-		{
-			ActionMontages.Add(Pair.Key, Loaded);
-		}
-	}
 }
 
 void UNexusWeaponBehaviorComponent::SpawnChamberRoundMesh(const FNexusFragment_Weapon& WeaponFragment)

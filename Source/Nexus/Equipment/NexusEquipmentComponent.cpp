@@ -266,7 +266,7 @@ bool UNexusEquipmentComponent::MoveAssignment(FGameplayTag FromSlot, FGameplayTa
 
 
 // Activation (input-driven)
-bool UNexusEquipmentComponent::RequestActivateSlot(const FGameplayTag SlotTag)
+bool UNexusEquipmentComponent::RequestActivateSlot(const FGameplayTag SlotTag, const bool bSuppressArmsUnholsterAnim)
 {
 	if (!SlotTag.IsValid())
 	{
@@ -274,21 +274,25 @@ bool UNexusEquipmentComponent::RequestActivateSlot(const FGameplayTag SlotTag)
 	}
 
 	if (!IsValidSlot(SlotTag)) return false;
-	
+
 	if (SwapPhase != ENexusEquipSwapPhase::Idle)
 	{
 		PendingActivation = SlotTag;
+		// Queued activations don't carry the suppress flag — they fall back to
+		// standard unholster on resume. The pickup-ceremony caller doesn't
+		// queue, so this is acceptable; if you ever need queued suppression,
+		// thread the flag onto PendingActivation alongside the slot tag.
 		return true;
 	}
-	
+
 	if (ActiveSlot.MatchesTagExact(SlotTag))
 	{
 		return RequestHolster();
 	}
-	
+
 	if (!IsSlotOccupied(SlotTag)) return false;
 
-	
+	bPendingSuppressUnholster = bSuppressArmsUnholsterAnim;
 	BeginSlotTransition(ActiveSlot, SlotTag);
 	return true;
 }
@@ -336,7 +340,7 @@ void UNexusEquipmentComponent::BeginHolsterPhase(const FGameplayTag OutgoingSlot
 	UAnimMontage* Unequip = nullptr;
 	if (const ANexusEquippedActor* OutActor = SpawnedActors.FindRef(OutgoingSlot))
 	{
-		Unequip = OutActor->HolsterMontage;
+		Unequip = OutActor->GetEffectiveArmsMontage(NexusGameplayTags::Action_Weapon_Holster);
 	}
 	const float Duration = PlayMontageOnOwner(Unequip);
 
@@ -402,14 +406,30 @@ void UNexusEquipmentComponent::BeginDrawPhase(const  FGameplayTag IncomingSlot)
 	ActiveSlot = IncomingSlot;
 	AttachActorForSlotState(IncomingSlot, true);
 
+	OnActiveSlotChanged.Broadcast(ActiveSlot, GetEquippedInSlot(ActiveSlot));
+
+	// Consume the suppress-unholster flag — it's a one-shot, set by the most
+	// recent RequestActivateSlot. Clearing here means a queued activation that
+	// resumes via ProcessPendingActivation gets standard unholster.
+	const bool bSuppress = bPendingSuppressUnholster;
+	bPendingSuppressUnholster = false;
+
+	if (bSuppress)
+	{
+		// Caller (e.g. ANexusItemPickup mid-ceremony) is driving the arms anim
+		// itself. Skip the unholster montage and its duration timer; the draw
+		// phase is otherwise complete (actor is already spawned + attached +
+		// visible above).
+		HandleDrawPhaseFinished();
+		return;
+	}
+
 	UAnimMontage* Equip = nullptr;
 	if (const ANexusEquippedActor* InActor = SpawnedActors.FindRef(IncomingSlot))
 	{
-		Equip = InActor->UnholsterMontage;
+		Equip = InActor->GetEffectiveArmsMontage(NexusGameplayTags::Action_Weapon_Unholster);
 	}
 	const float Duration = PlayMontageOnOwner(Equip);
-
-	OnActiveSlotChanged.Broadcast(ActiveSlot, GetEquippedInSlot(ActiveSlot));
 
 	if (Duration > 0.0f)
 	{

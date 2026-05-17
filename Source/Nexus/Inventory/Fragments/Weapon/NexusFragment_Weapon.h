@@ -34,38 +34,6 @@ enum class ENexusWeaponAmmoModel : uint8
 	None     UMETA(DisplayName = "None"),
 };
 
-USTRUCT(BlueprintType, DisplayName = "Animations")
-struct NEXUS_API FWeaponAnimations
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation",
-		meta = (AssetBundles = "Equipped"))
-	TSoftObjectPtr<UAnimMontage> FireMontage;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation",
-		meta = (AssetBundles = "Equipped"))
-	TSoftObjectPtr<UAnimMontage> DryFireMontage;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation",
-		meta = (AssetBundles = "Equipped"))
-	TSoftObjectPtr<UAnimMontage> ReloadMontage;
-
-	/**
-	 * Weapon-mesh-side action montages, played on the equipped actor's own
-	 * SkeletalMeshComponent in lockstep with the arms montage. Keyed by
-	 * Action.Weapon.* tag; UNexusAnimNotify_WeaponAction on the arms montage
-	 * triggers playback at the right frame so the slide/bolt/magazine animate
-	 * in sync. Attachments override individual entries via
-	 * UNexusAttachmentDefinition::AnimationOverrides (deeper attachments win).
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation",
-		meta = (AssetBundles = "Equipped",
-			Categories = "Action.Weapon",
-			ForceInlineRow))
-	TMap<FGameplayTag, TSoftObjectPtr<UAnimMontage>> ActionMontages;
-};
-
 /**
  * Authoring data for the "chambered round" visual — the bullet that briefly
  * appears between the magazine and chamber during the unholster/chamber/reload
@@ -198,9 +166,6 @@ struct NEXUS_API FNexusFragment_Weapon : public FNexusItemFragment
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Reload")
 	FWeaponReload Reload;
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation")
-	FWeaponAnimations Animations;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ammo Visual")
 	FAmmoVisualSpec AmmoVisual;

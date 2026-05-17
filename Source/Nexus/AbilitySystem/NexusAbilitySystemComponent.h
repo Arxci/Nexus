@@ -112,6 +112,16 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	UNexusAbility* FindAbilityByClass(TSubclassOf<UNexusAbility> AbilityClass) const;
+
+	/**
+	 * Subclass-aware variant of FindAbilityByClass. FindAbilityByClass is keyed
+	 * on the exact granted class, which fails when the project grants a
+	 * Blueprint subclass of a C++ base (e.g. BP_Ability_Interaction inheriting
+	 * UNexusAbility_Interaction) and a caller looks the ability up by the base
+	 * type. Use this when you want "first granted ability that IS-A T."
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Ability System")
+	UNexusAbility* FindAbilityOfClass(TSubclassOf<UNexusAbility> AbilityClass) const;
 	
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	bool IsAbilityActive(TSubclassOf<UNexusAbility> AbilityClass) const;

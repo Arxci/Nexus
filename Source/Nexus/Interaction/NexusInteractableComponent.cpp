@@ -41,24 +41,70 @@ float UNexusInteractableComponent::GetElapsedTime() const
 
 void UNexusInteractableComponent::TryStartInteraction_Implementation(AActor* Interactor)
 {
+	// Idempotent: a second Start without a Stop is a no-op so a chatty input
+	// stream can't double-fire the lifecycle.
+	if (CurrentInteractor) return;
+
+	CurrentInteractor = Interactor;
 	if (const UWorld* World = GetWorld())
 	{
 		InteractionStartTime = World->GetTimeSeconds();
 	}
 	OnInteractionStarted.Broadcast(Interactor);
+
+	if (InteractionDuration <= 0.0f)
+	{
+		// Tap-to-interact: no hold required, complete on the same call so callers
+		// who expect a synchronous interaction (instant lootables) get it.
+		CompleteInteraction();
+		return;
+	}
+
 	SetComponentTickEnabled(true);
 }
 
 void UNexusInteractableComponent::TryStopInteraction_Implementation(AActor* Interactor)
 {
-	OnInteractionEnded.Broadcast(Interactor);
+	// Stop is "cancel" — held below the duration. The auto-completion path is in
+	// InteractionProgress, not here, so listeners can distinguish bail-out from
+	// successful hold.
+	if (!CurrentInteractor) return;
+	if (CurrentInteractor != Interactor) return;
 
-	SetComponentTickEnabled(false);
+	CancelInteraction();
 }
 
 void UNexusInteractableComponent::InteractionProgress_Implementation()
 {
-	OnInteractionProgressed.Broadcast(GetElapsedTime());
+	if (!CurrentInteractor) return;
+
+	const float Elapsed = GetElapsedTime();
+	OnInteractionProgressed.Broadcast(Elapsed);
+
+	if (InteractionDuration > 0.0f && Elapsed >= InteractionDuration)
+	{
+		CompleteInteraction();
+	}
+}
+
+void UNexusInteractableComponent::CompleteInteraction()
+{
+	AActor* Interactor = CurrentInteractor;
+	CurrentInteractor = nullptr;
+	SetComponentTickEnabled(false);
+
+	OnInteractionCompleted.Broadcast(Interactor);
+	OnInteractionEnded.Broadcast(Interactor);
+}
+
+void UNexusInteractableComponent::CancelInteraction()
+{
+	AActor* Interactor = CurrentInteractor;
+	CurrentInteractor = nullptr;
+	SetComponentTickEnabled(false);
+
+	OnInteractionCancelled.Broadcast(Interactor);
+	OnInteractionEnded.Broadcast(Interactor);
 }
 
 void UNexusInteractableComponent::OnEnteredPlayerRange_Implementation()

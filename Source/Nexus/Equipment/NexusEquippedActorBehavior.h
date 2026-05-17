@@ -9,7 +9,6 @@
 #include "NexusEquippedActorBehavior.generated.h"
 
 class ANexusEquippedActor;
-class UAnimMontage;
 
 
 /**
@@ -23,9 +22,10 @@ class UAnimMontage;
  * OnUninstall. Override OnInstalled / OnUninstalled here to wire delegates and
  * spawn child components after the parent actor exists.
  *
- * GetActionMontage lets the actor's generic PlayActionMontage path query each
- * installed behavior for an action montage without knowing about specific
- * fragment types.
+ * Animation routing does NOT pass through behaviors — montages live on the
+ * equippable fragment's Actions map and resolve through UNexusWeaponAssemblyComponent
+ * so attachment overrides apply uniformly. Behaviors own non-animation runtime
+ * state (chamber-round visual, magazine swap, future flashlight cone, etc.).
  */
 UCLASS(Abstract, ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class NEXUS_API UNexusEquippedActorBehavior : public UActorComponent
@@ -33,25 +33,8 @@ class NEXUS_API UNexusEquippedActorBehavior : public UActorComponent
 	GENERATED_BODY()
 
 public:
-	/** Called after the behavior has been added & registered on the equipped actor. */
 	virtual void OnInstalled(ANexusEquippedActor* InEquippedActor) { EquippedActor = InEquippedActor; }
-
-	/** Called before the behavior is removed (manual uninstall, EndPlay). */
 	virtual void OnUninstalled() {}
-
-	/**
-	 * Return an action montage for ActionTag, or nullptr if this behavior
-	 * doesn't service that tag. Walked by the actor as a fallback after the
-	 * weapon assembly's attachment-override resolution misses.
-	 */
-	virtual UAnimMontage* GetActionMontage(FGameplayTag ActionTag) const { return nullptr; }
-
-	/**
-	 * Apply the parent actor's resolved viewpoint state (cast-shadow,
-	 * first-person primitive type) to whatever child meshes this behavior
-	 * owns. Called by ANexusEquippedActor::ApplyOwnerViewpointRendering after
-	 * the actor's main mesh and assembly attachments have been updated.
-	 */
 	virtual void ApplyViewpoint(bool bIsFirstPerson) {}
 
 protected:

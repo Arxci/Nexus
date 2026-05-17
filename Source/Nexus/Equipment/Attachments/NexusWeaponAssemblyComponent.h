@@ -147,14 +147,11 @@ public:
 	/** C++-only ref accessor — avoids the BP-exposed copy. */
 	const FResolvedWeaponStats& ResolveStatsRef() const;
 
-	/**
-	 * Returns the most-specific authored override for ActionTag across the
-	 * attachment tree (deeper attachments win), falling back to the weapon's
-	 * own Animations.* montage when nothing overrides. Null if neither path
-	 * supplies a montage for that action.
-	 */
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Assembly")
-	UAnimMontage* ResolveActionMontage(FGameplayTag ActionTag) const;
+	UAnimMontage* ResolveArmsMontage(FGameplayTag ActionTag) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Assembly")
+	UAnimMontage* ResolveItemMontage(FGameplayTag ActionTag) const;
 
 	/** All slot IDs currently part of the tree (top-level + provided sub-slots). */
 	UFUNCTION(BlueprintPure, Category = "Weapon|Assembly")
@@ -180,6 +177,15 @@ private:
 	ANexusEquippedActor* GetEquippedActor() const;
 	UNexusItemInstance* GetSourceInstance() const;
 	const FNexusFragment_Weapon* GetWeaponFragment() const;
+	const struct FNexusFragment_Equippable* GetEquippableFragment() const;
+
+	/**
+	 * Shared worker for ResolveArmsMontage / ResolveItemMontage. bArmsStream
+	 * picks which field of FEquipmentActionAnim the resolver reads — both
+	 * streams share the same depth-first attachment walk and equippable
+	 * fragment fallback, only the source field differs.
+	 */
+	UAnimMontage* ResolveActionStream(FGameplayTag ActionTag, bool bArmsStream) const;
 
 	const FWeaponSlotDefinition* FindSlotDefinition(FGameplayTag SlotID) const;
 

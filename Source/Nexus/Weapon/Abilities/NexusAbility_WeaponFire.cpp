@@ -179,7 +179,10 @@ void UNexusAbility_WeaponFire::FireShot() const
 
 	const ANexusEquippedActor* EquippedActor = GetEquippedActor();
 
-	PlayMontage(Weapon->Animations.FireMontage.LoadSynchronous());
+	if (EquippedActor)
+	{
+		PlayMontage(EquippedActor->GetEffectiveArmsMontage(NexusGameplayTags::Action_Weapon_Fire));
+	}
 
 	if (USoundBase* S = Weapon->Presentation.FireSound.LoadSynchronous())
 	{
@@ -325,7 +328,10 @@ void UNexusAbility_WeaponFire::HandleDryFire() const
 	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
 	if (!Weapon) return;
 
-	PlayMontage(Weapon->Animations.DryFireMontage.LoadSynchronous());
+	if (const ANexusEquippedActor* EquippedActor = GetEquippedActor())
+	{
+		PlayMontage(EquippedActor->GetEffectiveArmsMontage(NexusGameplayTags::Action_Weapon_DryFire));
+	}
 
 	if (USoundBase* S = Weapon->Presentation.DryFireSound.LoadSynchronous())
 	{

@@ -39,6 +39,6 @@ void UNexusAnimNotify_WeaponAction::Notify(USkeletalMeshComponent* MeshComp,
 
 	if (ANexusEquippedActor* Active = Equipment->GetActiveActor())
 	{
-		Active->PlayActionMontage(ActionTag);
+		Active->PlayItemActionMontage(ActionTag);
 	}
 }

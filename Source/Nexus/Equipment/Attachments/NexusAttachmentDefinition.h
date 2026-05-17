@@ -8,13 +8,13 @@
 
 #include "StructUtils/InstancedStruct.h"
 
+#include "Nexus/Inventory/Fragments/Equippable/NexusFragment_Equippable.h"
 #include "NexusAttachmentFragment.h"
 #include "NexusAttachmentTypes.h"
 
 #include "NexusAttachmentDefinition.generated.h"
 
 class UAnimInstance;
-class UAnimMontage;
 class USkeletalMesh;
 class UTexture2D;
 
@@ -61,11 +61,17 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats")
 	TArray<FAttachmentStatModifier> Modifiers;
 	
+	/**
+	 * Per-action (Arms, Item) overrides. Mirror of FEquippableAnimationSet::Actions —
+	 * an attachment may supply either the arms montage, the item montage, or both
+	 * for any given action. Deeper attachments in the tree win over shallower ones;
+	 * see UNexusWeaponAssemblyComponent::ResolveArmsMontage / ResolveItemMontage.
+	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation",
 		meta = (AssetBundles = "Equipped",
-			Categories = "Action.Weapon",
+			Categories = "Action",
 			ForceInlineRow))
-	TMap<FGameplayTag, TSoftObjectPtr<UAnimMontage>> AnimationOverrides;
+	TMap<FGameplayTag, FEquipmentActionAnim> ActionOverrides;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Slots")
 	TArray<FWeaponSlotDefinition> ProvidedSlots;

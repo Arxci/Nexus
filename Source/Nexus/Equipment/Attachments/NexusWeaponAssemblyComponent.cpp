@@ -14,6 +14,7 @@
 #include "Nexus/Equipment/NexusEquippedActor.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
+#include "Nexus/Inventory/Fragments/Equippable/NexusFragment_Equippable.h"
 #include "Nexus/Inventory/Fragments/Weapon/NexusFragment_Weapon.h"
 #include "Nexus/NexusGameplayTags.h"
 
@@ -45,6 +46,13 @@ const FNexusFragment_Weapon* UNexusWeaponAssemblyComponent::GetWeaponFragment() 
 	const UNexusItemInstance* Instance = GetSourceInstance();
 	const UNexusItemDefinition* Definition = Instance ? Instance->GetDefinition() : nullptr;
 	return Definition ? Definition->FindFragment<FNexusFragment_Weapon>() : nullptr;
+}
+
+const FNexusFragment_Equippable* UNexusWeaponAssemblyComponent::GetEquippableFragment() const
+{
+	const UNexusItemInstance* Instance = GetSourceInstance();
+	const UNexusItemDefinition* Definition = Instance ? Instance->GetDefinition() : nullptr;
+	return Definition ? Definition->FindFragment<FNexusFragment_Equippable>() : nullptr;
 }
 
 const FWeaponSlotDefinition* UNexusWeaponAssemblyComponent::FindSlotDefinition(const FGameplayTag SlotID) const
@@ -595,84 +603,109 @@ const FResolvedWeaponStats& UNexusWeaponAssemblyComponent::ResolveStatsRef() con
 	return CachedStats;
 }
 
-UAnimMontage* UNexusWeaponAssemblyComponent::ResolveActionMontage(const FGameplayTag ActionTag) const
+namespace
 {
-	if (!ActionTag.IsValid()) return nullptr;
+    using FActionStreamPtr = TSoftObjectPtr<UAnimMontage> FEquipmentActionAnim::*;
 
-	// Walk the tree depth-first: deeper attachments are more specific and win
-	// ties. We compute depth via parent-walk because the storage is flat.
-	auto DepthOf = [this](FGameplayTag Slot) -> int32
-	{
-		int32 Depth = 0;
-		while (Slot.IsValid())
-		{
-			const FNexusAttachmentInstance* Rec = Attached.Find(Slot);
-			if (!Rec) break;
-			Slot = Rec->ParentSlotID;
-			++Depth;
-			if (Depth > 32) break; // sanity
-		}
-		return Depth;
-	};
+    UAnimMontage* LoadStream(const TSoftObjectPtr<UAnimMontage>& Soft,
+        const FGameplayTag& ActionTag, const UObject* OwnerForLog)
+    {
+        UAnimMontage* Loaded = Soft.Get();
+        if (!Loaded && !Soft.IsNull())
+        {
+            ensureAlwaysMsgf(false,
+                TEXT("[WeaponAssembly] Action montage for %s on %s not resident; bundle 'Equipped' was not awaited"),
+                *ActionTag.ToString(), *GetNameSafe(OwnerForLog));
+            Loaded = Soft.LoadSynchronous();
+        }
+        return Loaded;
+    }
+}
 
-	// Collect all candidates first so we can pick a deterministic winner on
-	// equal-depth ties (sort by SlotID name). TMap iteration order is otherwise
-	// unspecified and would silently flip winners between runs.
-	struct FCandidate { FGameplayTag SlotID; int32 Depth; };
-	TArray<FCandidate, TInlineAllocator<8>> Candidates;
+UAnimMontage* UNexusWeaponAssemblyComponent::ResolveArmsMontage(const FGameplayTag ActionTag) const
+{
+    return ResolveActionStream(ActionTag, /*bArmsStream=*/true);
+}
 
-	for (const TPair<FGameplayTag, FNexusAttachmentInstance>& Pair : Attached)
-	{
-		const UNexusAttachmentDefinition* Def = Pair.Value.Definition;
-		if (!Def) continue;
-		const TSoftObjectPtr<UAnimMontage>* OverrideRef = Def->AnimationOverrides.Find(ActionTag);
-		if (!OverrideRef || OverrideRef->IsNull()) continue;
+UAnimMontage* UNexusWeaponAssemblyComponent::ResolveItemMontage(const FGameplayTag ActionTag) const
+{
+    return ResolveActionStream(ActionTag, /*bArmsStream=*/false);
+}
 
-		Candidates.Add({Pair.Key, DepthOf(Pair.Key)});
-	}
+UAnimMontage* UNexusWeaponAssemblyComponent::ResolveActionStream(
+    const FGameplayTag ActionTag, const bool bArmsStream) const
+{
+    if (!ActionTag.IsValid()) return nullptr;
 
-	if (Candidates.Num() > 0)
-	{
-		Candidates.Sort([](const FCandidate& A, const FCandidate& B)
-		{
-			if (A.Depth != B.Depth) return A.Depth > B.Depth;
-			return A.SlotID.GetTagName().LexicalLess(B.SlotID.GetTagName());
-		});
+    const FActionStreamPtr StreamPtr = bArmsStream
+        ? &FEquipmentActionAnim::ArmsMontage
+        : &FEquipmentActionAnim::ItemMontage;
 
-		for (const FCandidate& Cand : Candidates)
-		{
-			const FNexusAttachmentInstance* Rec = Attached.Find(Cand.SlotID);
-			if (!Rec || !Rec->Definition) continue;
-			const TSoftObjectPtr<UAnimMontage>* OverrideRef = Rec->Definition->AnimationOverrides.Find(ActionTag);
-			if (!OverrideRef) continue;
+    auto DepthOf = [this](FGameplayTag Slot) -> int32
+    {
+        int32 Depth = 0;
+        while (Slot.IsValid())
+        {
+            const FNexusAttachmentInstance* Rec = Attached.Find(Slot);
+            if (!Rec) break;
+            Slot = Rec->ParentSlotID;
+            ++Depth;
+            if (Depth > 32) break;
+        }
+        return Depth;
+    };
 
-			UAnimMontage* Loaded = OverrideRef->Get();
-			if (!Loaded)
-			{
-				ensureAlwaysMsgf(OverrideRef->IsNull(),
-					TEXT("[WeaponAssembly] Animation override for %s on %s not resident; bundle 'Equipped' was not awaited"),
-					*ActionTag.ToString(), *GetNameSafe(Rec->Definition));
-				Loaded = OverrideRef->LoadSynchronous();
-			}
-			if (Loaded) return Loaded;
-		}
-	}
+    // Collect all candidates first so we can pick a deterministic winner on
+    // equal-depth ties (sort by SlotID name). TMap iteration order is otherwise
+    // unspecified and would silently flip winners between runs. An attachment
+    // only enters the candidate list if it overrides the *selected* stream —
+    // a magazine that only authors an ItemMontage doesn't compete with a
+    // foregrip that only authors an ArmsMontage for the same action.
+    struct FCandidate { FGameplayTag SlotID; int32 Depth; };
+    TArray<FCandidate, TInlineAllocator<8>> Candidates;
 
-	// Fallback: the weapon behavior's cached action montages
-	// (FNexusFragment_Weapon::Animations::ActionMontages — populated when
-	// FNexusFragment_Weapon::OnInstall installed the weapon behavior).
-	if (const ANexusEquippedActor* Actor = GetEquippedActor())
-	{
-		if (const UNexusWeaponBehaviorComponent* WeaponBehavior = Actor->FindComponentByClass<UNexusWeaponBehaviorComponent>())
-		{
-			if (UAnimMontage* BehaviorMontage = WeaponBehavior->GetActionMontage(ActionTag))
-			{
-				return BehaviorMontage;
-			}
-		}
-	}
+    for (const TPair<FGameplayTag, FNexusAttachmentInstance>& Pair : Attached)
+    {
+        const UNexusAttachmentDefinition* Def = Pair.Value.Definition;
+        if (!Def) continue;
+        const FEquipmentActionAnim* Override = Def->ActionOverrides.Find(ActionTag);
+        if (!Override) continue;
+        if ((Override->*StreamPtr).IsNull()) continue;
 
-	return nullptr;
+        Candidates.Add({Pair.Key, DepthOf(Pair.Key)});
+    }
+
+    if (Candidates.Num() > 0)
+    {
+        Candidates.Sort([](const FCandidate& A, const FCandidate& B)
+        {
+            if (A.Depth != B.Depth) return A.Depth > B.Depth;
+            return A.SlotID.GetTagName().LexicalLess(B.SlotID.GetTagName());
+        });
+
+        for (const FCandidate& Cand : Candidates)
+        {
+            const FNexusAttachmentInstance* Rec = Attached.Find(Cand.SlotID);
+            if (!Rec || !Rec->Definition) continue;
+            const FEquipmentActionAnim* Override = Rec->Definition->ActionOverrides.Find(ActionTag);
+            if (!Override) continue;
+
+            if (UAnimMontage* Loaded = LoadStream(Override->*StreamPtr, ActionTag, Rec->Definition))
+            {
+                return Loaded;
+            }
+        }
+    }
+
+    if (const FNexusFragment_Equippable* Eq = GetEquippableFragment())
+    {
+        if (const FEquipmentActionAnim* Pair = Eq->Animations.Actions.Find(ActionTag))
+        {
+            return LoadStream(Pair->*StreamPtr, ActionTag, GetSourceInstance());
+        }
+    }
+
+    return nullptr;
 }
 
 

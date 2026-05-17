@@ -26,6 +26,13 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FOnInteractionFocusCleared OnInteractionFocusCleared;
 
+	/**
+	 * The currently focused interactable, or null if nothing under the reticle.
+	 * Input handlers query this on press to know what to TryStartInteraction on.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Interaction")
+	UNexusInteractableComponent* GetFocusedInteractable() const { return InteractionTarget.Get(); }
+
 protected:
 	UNexusAbility_Interaction();
 

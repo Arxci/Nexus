@@ -2,13 +2,15 @@
 
 #include "CoreMinimal.h"
 
-#include "NexusInteractableInterface.h"
+#include "UObject/PrimaryAssetId.h"
 
 #include "Components/ActorComponent.h"
 
 #include "ComponentPicker.h"
 
 #include "GameplayTagContainer.h"
+
+#include "NexusInteractableInterface.h"
 
 #include "NexusInteractableComponent.generated.h"
 
@@ -19,6 +21,8 @@ class UNexusWorldMarkerWidget;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInteractionProgressed, float, ElapsedTime);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInteractionStarted, AActor*, Interactor);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInteractionCompleted, AActor*, Interactor);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInteractionCancelled, AActor*, Interactor);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInteractionEnded, AActor*, Interactor);
 
 
@@ -65,10 +69,30 @@ public:
 	//Delegates
 	UPROPERTY(BlueprintAssignable, Category = "Interaction")
 	FOnInteractionProgressed OnInteractionProgressed;
-	UPROPERTY(BlueprintAssignable, Category = "Interaction")
-	FOnInteractionEnded OnInteractionEnded;
+
 	UPROPERTY(BlueprintAssignable, Category = "Interaction")
 	FOnInteractionStarted OnInteractionStarted;
+
+	/**
+	 * Fires when the interaction was held for the full InteractionDuration (or
+	 * immediately if Duration <= 0). This is the "success" signal — listeners
+	 * like ANexusItemPickup that consume the world actor should bind here, NOT
+	 * to OnInteractionEnded, so a player who taps-and-releases mid-hold doesn't
+	 * accidentally trigger consumption.
+	 */
+	UPROPERTY(BlueprintAssignable, Category = "Interaction")
+	FOnInteractionCompleted OnInteractionCompleted;
+
+	/** Fires when the interactor released the input before InteractionDuration elapsed. */
+	UPROPERTY(BlueprintAssignable, Category = "Interaction")
+	FOnInteractionCancelled OnInteractionCancelled;
+
+	/**
+	 * Fires after either Completed or Cancelled. Intended for UI listeners that
+	 * don't care which way the interaction ended (hide the progress bar, etc.).
+	 */
+	UPROPERTY(BlueprintAssignable, Category = "Interaction")
+	FOnInteractionEnded OnInteractionEnded;
 
 protected:
 	//Indicator
@@ -102,8 +126,20 @@ protected:
 	FComponentPicker  InteractionTriggerComponent;
 
 private:
+	/**
+	 * Runtime: actor whose TryStartInteraction call brought us into the in-progress
+	 * state. Non-null while ticking; cleared on Complete or Cancel. Treat as the
+	 * "is interaction in progress" flag — TryStartInteraction is a no-op when set.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<AActor> CurrentInteractor;
+
 	/** Runtime: world time when the current interaction started. */
 	float InteractionStartTime = 0.0f;
+
+	void CompleteInteraction();
+	void CancelInteraction();
+
 	UPROPERTY()
 	FGameplayTagContainer InteractableState;
 

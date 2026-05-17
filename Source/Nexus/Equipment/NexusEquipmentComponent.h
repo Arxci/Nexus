@@ -44,7 +44,6 @@ public:
 
 public:
 	// Loadout (UI-driven)
-	
 	/**
 	 * Place Instance into SlotTag.
 	 *
@@ -106,8 +105,17 @@ public:
 
 public:
 	// Activation (input-driven)
+	/**
+	 * Activate SlotTag. By default plays the equippable's authored arms-side
+	 * unholster montage as part of the draw phase. Pass
+	 * bSuppressArmsUnholsterAnim=true when an external caller (e.g. a pickup
+	 * ceremony) is already driving the arms animation and wants the draw phase
+	 * to only spawn / attach / make-visible the equipped actor without touching
+	 * the player's anim instance — otherwise the ceremony would be cut off by
+	 * the standard unholster firing on the same slot.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Activation")
-	bool RequestActivateSlot(const FGameplayTag SlotTag);
+	bool RequestActivateSlot(const FGameplayTag SlotTag, bool bSuppressArmsUnholsterAnim = false);
 
 	/** Holster the currently active slot. Queues if a swap is in flight. */
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Activation")
@@ -222,4 +230,14 @@ private:
 	FGameplayTag OutgoingPendingHide;
 
 	FTimerHandle PhaseTimer;
+
+	/**
+	 * Pulled by BeginDrawPhase and cleared right after — when set, the next
+	 * draw skips the standard arms-side unholster montage. Set by callers of
+	 * RequestActivateSlot(SlotTag, *bSuppressArmsUnholsterAnim=*true). Lives
+	 * as a transient flag rather than a parameter on BeginDrawPhase so the
+	 * holster→draw chain through BeginSlotTransition / HandleHolsterPhaseFinished
+	 * picks it up without changing those signatures.
+	 */
+	bool bPendingSuppressUnholster = false;
 };

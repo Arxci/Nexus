@@ -50,12 +50,9 @@ void ANexusEquippedActor::InitializeFromInstance(UNexusItemInstance* Instance)
 				*DefinitionData->GetName());
 		}
 
-		IdlePose         = Eq->Animations.IdlePose.Get();
-		IdleLoop         = Eq->Animations.IdleLoop.Get();
-		RunLoop          = Eq->Animations.RunLoop.Get();
-		UnholsterMontage = Eq->Animations.UnholsterMontage.Get();
-		HolsterMontage   = Eq->Animations.HolsterMontage.Get();
-		InspectMontage   = Eq->Animations.InspectMontage.Get();
+		IdlePose = Eq->Animations.IdlePose.Get();
+		IdleLoop = Eq->Animations.IdleLoop.Get();
+		RunLoop  = Eq->Animations.RunLoop.Get();
 
 		if (UClass* AnimClass = Eq->Animations.MeshAnimInstanceClass.Get())
 		{
@@ -100,13 +97,22 @@ void ANexusEquippedActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-UAnimMontage* ANexusEquippedActor::PlayActionMontage(FGameplayTag ActionTag)
+UAnimMontage* ANexusEquippedActor::GetEffectiveArmsMontage(const FGameplayTag ActionTag) const
 {
-	if (!ActionTag.IsValid()) return nullptr;
+	if (!ActionTag.IsValid() || !Assembly) return nullptr;
+	return Assembly->ResolveArmsMontage(ActionTag);
+}
 
-	UAnimMontage* Montage = GetEffectiveActionMontage(ActionTag);
-	if (!Montage) return nullptr;
-	if (!Mesh) return nullptr;
+UAnimMontage* ANexusEquippedActor::GetEffectiveItemMontage(const FGameplayTag ActionTag) const
+{
+	if (!ActionTag.IsValid() || !Assembly) return nullptr;
+	return Assembly->ResolveItemMontage(ActionTag);
+}
+
+UAnimMontage* ANexusEquippedActor::PlayItemActionMontage(FGameplayTag ActionTag)
+{
+	UAnimMontage* Montage = GetEffectiveItemMontage(ActionTag);
+	if (!Montage || !Mesh) return nullptr;
 
 	UAnimInstance* AnimInstance = Mesh->GetAnimInstance();
 	if (!AnimInstance) return nullptr;
@@ -115,34 +121,6 @@ UAnimMontage* ANexusEquippedActor::PlayActionMontage(FGameplayTag ActionTag)
 	{
 		return Montage;
 	}
-	return nullptr;
-}
-
-UAnimMontage* ANexusEquippedActor::GetEffectiveActionMontage(const FGameplayTag ActionTag) const
-{
-	// Attachment overrides win first (assembly walks the tree depth-first).
-	if (Assembly)
-	{
-		if (UAnimMontage* Resolved = Assembly->ResolveActionMontage(ActionTag))
-		{
-			return Resolved;
-		}
-	}
-
-	// Fall back to behaviors. Each behavior services the Action.* tags it owns
-	// (UNexusWeaponBehaviorComponent owns Action.Weapon.*). The actor stays
-	// agnostic to the tag taxonomy.
-	TArray<UNexusEquippedActorBehavior*> Behaviors;
-	GetComponents<UNexusEquippedActorBehavior>(Behaviors);
-	for (const UNexusEquippedActorBehavior* Behavior : Behaviors)
-	{
-		if (!Behavior) continue;
-		if (UAnimMontage* Found = Behavior->GetActionMontage(ActionTag))
-		{
-			return Found;
-		}
-	}
-
 	return nullptr;
 }
 

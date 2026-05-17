@@ -89,6 +89,8 @@ protected:
 	TObjectPtr<UInputAction> RunAction;
 	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions")
 	TObjectPtr<UInputAction> CrouchAction;
+	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions|")
+	TObjectPtr<UInputAction> InteractAction;
 
 	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions|Weapon")
 	TObjectPtr<UInputAction> FireAction;
@@ -96,6 +98,8 @@ protected:
 	TObjectPtr<UInputAction> ReloadAction;
 	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions|Weapon")
 	TObjectPtr<UInputAction> AimAction;
+
+	
 	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions|Weapon")
 	TObjectPtr<UInputAction> SlotPrimaryAction;
 	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions|Weapon")
@@ -119,7 +123,16 @@ protected:
 private:
 	UPROPERTY()
 	TObjectPtr<UEnhancedInputComponent> EnhancedInputComponent;
-
+	
+	class UNexusInteractableComponent* GetFocusedInteractable() const;
+	/**
+	 * The interactable we last called TryStartInteraction on. Used on release
+	 * so a player who starts holding on A and looks away to B before releasing
+	 * still cancels A — without this, A would keep ticking toward auto-complete
+	 * unattended because Release reads the *current* focused target.
+	 */
+	TWeakObjectPtr<class UNexusInteractableComponent> ActiveInteractable;
+	
 private:
 	// Input
 	void Move(const FInputActionValue& Value);
@@ -132,6 +145,9 @@ private:
 	void OnReloadInputStarted();
 	void OnAimInputStarted();
 	void OnAimInputCompleted();
+	void OnInteractInputStarted();
+	void OnInteractInputCompleted();
+	
 	void OnSlotPrimaryInputStarted();
 	void OnSlotSecondaryInputStarted();
 	void HandleSlotInput(FGameplayTag SlotTag);

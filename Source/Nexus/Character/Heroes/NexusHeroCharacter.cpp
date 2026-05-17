@@ -15,6 +15,9 @@
 #include "Nexus/Player/NexusPlayerCameraManager.h"
 #include "Nexus/Equipment/NexusEquipmentComponent.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
+#include "Nexus/Character/Abilities/NexusAbility_Interaction.h"
+#include "Nexus/Interaction/NexusInteractableComponent.h"
+#include "Nexus/Interaction/NexusInteractableInterface.h"
 
 ANexusHeroCharacter::ANexusHeroCharacter(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
@@ -98,6 +101,8 @@ void ANexusHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnAimInputCompleted);
 		EnhancedInputComponent->BindAction(SlotPrimaryAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnSlotPrimaryInputStarted);
 		EnhancedInputComponent->BindAction(SlotSecondaryAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnSlotSecondaryInputStarted);
+		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started,   this, &ANexusHeroCharacter::OnInteractInputStarted);
+		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnInteractInputCompleted);
 
 		if (LookAction)   EIC->BindActionValue(LookAction);
 		if (MoveAction)   EIC->BindActionValue(MoveAction);
@@ -117,6 +122,17 @@ FVector ANexusHeroCharacter::GetRelativeAcceleration() const
 		return NexusCharacterMovement->GetRelativeAcceleration();
 	}
 	return {0, 0, 0};	
+}
+
+UNexusInteractableComponent* ANexusHeroCharacter::GetFocusedInteractable() const
+{
+	if (!NexusAbilitySystemComponent) return nullptr;
+	// Subclass-aware: the project typically grants a BP subclass of
+	// UNexusAbility_Interaction, not the base C++ class. FindAbilityByClass
+	// matches exact keys only and would miss that.
+	const UNexusAbility_Interaction* InteractAbility = Cast<UNexusAbility_Interaction>(
+		NexusAbilitySystemComponent->FindAbilityOfClass(UNexusAbility_Interaction::StaticClass()));
+	return InteractAbility ? InteractAbility->GetFocusedInteractable() : nullptr;
 }
 
 FVector ANexusHeroCharacter::GetAcceleration() const
@@ -154,6 +170,28 @@ bool ANexusHeroCharacter::GetCrouchInput() const
 }
 
 // Player Input
+void ANexusHeroCharacter::OnInteractInputStarted()
+{
+	UNexusInteractableComponent* Focused = GetFocusedInteractable();
+	if (!Focused) return;
+	ActiveInteractable = Focused;
+	INexusInteractableInterface::Execute_TryStartInteraction(Focused, this);
+}
+
+void ANexusHeroCharacter::OnInteractInputCompleted()
+{
+	// Release-before-completion is a cancel. Target the interactable we
+	// originally started on, not the currently focused one — the player may
+	// have looked away mid-hold, and that other interactable shouldn't get a
+	// Stop call it never received a matching Start for. If the hold finished
+	// and our cached interactable already auto-completed, its CurrentInteractor
+	// was cleared, so TryStopInteraction will no-op — safe to fire unconditionally.
+	UNexusInteractableComponent* Started = ActiveInteractable.Get();
+	ActiveInteractable = nullptr;
+	if (!Started) return;
+	INexusInteractableInterface::Execute_TryStopInteraction(Started, this);
+}
+
 void ANexusHeroCharacter::OnFireInputStarted()
 {
 	if (!NexusAbilitySystemComponent) return;

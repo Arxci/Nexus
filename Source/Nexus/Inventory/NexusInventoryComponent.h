@@ -96,6 +96,20 @@ public:
 	template <typename T>
 	void ForEachInstanceWithFragment(TFunctionRef<void(UNexusItemInstance*, const T&)> Fn) const;
 
+	// First-pickup ceremony tracking
+	/**
+	 * Per-save record of which item definitions the player has ever picked up
+	 * from the world. Pickup actors gate their first-time-ceremony anim on this —
+	 * the long, cinematic pickup montage only plays the first time. Subsequent
+	 * pickups (debug spawns, dropped copies, loot from a body) skip the
+	 * ceremony so it doesn't feel intrusive once the player has seen it.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Inventory|FirstPickup")
+	bool HasSeenItemDefinition(const UNexusItemDefinition* Definition) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory|FirstPickup")
+	void MarkItemDefinitionSeen(const UNexusItemDefinition* Definition);
+
 public:
 	//Capacity
 	UFUNCTION(BlueprintPure, Category = "Inventory|Capacity")
@@ -142,6 +156,15 @@ protected:
 
 	UPROPERTY(SaveGame)
 	TArray<TObjectPtr<UNexusItemInstance>> Items;
+
+	/**
+	 * PrimaryAssetIds of every item definition the player has ever picked up.
+	 * Saved with the inventory so the first-pickup ceremony only fires once per
+	 * save. Keyed by PrimaryAssetId (not raw definition pointer) so the set
+	 * survives asset moves/renames as long as the asset registry path stays.
+	 */
+	UPROPERTY(SaveGame)
+	TSet<FPrimaryAssetId> SeenItemDefinitions;
 
 private:
 	static int32 GetMaxStackForDefinition(const UNexusItemDefinition* Definition);

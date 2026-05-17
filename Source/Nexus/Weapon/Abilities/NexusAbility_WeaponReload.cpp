@@ -85,17 +85,13 @@ void UNexusAbility_WeaponReload::CommitAbility()
 	UAnimInstance* ReloadAnimInstance = nullptr;
 	float MontageDuration = 0.0f;
 
-	// The arms-side reload montage. Resolved through the assembly so a
-	// drum-mag attachment can override it via AnimationOverrides; falls back
-	// to the fragment's authored Reload montage.
+	// The arms-side reload montage, resolved through the assembly so a drum-mag
+	// attachment can override it via ActionOverrides; falls back to the
+	// equippable fragment's authored Reload arms montage.
 	UAnimMontage* ArmsReload = nullptr;
 	if (const ANexusEquippedActor* Equipped = GetEquippedActor())
 	{
-		ArmsReload = Equipped->GetEffectiveActionMontage(NexusGameplayTags::Action_Weapon_Reload);
-	}
-	if (!ArmsReload)
-	{
-		ArmsReload = Weapon->Animations.ReloadMontage.LoadSynchronous();
+		ArmsReload = Equipped->GetEffectiveArmsMontage(NexusGameplayTags::Action_Weapon_Reload);
 	}
 
 	if (ArmsReload)

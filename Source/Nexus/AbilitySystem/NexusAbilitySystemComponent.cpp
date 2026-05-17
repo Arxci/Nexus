@@ -253,6 +253,28 @@ UNexusAbility* UNexusAbilitySystemComponent::FindAbilityByClass(TSubclassOf<UNex
 	return GrantedAbilities.FindRef(AbilityClass);
 }
 
+UNexusAbility* UNexusAbilitySystemComponent::FindAbilityOfClass(TSubclassOf<UNexusAbility> AbilityClass) const
+{
+	if (!AbilityClass) return nullptr;
+
+	// Try the exact-class hit first — when callers happen to grant the base type,
+	// this is O(1) instead of walking the map.
+	if (UNexusAbility* Direct = GrantedAbilities.FindRef(AbilityClass))
+	{
+		return Direct;
+	}
+
+	for (const TPair<TSubclassOf<UNexusAbility>, TObjectPtr<UNexusAbility>>& Pair : GrantedAbilities)
+	{
+		UNexusAbility* Ability = Pair.Value;
+		if (Ability && Ability->IsA(AbilityClass))
+		{
+			return Ability;
+		}
+	}
+	return nullptr;
+}
+
 bool UNexusAbilitySystemComponent::IsAbilityActive(TSubclassOf<UNexusAbility> AbilityClass) const
 {
 	if (const UNexusAbility* Ability = GrantedAbilities.FindRef(AbilityClass))
