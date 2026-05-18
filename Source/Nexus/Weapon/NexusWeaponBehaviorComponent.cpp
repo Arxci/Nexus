@@ -7,7 +7,7 @@
 #include "Engine/SkeletalMesh.h"
 
 #include "Nexus/Equipment/Attachments/NexusAttachmentDefinition.h"
-#include "Nexus/Equipment/Attachments/NexusWeaponAssemblyComponent.h"
+#include "Nexus/Equipment/Attachments/NexusAssemblyComponent.h"
 #include "Nexus/Equipment/Attachments/Fragments/NexusAttachmentFragment_Magazine.h"
 #include "Nexus/Equipment/NexusEquippedActor.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
@@ -37,7 +37,7 @@ void UNexusWeaponBehaviorComponent::OnInstalled(ANexusEquippedActor* InEquippedA
 		LastInMagazine = Instance->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0);
 	}
 
-	if (UNexusWeaponAssemblyComponent* AssemblyComp = EquippedActor ? EquippedActor->GetAssembly() : nullptr)
+	if (UNexusAssemblyComponent* AssemblyComp = EquippedActor ? EquippedActor->GetAssembly() : nullptr)
 	{
 		AssemblyComp->OnAssemblyChanged.AddDynamic(this, &UNexusWeaponBehaviorComponent::HandleAssemblyChanged);
 	}
@@ -60,7 +60,7 @@ void UNexusWeaponBehaviorComponent::OnUninstalled()
 
 	if (EquippedActor)
 	{
-		if (UNexusWeaponAssemblyComponent* AssemblyComp = EquippedActor->GetAssembly())
+		if (UNexusAssemblyComponent* AssemblyComp = EquippedActor->GetAssembly())
 		{
 			AssemblyComp->OnAssemblyChanged.RemoveDynamic(this, &UNexusWeaponBehaviorComponent::HandleAssemblyChanged);
 		}
@@ -191,7 +191,7 @@ void UNexusWeaponBehaviorComponent::RefreshMagazineVisual()
 {
 	if (!EquippedActor) return;
 
-	UNexusWeaponAssemblyComponent* AssemblyComp = EquippedActor->GetAssembly();
+	UNexusAssemblyComponent* AssemblyComp = EquippedActor->GetAssembly();
 	if (!AssemblyComp) return;
 
 	UNexusItemInstance* Instance = EquippedActor->GetSourceInstance();

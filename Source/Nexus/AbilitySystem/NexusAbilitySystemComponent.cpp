@@ -248,22 +248,21 @@ bool UNexusAbilitySystemComponent::ForceEndAbilityByTag(FGameplayTag InAbilityTa
 }
 
 //Utility
+//Utility
 UNexusAbility* UNexusAbilitySystemComponent::FindAbilityByClass(TSubclassOf<UNexusAbility> AbilityClass) const
-{
-	return GrantedAbilities.FindRef(AbilityClass);
-}
-
-UNexusAbility* UNexusAbilitySystemComponent::FindAbilityOfClass(TSubclassOf<UNexusAbility> AbilityClass) const
 {
 	if (!AbilityClass) return nullptr;
 
-	// Try the exact-class hit first — when callers happen to grant the base type,
-	// this is O(1) instead of walking the map.
+	// Exact-key fast path — O(1) when the caller granted and looked up the same
+	// concrete class (the common case).
 	if (UNexusAbility* Direct = GrantedAbilities.FindRef(AbilityClass))
 	{
 		return Direct;
 	}
 
+	// Subclass walk — when the project granted a BP subclass and a C++ caller
+	// looks up by the base type. O(n) but n is the number of granted abilities,
+	// which is small.
 	for (const TPair<TSubclassOf<UNexusAbility>, TObjectPtr<UNexusAbility>>& Pair : GrantedAbilities)
 	{
 		UNexusAbility* Ability = Pair.Value;

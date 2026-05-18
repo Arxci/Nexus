@@ -63,10 +63,10 @@ public:
 
 	// Attachments
 	/**
-	 * Persisted attachment configuration. Keyed by FWeaponSlotDefinition::SlotID
-	 * (resolved against the weapon's slot tree). Soft pointers so non-equipped
+	 * Persisted attachment configuration. Keyed by FAssemblySlotDefinition::SlotID
+	 * (resolved against the equippable's slot tree). Soft pointers so non-equipped
 	 * inventory items don't pin their attachment assets in memory; the
-	 * UNexusWeaponAssemblyComponent loads them via the Asset Manager when the
+	 * UNexusAssemblyComponent loads them via the Asset Manager when the
 	 * item is equipped.
 	 *
 	 * Nested attachments use dotted slot paths

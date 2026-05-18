@@ -110,18 +110,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	AController* GetController() const { return CachedController; }
 	
-	UFUNCTION(BlueprintCallable, Category = "Ability System")
-	UNexusAbility* FindAbilityByClass(TSubclassOf<UNexusAbility> AbilityClass) const;
-
 	/**
-	 * Subclass-aware variant of FindAbilityByClass. FindAbilityByClass is keyed
-	 * on the exact granted class, which fails when the project grants a
-	 * Blueprint subclass of a C++ base (e.g. BP_Ability_Interaction inheriting
-	 * UNexusAbility_Interaction) and a caller looks the ability up by the base
-	 * type. Use this when you want "first granted ability that IS-A T."
+	 * Find the first granted ability that IsA AbilityClass — matches Unreal's
+	 * FindComponentByClass semantics. Fast path tries the exact key first
+	 * (granted classes typically match the lookup type 1:1), then walks the
+	 * granted map for subclass matches. Picks up Blueprint subclasses of C++
+	 * bases (e.g. BP_Ability_Interaction looked up by UNexusAbility_Interaction),
+	 * which the previous exact-key-only implementation missed.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
-	UNexusAbility* FindAbilityOfClass(TSubclassOf<UNexusAbility> AbilityClass) const;
+	UNexusAbility* FindAbilityByClass(TSubclassOf<UNexusAbility> AbilityClass) const;
 	
 	UFUNCTION(BlueprintCallable, Category = "Ability System")
 	bool IsAbilityActive(TSubclassOf<UNexusAbility> AbilityClass) const;

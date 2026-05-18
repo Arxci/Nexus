@@ -10,7 +10,7 @@
 
 #include "NexusAttachmentTypes.h"
 
-#include "NexusWeaponAssemblyComponent.generated.h"
+#include "NexusAssemblyComponent.generated.h"
 
 class ANexusEquippedActor;
 class UAnimInstance;
@@ -19,18 +19,23 @@ class UMeshComponent;
 class UNexusAttachmentDefinition;
 class UNexusItemInstance;
 class USkeletalMeshComponent;
-struct FNexusFragment_Weapon;
+struct FNexusFragment_Equippable;
 
 
 /**
- * Runtime resolution of (Stat.Weapon.* tag) -> (final float value), produced
- * by walking the attachment tree from the weapon's base values. The base value
- * map is seeded from FNexusFragment_Weapon (RPM, Damage, MagazineSize, ...);
- * each attachment's modifiers are then layered as
+ * Runtime resolution of (Stat.* tag) -> (final float value), produced by walking
+ * the attachment tree from the equipped item's base values. Base values are
+ * contributed by each FNexusItemFragment via SeedStatTags — the assembly itself
+ * is fragment-agnostic. Attachment modifiers are layered as
  * (base + sum(Add)) * product(Mul).
+ *
+ * Retained as "FResolvedItemStats" (not WeaponStats) so the type name reflects
+ * its actual scope: any modular equippable can have a resolved stat block, not
+ * just weapons. Stat keys are still data-driven (Stat.Weapon.*, Stat.Flashlight.*,
+ * etc.) — the struct is just the (key -> value) container.
  */
-USTRUCT(BlueprintType, DisplayName = "Resolved Weapon Stats")
-struct NEXUS_API FResolvedWeaponStats
+USTRUCT(BlueprintType, DisplayName = "Resolved Item Stats")
+struct NEXUS_API FResolvedItemStats
 {
 	GENERATED_BODY()
 
@@ -57,7 +62,7 @@ struct FNexusAttachmentInstance
 	UPROPERTY()
 	FGameplayTag SlotID;
 
-	/** Parent slot's SlotID, or invalid if this attachment is mounted directly on the weapon. */
+	/** Parent slot's SlotID, or invalid if this attachment is mounted directly on the host equipped actor. */
 	UPROPERTY()
 	FGameplayTag ParentSlotID;
 
@@ -72,40 +77,43 @@ struct FNexusAttachmentInstance
 };
 
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnWeaponAssemblyChanged);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAssemblyChanged);
 
 
 /**
  * Component on ANexusEquippedActor that owns the runtime attachment tree for
- * a weapon: spawns/destroys the visual mesh components, persists the player's
- * configuration into UNexusItemInstance, and resolves the effective stat block
- * and per-action animation overrides for downstream systems (fire/reload
- * abilities, UI).
+ * any modular equippable: spawns/destroys the visual mesh components, persists
+ * the player's configuration into UNexusItemInstance, and resolves the effective
+ * stat block and per-action animation overrides for downstream systems.
  *
- * The component is data-driven from FNexusFragment_Weapon::Slots and
- * UNexusAttachmentDefinition::ProvidedSlots — adding a new attachment is a
- * data asset author task, no code changes required.
+ * The component is *equippable-agnostic* — it reads slots from
+ * FNexusFragment_Equippable::Slots and seeds base stats by walking the item
+ * definition's fragments and calling SeedStatTags on each. A weapon, a
+ * flashlight, or any other equippable with attachment points works the same way;
+ * there's no fragment-type check anywhere in this file.
+ *
+ * Adding a new attachment is a data-asset author task — no code changes required.
  */
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
-class NEXUS_API UNexusWeaponAssemblyComponent : public UActorComponent
+class NEXUS_API UNexusAssemblyComponent : public UActorComponent
 {
 	GENERATED_BODY()
 
 public:
-	UNexusWeaponAssemblyComponent();
+	UNexusAssemblyComponent();
 
 	// Lifecycle
 	/**
-	 * Builds the assembly tree from the equipped instance: loads the weapon
-	 * fragment, applies defaults for any slot the player hasn't customised,
+	 * Builds the assembly tree from the equipped instance: loads the equippable
+	 * fragment's slots, applies defaults for any slot the player hasn't customised,
 	 * and reflects the persisted attachment map into spawned mesh components.
 	 * Safe to call multiple times — it tears down the previous tree first.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Weapon|Assembly")
+	UFUNCTION(BlueprintCallable, Category = "Assembly")
 	void RebuildFromInstance();
 
 	/** Tears down all attachments and their mesh components. */
-	UFUNCTION(BlueprintCallable, Category = "Weapon|Assembly")
+	UFUNCTION(BlueprintCallable, Category = "Assembly")
 	void ClearAssembly();
 
 	// Authoring
@@ -123,16 +131,16 @@ public:
 	 * Sub-slots introduced by the new attachment are auto-filled with their own
 	 * defaults (or the player's persisted choice for those sub-slots).
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Weapon|Assembly")
+	UFUNCTION(BlueprintCallable, Category = "Assembly")
 	bool AttachItem(FGameplayTag SlotID, UNexusAttachmentDefinition* Definition, bool bPersist = true);
 
-	UFUNCTION(BlueprintCallable, Category = "Weapon|Assembly")
+	UFUNCTION(BlueprintCallable, Category = "Assembly")
 	bool DetachItem(FGameplayTag SlotID);
 
-	UFUNCTION(BlueprintPure, Category = "Weapon|Assembly")
+	UFUNCTION(BlueprintPure, Category = "Assembly")
 	UNexusAttachmentDefinition* GetAttachment(FGameplayTag SlotID) const;
 
-	UFUNCTION(BlueprintPure, Category = "Weapon|Assembly")
+	UFUNCTION(BlueprintPure, Category = "Assembly")
 	bool CanAttachItem(FGameplayTag SlotID, const UNexusAttachmentDefinition* Definition) const;
 
 	// Resolution
@@ -141,20 +149,20 @@ public:
 	 * The cache is rebuilt lazily after any AttachItem/DetachItem/Rebuild;
 	 * BP callers get a copy, C++ callers can use ResolveStatsRef() to read in-place.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Weapon|Assembly")
-	FResolvedWeaponStats ResolveStats() const { return ResolveStatsRef(); }
+	UFUNCTION(BlueprintCallable, Category = "Assembly")
+	FResolvedItemStats ResolveStats() const { return ResolveStatsRef(); }
 
 	/** C++-only ref accessor — avoids the BP-exposed copy. */
-	const FResolvedWeaponStats& ResolveStatsRef() const;
+	const FResolvedItemStats& ResolveStatsRef() const;
 
-	UFUNCTION(BlueprintCallable, Category = "Weapon|Assembly")
+	UFUNCTION(BlueprintCallable, Category = "Assembly")
 	UAnimMontage* ResolveArmsMontage(FGameplayTag ActionTag) const;
 
-	UFUNCTION(BlueprintCallable, Category = "Weapon|Assembly")
+	UFUNCTION(BlueprintCallable, Category = "Assembly")
 	UAnimMontage* ResolveItemMontage(FGameplayTag ActionTag) const;
 
 	/** All slot IDs currently part of the tree (top-level + provided sub-slots). */
-	UFUNCTION(BlueprintPure, Category = "Weapon|Assembly")
+	UFUNCTION(BlueprintPure, Category = "Assembly")
 	TArray<FGameplayTag> GetAllSlotIDs() const;
 
 	/** All currently-spawned attachment mesh components (in arbitrary order). */
@@ -167,17 +175,16 @@ public:
 	 */
 	const TMap<FGameplayTag, FNexusAttachmentInstance>& GetAttachedRecordsRef() const { return Attached; }
 
-	UPROPERTY(BlueprintAssignable, Category = "Weapon|Assembly")
-	FOnWeaponAssemblyChanged OnAssemblyChanged;
+	UPROPERTY(BlueprintAssignable, Category = "Assembly")
+	FOnAssemblyChanged OnAssemblyChanged;
 
 protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
 	ANexusEquippedActor* GetEquippedActor() const;
-	UNexusItemInstance* GetSourceInstance() const;
-	const FNexusFragment_Weapon* GetWeaponFragment() const;
-	const struct FNexusFragment_Equippable* GetEquippableFragment() const;
+	UNexusItemInstance*  GetSourceInstance() const;
+	const FNexusFragment_Equippable* GetEquippableFragment() const;
 
 	/**
 	 * Shared worker for ResolveArmsMontage / ResolveItemMontage. bArmsStream
@@ -187,9 +194,9 @@ private:
 	 */
 	UAnimMontage* ResolveActionStream(FGameplayTag ActionTag, bool bArmsStream) const;
 
-	const FWeaponSlotDefinition* FindSlotDefinition(FGameplayTag SlotID) const;
+	const FAssemblySlotDefinition* FindSlotDefinition(FGameplayTag SlotID) const;
 
-	void RegisterSlotDefinition(const FWeaponSlotDefinition& Slot);
+	void RegisterSlotDefinition(const FAssemblySlotDefinition& Slot);
 	void DetachSubtree(FGameplayTag SlotID);
 
 	/** Walk SlotDefinitions and install persisted/default attachments for any unfilled slot. Fix-point. */
@@ -210,11 +217,11 @@ private:
 
 	/**
 	 * Flattened slot definitions in the current tree, keyed by SlotID. Includes
-	 * top-level slots from the weapon fragment AND any ProvidedSlots
+	 * top-level slots from the equippable fragment AND any ProvidedSlots
 	 * contributed by currently-installed attachments.
 	 */
 	UPROPERTY(Transient)
-	TMap<FGameplayTag, FWeaponSlotDefinition> SlotDefinitions;
+	TMap<FGameplayTag, FAssemblySlotDefinition> SlotDefinitions;
 
 	/**
 	 * Reverse map: child SlotID -> the parent SlotID whose attachment
@@ -241,6 +248,6 @@ private:
 	mutable bool bSuppressBroadcasts = false;
 
 	/** Lazy-resolved effective stats; rebuilt on read after invalidation. */
-	mutable FResolvedWeaponStats CachedStats;
+	mutable FResolvedItemStats CachedStats;
 	mutable bool bStatCacheValid = false;
 };

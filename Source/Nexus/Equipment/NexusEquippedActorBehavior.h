@@ -23,7 +23,7 @@ class ANexusEquippedActor;
  * spawn child components after the parent actor exists.
  *
  * Animation routing does NOT pass through behaviors — montages live on the
- * equippable fragment's Actions map and resolve through UNexusWeaponAssemblyComponent
+ * equippable fragment's Actions map and resolve through UNexusAssemblyComponent
  * so attachment overrides apply uniformly. Behaviors own non-animation runtime
  * state (chamber-round visual, magazine swap, future flashlight cone, etc.).
  */

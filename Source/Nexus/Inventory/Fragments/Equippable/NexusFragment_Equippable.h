@@ -4,6 +4,7 @@
 
 #include "GameplayTagContainer.h"
 
+#include "Nexus/Equipment/Attachments/NexusAttachmentTypes.h"
 #include "Nexus/Inventory/NexusItemFragment.h"
 
 #include "NexusFragment_Equippable.generated.h"
@@ -21,7 +22,7 @@ class USkeletalMesh;
  * optional — an action can drive only arms (a flashlight click), only the
  * item mesh (a slide auto-rack triggered by a notify mid-fire), or both
  * (a reload where arms + gun animate together). The two streams are kept
- * in sync via UNexusAnimNotify_WeaponAction on the arms montage, which
+ * in sync via UNexusAnimNotify_EquipmentAction on the arms montage, which
  * fires the item montage at the authored frame.
  *
  * This is the unit attachments override — see UNexusAttachmentDefinition::ActionOverrides.
@@ -41,7 +42,7 @@ struct NEXUS_API FEquipmentActionAnim
 
     /**
      * Played on the equipped actor's own skeletal mesh, triggered by
-     * UNexusAnimNotify_WeaponAction on the arms montage so the two stay in sync.
+     * UNexusAnimNotify_EquipmentAction on the arms montage so the two stay in sync.
      * Leave null for actions that don't animate the item itself.
      */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Action",
@@ -99,12 +100,28 @@ struct NEXUS_API FNexusFragment_Equippable : public FNexusItemFragment
         meta = (Categories = "Equipment.Slot"))
     FGameplayTagContainer AllowedSlots;
 
+    /**
+     * Preferred destination when the equipment component picks a slot for this
+     * item (the auto-equip path in UNexusInventoryAcquireLibrary). Used when
+     * the preferred slot is currently free; otherwise the first compatible
+     * free slot wins. Whether to auto-equip at all is the *caller's* choice on
+     * AcquireItem — this struct only describes where the item *would* go if
+     * the caller opted in.
+     */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
     meta = (Categories = "Equipment.Slot"))
     FGameplayTag PreferredSlot;
 
+    /**
+     * Definition-level veto on auto-assign. Set false for items that must only
+     * ever be slotted via explicit player UI action — e.g. a quest weapon you
+     * don't want a debug pickup or a loot drop to silently put in the player's
+     * hands. PickAutoAssignSlot returns an invalid slot when this is false,
+     * regardless of caller intent. Manual AssignToSlot calls (the UI path)
+     * still work — this only gates the auto-equip path.
+     */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-    bool bAutoAssignOnPickup = false;
+    bool bAllowAutoAssign = true;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
         meta = (AssetBundles = "Equipped"))
@@ -125,6 +142,19 @@ struct NEXUS_API FNexusFragment_Equippable : public FNexusItemFragment
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animations")
     FEquippableAnimationSet Animations;
+
+    /**
+     * Attachment slots exposed by this equippable. Top-level only — attachments
+     * can themselves contribute more slots via UNexusAttachmentDefinition::ProvidedSlots,
+     * which UNexusAssemblyComponent flattens at runtime.
+     *
+     * Lives on the equippable fragment (not the weapon fragment) so a flashlight,
+     * a radio, or any other modular item can carry attachment points without
+     * being a weapon. The assembly reads this list — it has no knowledge of
+     * weapon-specific fields.
+     */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Attachments")
+    TArray<FAssemblySlotDefinition> Slots;
 
     bool CanFitInSlot(const FGameplayTag SlotTag) const
     {

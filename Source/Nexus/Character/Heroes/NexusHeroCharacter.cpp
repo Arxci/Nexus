@@ -127,11 +127,8 @@ FVector ANexusHeroCharacter::GetRelativeAcceleration() const
 UNexusInteractableComponent* ANexusHeroCharacter::GetFocusedInteractable() const
 {
 	if (!NexusAbilitySystemComponent) return nullptr;
-	// Subclass-aware: the project typically grants a BP subclass of
-	// UNexusAbility_Interaction, not the base C++ class. FindAbilityByClass
-	// matches exact keys only and would miss that.
 	const UNexusAbility_Interaction* InteractAbility = Cast<UNexusAbility_Interaction>(
-		NexusAbilitySystemComponent->FindAbilityOfClass(UNexusAbility_Interaction::StaticClass()));
+		NexusAbilitySystemComponent->FindAbilityByClass(UNexusAbility_Interaction::StaticClass()));
 	return InteractAbility ? InteractAbility->GetFocusedInteractable() : nullptr;
 }
 

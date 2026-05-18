@@ -106,20 +106,44 @@ public:
 public:
 	// Activation (input-driven)
 	/**
-	 * Activate SlotTag. By default plays the equippable's authored arms-side
-	 * unholster montage as part of the draw phase. Pass
-	 * bSuppressArmsUnholsterAnim=true when an external caller (e.g. a pickup
-	 * ceremony) is already driving the arms animation and wants the draw phase
-	 * to only spawn / attach / make-visible the equipped actor without touching
-	 * the player's anim instance — otherwise the ceremony would be cut off by
-	 * the standard unholster firing on the same slot.
+	 * Activate SlotTag, playing the draw-phase arms montage that the active item
+	 * resolves for UnholsterActionTag (default = Action.Equipment.Unholster). Callers
+	 * pass an alternate action tag (e.g. Action.Equipment.Ceremony) when they
+	 * want the same draw to play a different authored animation; if the chosen
+	 * action has no authored arms montage, the draw phase silently falls back to
+	 * Action.Equipment.Unholster so the player still gets *a* draw — overrides are
+	 * additive, never subtractive.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Activation")
-	bool RequestActivateSlot(const FGameplayTag SlotTag, bool bSuppressArmsUnholsterAnim = false);
+	bool RequestActivateSlot(FGameplayTag SlotTag, FGameplayTag UnholsterActionTag = FGameplayTag());
 
 	/** Holster the currently active slot. Queues if a swap is in flight. */
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Activation")
 	bool RequestHolster();
+
+	/**
+	 * Assign Instance to SlotTag and activate it once the (async) Equipped-bundle
+	 * load resolves. Fixes the obvious race in "AssignToSlot + RequestActivateSlot"
+	 * pairs where activation ran before FinalizeAssignment spawned the actor —
+	 * the slot would be marked active with no visible weapon.
+	 *
+	 * UnholsterActionTag is forwarded to the eventual RequestActivateSlot call;
+	 * pass Action.Equipment.Ceremony for a first-pickup flourish, or leave invalid
+	 * for standard unholster. The library UNexusInventoryAcquireLibrary::AcquireItem
+	 * is the canonical caller.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Equipment|Loadout")
+	bool AssignAndActivate(UNexusItemInstance* Instance, FGameplayTag SlotTag,
+		FGameplayTag UnholsterActionTag = FGameplayTag());
+
+	/**
+	 * Slot the equipment component would pick for Instance during auto-equip:
+	 * PreferredSlot when free, else first compatible free slot, else invalid.
+	 * Shared with UNexusInventoryAcquireLibrary so both inventory-side selection
+	 * and direct equipment callers agree.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Equipment|Loadout")
+	FGameplayTag PickAutoAssignSlot(const UNexusItemInstance* Instance) const;
 
 	UFUNCTION(BlueprintPure, Category = "Equipment|Activation")
 	FGameplayTag GetActiveSlot() const { return ActiveSlot; }
@@ -220,24 +244,46 @@ private:
 	void HandleInventoryItemRemoved(UNexusItemInstance* RemovedInstance);
 
 	TMap<TObjectPtr<UNexusItemInstance>, TSharedPtr<FStreamableHandle>> EquippableLoadHandles;
-	
+
 	ENexusEquipSwapPhase SwapPhase = ENexusEquipSwapPhase::Idle;
-	FGameplayTag         SwapOutgoingSlot; 
-	FGameplayTag         SwapIncomingSlot; 
-	
-	TOptional<FGameplayTag> PendingActivation;
-	
+	FGameplayTag         SwapOutgoingSlot;
+	FGameplayTag         SwapIncomingSlot;
+
+	/**
+	 * Slot + unholster action tag queued by RequestActivateSlot while a swap is
+	 * in flight, or by RequestHolster (slot invalid). Drained when the in-flight
+	 * swap completes. SlotTag.IsValid() distinguishes queued-activation from
+	 * queued-holster — TOptional<> wraps the pair to also encode "nothing queued."
+	 */
+	struct FPendingActivation
+	{
+		FGameplayTag SlotTag;
+		FGameplayTag UnholsterActionTag;
+	};
+	TOptional<FPendingActivation> PendingActivation;
+
+	/**
+	 * Activations waiting on FinalizeAssignment to spawn the equipped actor.
+	 * AssignAndActivate adds an entry; FinalizeAssignment drains matching entries
+	 * after broadcasting OnSlotAssigned so the actor is guaranteed to exist by
+	 * the time we call into the draw phase. Without this, RequestActivateSlot
+	 * would race the streamable callback and set ActiveSlot with no spawned
+	 * actor — the bug that broke the pickup auto-equip path.
+	 */
+	TArray<FPendingActivation> PendingActivationsAfterAssignment;
+	void DrainPendingActivationsAfterAssignment(FGameplayTag SlotTag);
+
 	FGameplayTag OutgoingPendingHide;
 
 	FTimerHandle PhaseTimer;
 
 	/**
-	 * Pulled by BeginDrawPhase and cleared right after — when set, the next
-	 * draw skips the standard arms-side unholster montage. Set by callers of
-	 * RequestActivateSlot(SlotTag, *bSuppressArmsUnholsterAnim=*true). Lives
-	 * as a transient flag rather than a parameter on BeginDrawPhase so the
-	 * holster→draw chain through BeginSlotTransition / HandleHolsterPhaseFinished
-	 * picks it up without changing those signatures.
+	 * Pulled by BeginDrawPhase and cleared right after. When set, the next draw's
+	 * arms montage is resolved against this action tag instead of the default
+	 * Action.Equipment.Unholster. Lives as a transient member rather than a
+	 * parameter on BeginDrawPhase so the holster→draw chain through
+	 * BeginSlotTransition / HandleHolsterPhaseFinished picks it up without
+	 * changing those signatures.
 	 */
-	bool bPendingSuppressUnholster = false;
+	FGameplayTag PendingUnholsterActionTag;
 };

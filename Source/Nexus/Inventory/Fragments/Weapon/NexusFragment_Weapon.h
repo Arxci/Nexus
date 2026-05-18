@@ -6,7 +6,6 @@
 
 #include "Curves/CurveFloat.h"
 
-#include "Nexus/Equipment/Attachments/NexusAttachmentTypes.h"
 #include "Nexus/Inventory/NexusItemFragment.h"
 
 #include "NexusFragment_Weapon.generated.h"
@@ -173,17 +172,6 @@ struct NEXUS_API FNexusFragment_Weapon : public FNexusItemFragment
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation")
 	FWeaponPresentation Presentation;
 
-	/**
-	 * Attachment slots exposed by this weapon. Each slot declares an attach
-	 * socket on the weapon's skeletal mesh, the GameplayTags it accepts, and
-	 * an optional default attachment installed at spawn time. Attachments can
-	 * themselves provide more slots (rail risers, foregrips with built-in
-	 * lasers), so this list is just the top of the tree — see
-	 * UNexusWeaponAssemblyComponent for runtime resolution.
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Attachments")
-	TArray<FWeaponSlotDefinition> Slots;
-
 	float GetFireInterval() const
 	{
 		return Combat.RoundsPerMinute > 0.0f ? 60.0f / Combat.RoundsPerMinute : 0.0f;
@@ -194,4 +182,12 @@ struct NEXUS_API FNexusFragment_Weapon : public FNexusItemFragment
 	/** Installs UNexusWeaponBehaviorComponent on the equipped actor. */
 	virtual void OnInstall(ANexusEquippedActor* EquippedActor) const override;
 	virtual void OnUninstall(ANexusEquippedActor* EquippedActor) const override;
+
+	/**
+	 * Seeds the Stat.Weapon.* keys (Damage, RPM, MaxRange, spread, magazine size,
+	 * reload duration, plus neutral defaults for recoil + ADS time so multiplicative
+	 * attachment modifiers don't multiply against zero). The assembly applies
+	 * attachment Add then Mul modifiers on top of these.
+	 */
+	virtual void SeedStatTags(TMap<FGameplayTag, float>& OutBaseValues) const override;
 };

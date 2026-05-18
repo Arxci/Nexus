@@ -97,17 +97,19 @@ namespace NexusGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(Attachment_Identity_Magazine_Standard, "Attachment.Identity.Magazine.Standard");
 	UE_DEFINE_GAMEPLAY_TAG(Attachment_Identity_Barrel_Standard,   "Attachment.Identity.Barrel.Standard");
 	UE_DEFINE_GAMEPLAY_TAG(Attachment_Identity_Trigger_Standard,   "Attachment.Identity.Trigger.Standard");
+	
+	UE_DEFINE_GAMEPLAY_TAG(Action_Equipment_Unholster,           "Action.Equipment.Unholster");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Equipment_Holster,             "Action.Equipment.Holster");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Equipment_Inspect,             "Action.Equipment.Inspect");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Equipment_Ceremony,            "Action.Equipment.Ceremony");
 
-	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_Unholster,    "Action.Weapon.Unholster");
-	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_Holster,      "Action.Weapon.Holster");
-	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_Inspect,      "Action.Weapon.Inspect");
-	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_Fire,         "Action.Weapon.Fire");
-	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_DryFire,      "Action.Weapon.DryFire");
-	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_Reload,       "Action.Weapon.Reload");
-	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_Reload_Empty, "Action.Weapon.Reload.Empty");
-	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_MagOut,       "Action.Weapon.MagOut");
-	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_MagIn,        "Action.Weapon.MagIn");
-	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_SlideRack,    "Action.Weapon.SlideRack");
-	UE_DEFINE_GAMEPLAY_TAG(Action_Weapon_BoltClose,    "Action.Weapon.BoltClose");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Equipment_Weapon_Fire,         "Action.Equipment.Weapon.Fire");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Equipment_Weapon_DryFire,      "Action.Equipment.Weapon.DryFire");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Equipment_Weapon_Reload,       "Action.Equipment.Weapon.Reload");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Equipment_Weapon_Reload_Empty, "Action.Equipment.Weapon.Reload.Empty");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Equipment_Weapon_MagOut,       "Action.Equipment.Weapon.MagOut");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Equipment_Weapon_MagIn,        "Action.Equipment.Weapon.MagIn");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Equipment_Weapon_SlideRack,    "Action.Equipment.Weapon.SlideRack");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Equipment_Weapon_BoltClose,    "Action.Equipment.Weapon.BoltClose");
 }
 

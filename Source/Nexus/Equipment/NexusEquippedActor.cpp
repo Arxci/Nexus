@@ -11,7 +11,7 @@
 
 #include "StructUtils/InstancedStruct.h"
 
-#include "Nexus/Equipment/Attachments/NexusWeaponAssemblyComponent.h"
+#include "Nexus/Equipment/Attachments/NexusAssemblyComponent.h"
 #include "Nexus/Equipment/NexusEquippedActorBehavior.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemFragment.h"
@@ -26,7 +26,7 @@ ANexusEquippedActor::ANexusEquippedActor()
 	SetRootComponent(Mesh);
 	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-	Assembly = CreateDefaultSubobject<UNexusWeaponAssemblyComponent>(TEXT("WeaponAssembly"));
+	Assembly = CreateDefaultSubobject<UNexusAssemblyComponent>(TEXT("Assembly"));
 }
 
 void ANexusEquippedActor::InitializeFromInstance(UNexusItemInstance* Instance)
@@ -135,10 +135,10 @@ float ANexusEquippedActor::GetEffectiveStat(const FGameplayTag StatTag, const fl
 	return Default;
 }
 
-FResolvedWeaponStats ANexusEquippedActor::GetResolvedStats() const
+FResolvedItemStats ANexusEquippedActor::GetResolvedStats() const
 {
 	if (Assembly) return Assembly->ResolveStats();
-	return FResolvedWeaponStats{};
+	return FResolvedItemStats{};
 }
 
 FTransform ANexusEquippedActor::GetSocketTransform(const FName SocketName) const

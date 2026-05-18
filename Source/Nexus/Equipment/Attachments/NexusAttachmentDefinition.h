@@ -65,7 +65,7 @@ public:
 	 * Per-action (Arms, Item) overrides. Mirror of FEquippableAnimationSet::Actions —
 	 * an attachment may supply either the arms montage, the item montage, or both
 	 * for any given action. Deeper attachments in the tree win over shallower ones;
-	 * see UNexusWeaponAssemblyComponent::ResolveArmsMontage / ResolveItemMontage.
+	 * see UNexusAssemblyComponent::ResolveArmsMontage / ResolveItemMontage.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation",
 		meta = (AssetBundles = "Equipped",
@@ -74,7 +74,7 @@ public:
 	TMap<FGameplayTag, FEquipmentActionAnim> ActionOverrides;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Slots")
-	TArray<FWeaponSlotDefinition> ProvidedSlots;
+	TArray<FAssemblySlotDefinition> ProvidedSlots;
 
 	/**
 	 * Attachment-type-specific data, authored by the designer via instanced

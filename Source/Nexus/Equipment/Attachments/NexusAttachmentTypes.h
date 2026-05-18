@@ -26,18 +26,25 @@ struct NEXUS_API FAttachmentStatModifier
 };
 
 
-USTRUCT(BlueprintType, DisplayName = "Weapon Slot")
-struct NEXUS_API FWeaponSlotDefinition
+/**
+ * Defines one attachment point exposed by a modular equippable (or by another
+ * attachment, recursively via UNexusAttachmentDefinition::ProvidedSlots). Lives
+ * on FNexusFragment_Equippable::Slots so any equippable — weapon, flashlight,
+ * radio — can be modular; the assembly component reads this struct without any
+ * knowledge of weapon-specific data.
+ */
+USTRUCT(BlueprintType, DisplayName = "Assembly Slot")
+struct NEXUS_API FAssemblySlotDefinition
 {
 	GENERATED_BODY()
-	
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
 		meta = (Categories = "Attachment.Slot"))
 	FGameplayTag SlotID;
-	
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	FName AttachSocket;
-	
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
 		meta = (Categories = "Attachment.Type"))
 	FGameplayTagContainer AcceptedTags;
@@ -51,10 +58,10 @@ struct NEXUS_API FWeaponSlotDefinition
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	bool bAcceptsAny = false;
-	
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	bool bRequired = false;
-	
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
 		meta = (AssetBundles = "Equipped"))
 	TSoftObjectPtr<UNexusAttachmentDefinition> DefaultAttachment;

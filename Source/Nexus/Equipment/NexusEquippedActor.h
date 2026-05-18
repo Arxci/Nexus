@@ -4,7 +4,7 @@
 
 #include "GameFramework/Actor.h"
 
-#include "Nexus/Equipment/Attachments/NexusWeaponAssemblyComponent.h"
+#include "Nexus/Equipment/Attachments/NexusAssemblyComponent.h"
 
 #include "NexusEquippedActor.generated.h"
 
@@ -70,7 +70,7 @@ public:
 
     /**
      * Play the item-mesh montage for ActionTag on this actor's own mesh.
-     * Called by UNexusAnimNotify_WeaponAction at the authored notify frame on
+     * Called by UNexusAnimNotify_EquipmentAction at the authored notify frame on
      * the arms montage, so the item animates in lockstep with the arms.
      * Returns the montage that was played, or null if none was resolved.
      */
@@ -81,10 +81,10 @@ public:
     float GetEffectiveStat(FGameplayTag StatTag, float Default = 0.0f) const;
 
     UFUNCTION(BlueprintPure, Category = "Equipped|Stats")
-    FResolvedWeaponStats GetResolvedStats() const;
+    FResolvedItemStats GetResolvedStats() const;
 
     UFUNCTION(BlueprintPure, Category = "Equipped|Assembly")
-    UNexusWeaponAssemblyComponent* GetAssembly() const { return Assembly; }
+    UNexusAssemblyComponent* GetAssembly() const { return Assembly; }
 
 public:
     /**
@@ -112,7 +112,7 @@ protected:
     TObjectPtr<USkeletalMeshComponent> Mesh;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipped")
-    TObjectPtr<UNexusWeaponAssemblyComponent> Assembly;
+    TObjectPtr<UNexusAssemblyComponent> Assembly;
 
     UPROPERTY(Transient, BlueprintReadOnly, Category = "Equipped")
     TObjectPtr<UNexusItemInstance> SourceInstance;

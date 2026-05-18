@@ -1,4 +1,4 @@
-﻿#include "NexusAnimNotify_WeaponAction.h"
+﻿#include "NexusAnimNotify_EquipmentAction.h"
 
 #include "Components/SkeletalMeshComponent.h"
 
@@ -7,7 +7,7 @@
 #include "Nexus/Equipment/NexusEquipmentComponent.h"
 #include "Nexus/Equipment/NexusEquippedActor.h"
 
-UNexusAnimNotify_WeaponAction::UNexusAnimNotify_WeaponAction()
+UNexusAnimNotify_EquipmentAction::UNexusAnimNotify_EquipmentAction()
 {
 #if WITH_EDITORONLY_DATA
 	// Cool blue so it reads distinctly from the dark-red HideOutgoingEquipped notify.
@@ -15,16 +15,16 @@ UNexusAnimNotify_WeaponAction::UNexusAnimNotify_WeaponAction()
 #endif
 }
 
-FString UNexusAnimNotify_WeaponAction::GetNotifyName_Implementation() const
+FString UNexusAnimNotify_EquipmentAction::GetNotifyName_Implementation() const
 {
 	if (ActionTag.IsValid())
 	{
-		return FString::Printf(TEXT("Weapon Action: %s"), *ActionTag.ToString());
+		return FString::Printf(TEXT("Equipment Action: %s"), *ActionTag.ToString());
 	}
-	return TEXT("Weapon Action (unset)");
+	return TEXT("Equipment Action (unset)");
 }
 
-void UNexusAnimNotify_WeaponAction::Notify(USkeletalMeshComponent* MeshComp,
+void UNexusAnimNotify_EquipmentAction::Notify(USkeletalMeshComponent* MeshComp,
 	UAnimSequenceBase* Animation,
 	const FAnimNotifyEventReference& EventReference)
 {

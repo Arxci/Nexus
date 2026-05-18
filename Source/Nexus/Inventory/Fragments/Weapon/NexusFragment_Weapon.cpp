@@ -41,3 +41,21 @@ void FNexusFragment_Weapon::OnUninstall(ANexusEquippedActor* EquippedActor) cons
 		Behavior->DestroyComponent();
 	}
 }
+
+void FNexusFragment_Weapon::SeedStatTags(TMap<FGameplayTag, float>& OutBaseValues) const
+{
+	OutBaseValues.Add(NexusGameplayTags::Stat_Weapon_Damage,         Combat.BaseDamage);
+	OutBaseValues.Add(NexusGameplayTags::Stat_Weapon_RPM,            Combat.RoundsPerMinute);
+	OutBaseValues.Add(NexusGameplayTags::Stat_Weapon_MaxRange,       Combat.MaxRange);
+	OutBaseValues.Add(NexusGameplayTags::Stat_Weapon_SpreadHip,      Combat.SpreadConeDegrees.X);
+	OutBaseValues.Add(NexusGameplayTags::Stat_Weapon_SpreadADS,      Combat.SpreadConeDegrees.Y);
+	OutBaseValues.Add(NexusGameplayTags::Stat_Weapon_MagazineSize,   Ammo.MagazineSize);
+	OutBaseValues.Add(NexusGameplayTags::Stat_Weapon_ReloadDuration, Reload.ReloadDuration);
+
+	// Neutral defaults — not authored on FWeaponCombat yet, but seeded so
+	// attachments can meaningfully modify them (a muzzle brake adds -recoil,
+	// a fixed-stock removes ADS-time, etc).
+	OutBaseValues.Add(NexusGameplayTags::Stat_Weapon_RecoilVertical,   0.0f);
+	OutBaseValues.Add(NexusGameplayTags::Stat_Weapon_RecoilHorizontal, 0.0f);
+	OutBaseValues.Add(NexusGameplayTags::Stat_Weapon_ADSTime,          0.0f);
+}

@@ -110,20 +110,39 @@ namespace NexusGameplayTags
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Identity_Barrel_Standard);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Identity_Trigger_Standard);
 
-	// Weapon-side action tags. Used as keys in FEquippableAnimationSet::Actions
+	// Equipment-side action tags. Used as keys in FEquippableAnimationSet::Actions
 	// (where each entry pairs an arms montage with an item-mesh montage) and on
 	// UNexusAttachmentDefinition::ActionOverrides so attachments can override
-	// either stream. Also used by UNexusAnimNotify_WeaponAction to drive item-mesh
-	// playback from the arms montage at the correct frame.
-	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_Unholster);
-	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_Holster);
-	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_Inspect);
-	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_Fire);
-	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_DryFire);
-	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_Reload);
-	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_Reload_Empty);
-	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_MagOut);
-	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_MagIn);
-	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_SlideRack);
-	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Weapon_BoltClose);
+	// either stream. Also used by UNexusAnimNotify_EquipmentAction to drive
+	// item-mesh playback from the arms montage at the correct frame.
+	//
+	// All actions live under Action.Equipment.* so the notify's tag picker has
+	// a single root. Generic actions (Unholster, Holster, Ceremony, Inspect)
+	// apply to any modular equippable; the Action.Equipment.Weapon.* subspace
+	// holds actions that only make sense on a weapon (Fire / Reload / MagOut /
+	// etc). Future equippable categories — flashlight, radio, tome — can
+	// claim their own subspace (Action.Equipment.Flashlight.ToggleBeam, etc.)
+	// without touching this list.
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Equipment_Unholster);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Equipment_Holster);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Equipment_Inspect);
+
+	/**
+	 * First-acquire flourish authored on FEquippableAnimationSet::Actions.
+	 * UNexusInventoryAcquireLibrary::AcquireItem routes the draw phase through
+	 * this action tag the first time an equippable definition enters inventory;
+	 * subsequent activations use Action.Equipment.Unholster. UNexusEquipmentComponent
+	 * falls back to Action.Equipment.Unholster if the ceremony stream isn't authored,
+	 * so leaving the slot blank just means "no special intro for this item."
+	 */
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Equipment_Ceremony);
+
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Equipment_Weapon_Fire);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Equipment_Weapon_DryFire);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Equipment_Weapon_Reload);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Equipment_Weapon_Reload_Empty);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Equipment_Weapon_MagOut);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Equipment_Weapon_MagIn);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Equipment_Weapon_SlideRack);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Equipment_Weapon_BoltClose);
 }

@@ -14,16 +14,30 @@
 
 #include "NexusItemPickup.generated.h"
 
-class UAnimMontage;
-class ANexusEquippedActor;
-class UNexusEquipmentComponent;
 class UNexusInteractableComponent;
-class UNexusInventoryComponent;
 class UNexusItemDefinition;
-class UNexusItemInstance;
 class UStaticMeshComponent;
 
 
+/**
+ * Placeable world actor that hands a single item definition to whoever interacts
+ * with it. Intentionally thin: it owns a mesh, an interactable, and the data
+ * needed to call UNexusInventoryAcquireLibrary::AcquireItem — nothing else.
+ *
+ * All acquire-side concerns (AddItem, mark-seen, auto-equip choice, ceremony
+ * routing) live in the library, so a debug spawn, a quest reward, or a loot
+ * drop can deliver the same item with the same behaviour without going through
+ * a pickup actor.
+ *
+ * Visual lifecycle on a successful pickup:
+ *   1. The acquire library runs (synchronous AddItem + queued AssignAndActivate).
+ *   2. The pickup hides itself + disables collision so the player reads
+ *      "the world model became my item" immediately.
+ *   3. Destruction is deferred by TeardownDelaySeconds to cover the (possibly
+ *      cold) Equipped-bundle load and the ceremony arms montage. Without this
+ *      delay, first-acquire pickups show a visible gap between the world model
+ *      vanishing and the gun materialising in the player's hands.
+ */
 UCLASS(Blueprintable, PrioritizeCategories = ("Pickup"))
 class NEXUS_API ANexusItemPickup : public AActor, public IEMSActorSaveInterface
 {
@@ -42,116 +56,60 @@ public:
 #endif
 
 protected:
-   virtual void BeginPlay() override;
-    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
-    UFUNCTION()
-    void HandleInteractionCompleted(AActor* Interactor);
+	UFUNCTION()
+	void HandleInteractionCompleted(AActor* Interactor);
 
-    /**
-     * Commit the pickup synchronously: AddItem, optionally auto-assign +
-     * activate the slot, and destroy the actor. Used when there's no ceremony
-     * to play.
-     */
-    void FinishPickup(UNexusInventoryComponent* Inventory, AActor* Interactor);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Pickup")
+	TObjectPtr<UStaticMeshComponent> Mesh;
 
-    /**
-     * Ceremony entry point. Does AddItem + stat tags + seen-marking first
-     * (so the item is in inventory even if the ceremony interrupts), then
-     * branches:
-     *   - If any picked-up instance has bAutoAssignOnPickup with a free
-     *     compatible slot, drive the equip + ceremony flow through
-     *     OnSlotAssigned, suppressing the standard unholster.
-     *   - Otherwise play arms-only ceremony (e.g. key items, consumables).
-     * Returns true if a ceremony or auto-equip flow was successfully kicked
-     * off; false to fall back to the immediate path.
-     */
-    bool BeginCeremony(UNexusInventoryComponent* Inventory, AActor* Interactor);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Pickup")
+	TObjectPtr<UNexusInteractableComponent> Interactable;
 
-    /**
-     * Honor FNexusFragment_Equippable::bAutoAssignOnPickup. Resolves the
-     * interactor's equipment component, picks PreferredSlot when free (else
-     * the first compatible free slot), assigns, and activates. No-op if the
-     * item isn't equippable, the flag isn't set, or no free slot exists.
-     */
-    void AutoEquipIfRequested(UNexusItemInstance* Instance, AActor* Interactor) const;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pickup")
+	TObjectPtr<UNexusItemDefinition> Definition;
 
-    /**
-     * Pick the slot a freshly picked-up Instance should auto-assign into:
-     * PreferredSlot when valid and free, else the first compatible free slot
-     * the Equipment exposes. Returns an invalid tag when nothing's free or
-     * the item isn't slot-compatible. Shared by the immediate and ceremony
-     * auto-equip paths so both make the same selection.
-     */
-    FGameplayTag PickAutoEquipSlot(const UNexusEquipmentComponent* Equipment,
-        const UNexusItemInstance* Instance, const struct FNexusFragment_Equippable* Eq) const;
+	UPROPERTY(EditAnywhere, SaveGame, BlueprintReadOnly, Category = "Pickup", meta = (ClampMin = "1"))
+	int32 InitialCount = 1;
 
-    /**
-     * Play the authored ceremony montages: arms on the interactor's arms mesh,
-     * item on the equipped actor's mesh (when one exists). Returns the longer
-     * of the two play lengths so the caller can schedule completion. Returns
-     * 0 when neither stream could play.
-     */
-    float PlayCeremonyMontages(AActor* Interactor, ANexusEquippedActor* EquippedActor) const;
+	/**
+	 * Per-pickup-actor decision: should the acquired item be slotted into the
+	 * player's equipment if a compatible slot is free? Lives on the pickup
+	 * instance, not the item definition, because the same gun spawned by a
+	 * quest reward vs a loot crate vs a hidden secret might want different
+	 * defaults. UNexusInventoryAcquireLibrary::AcquireItem honours the flag.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pickup")
+	bool bAutoEquipOnPickup = true;
 
-    UFUNCTION()
-    void HandleSlotAssignedForCeremony(FGameplayTag SlotTag, UNexusItemInstance* Instance);
+	/**
+	 * Force-skip the first-acquire ceremony even when the equippable authors one.
+	 * Useful for "given as a tutorial" pickups where the player is already in a
+	 * scripted sequence and the cinematic intro would step on it. Has no effect
+	 * if the definition has already been seen (ceremony wouldn't fire anyway).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pickup")
+	bool bSkipCeremony = false;
 
-    void OnCeremonyFinished();
+	UPROPERTY(EditAnywhere, SaveGame, BlueprintReadOnly, Category = "Pickup")
+	TMap<FGameplayTag, int32> InitialStatTags;
 
-    class UNexusInventoryComponent* ResolveInventory(AActor* Interactor) const;
+	/**
+	 * Seconds between AddItem success and actor destruction. The pickup hides
+	 * its mesh + drops collision immediately so the world model "vanishes" on
+	 * the player's input, but the actor stays alive briefly so the equipped
+	 * actor has time to spawn through the async Equipped-bundle load and play
+	 * its draw / ceremony anim. Tune longer for definitions that author long
+	 * ceremony montages; 0 destroys synchronously (good for ammo / consumables
+	 * where there's no equipment hand-off).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pickup", meta = (ClampMin = "0.0"))
+	float TeardownDelaySeconds = 1.5f;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Pickup")
-    TObjectPtr<UStaticMeshComponent> Mesh;
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Pickup")
-    TObjectPtr<UNexusInteractableComponent> Interactable;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pickup")
-    TObjectPtr<UNexusItemDefinition> Definition;
-
-    UPROPERTY(EditAnywhere, SaveGame, BlueprintReadOnly, Category = "Pickup", meta = (ClampMin = "1"))
-    int32 InitialCount = 1;
-
-    UPROPERTY(EditAnywhere, SaveGame, BlueprintReadOnly, Category = "Pickup")
-    TMap<FGameplayTag, int32> InitialStatTags;
-
-    /**
-     * First-time pickup ceremony — the arms-side montage played on the
-     * interactor's arms mesh the first time they pick up this item definition
-     * (per-save state via UNexusInventoryComponent::HasSeenItemDefinition).
-     * Leave null for mundane loot; author for legendary/quest items where the
-     * pickup deserves a beat. Subsequent pickups of the same def — even from
-     * a different pickup actor — skip the ceremony.
-     *
-     * In the Pickup asset bundle so it's already loaded by the time the
-     * player triggers the ceremony — same handle that streamed the pickup
-     * mesh during BeginPlay covers this.
-     */
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pickup|Ceremony",
-        meta = (AssetBundles = "Pickup"))
-    TSoftObjectPtr<UAnimMontage> CeremonyArmsMontage;
-
-    /**
-     * First-time pickup ceremony — the item-side montage played on the
-     * equipped actor's mesh (the gun's own slide/bolt/handle animation)
-     * during the ceremony. Only plays when the picked-up item is being
-     * auto-equipped (otherwise there's no item mesh to animate). Optional
-     * even on auto-equip pickups — e.g. a flashlight ceremony might only
-     * author arms.
-     *
-     * When this stream is present alongside the arms montage, the equipment
-     * component's standard unholster is suppressed for this activation so
-     * the two ceremony anims aren't fighting the draw-phase unholster on
-     * the same anim instance. Subsequent equip-from-slot calls use the
-     * normal unholster path — the suppression is one-shot.
-     */
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pickup|Ceremony",
-        meta = (AssetBundles = "Pickup"))
-    TSoftObjectPtr<UAnimMontage> CeremonyItemMontage;
-
-    UPROPERTY(SaveGame)
-    bool bWasCollected = false;
+	UPROPERTY(SaveGame)
+	bool bWasCollected = false;
 
 protected:
 	//~Start save interface
@@ -163,22 +121,6 @@ private:
 
 	void RequestPickupMeshLoad();
 
-	/** Timer that fires OnCeremonyFinished after the max ceremony duration elapses. */
-	FTimerHandle PickupCeremonyTimer;
-
-	/**
-	 * Set when an auto-equip ceremony is mid-flight, so HandleSlotAssignedForCeremony
-	 * can finish wiring up the activation + montage playback once the async
-	 * AssignToSlot completes. Weak so we don't keep the player's equipment
-	 * component alive past its actor.
-	 */
-	TWeakObjectPtr<UNexusEquipmentComponent> PendingCeremonyEquipment;
-	FGameplayTag                              PendingCeremonySlot;
-
-	/**
-	 * Captured at HandleInteractionCompleted time so the OnSlotAssigned handler
-	 * + ceremony-finish timer know whose arms mesh and ASC to target. Weak so
-	 * the pickup doesn't pin the player after the ceremony begins.
-	 */
-	TWeakObjectPtr<AActor> PendingFinishInteractor;
+	FTimerHandle PickupTeardownTimer;
+	void HandleTeardownComplete();
 };

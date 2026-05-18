@@ -91,7 +91,7 @@ void UNexusAbility_WeaponReload::CommitAbility()
 	UAnimMontage* ArmsReload = nullptr;
 	if (const ANexusEquippedActor* Equipped = GetEquippedActor())
 	{
-		ArmsReload = Equipped->GetEffectiveArmsMontage(NexusGameplayTags::Action_Weapon_Reload);
+		ArmsReload = Equipped->GetEffectiveArmsMontage(NexusGameplayTags::Action_Equipment_Weapon_Reload);
 	}
 
 	if (ArmsReload)

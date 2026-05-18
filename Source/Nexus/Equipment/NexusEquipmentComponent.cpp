@@ -51,6 +51,8 @@ void UNexusEquipmentComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 	OutgoingPendingHide = FGameplayTag();
 	PendingActivation.Reset();
+	PendingActivationsAfterAssignment.Empty();
+	PendingUnholsterActionTag = FGameplayTag();
 	SwapPhase = ENexusEquipSwapPhase::Idle;
 	SwapOutgoingSlot = FGameplayTag();
 	SwapIncomingSlot = FGameplayTag();
@@ -188,10 +190,94 @@ bool UNexusEquipmentComponent::AssignToSlot(UNexusItemInstance* Instance, FGamep
 void UNexusEquipmentComponent::FinalizeAssignment(FGameplayTag SlotTag, UNexusItemInstance* Instance)
 {
 	ApplyEquipEffects(SlotTag, Instance);
-	
+
 	AttachActorForSlotState(SlotTag, false);
 
 	OnSlotAssigned.Broadcast(SlotTag, Instance);
+
+	// Drain any AssignAndActivate calls that were waiting on this slot's actor
+	// to spawn. Runs after the broadcast so external listeners see the assigned
+	// state first; the activation that follows is purely the caller's queued intent.
+	DrainPendingActivationsAfterAssignment(SlotTag);
+}
+
+bool UNexusEquipmentComponent::AssignAndActivate(UNexusItemInstance* Instance, FGameplayTag SlotTag,
+	FGameplayTag UnholsterActionTag)
+{
+	if (!Instance || !SlotTag.IsValid()) return false;
+
+	// AssignToSlot can trigger ClearSlotImmediate on the previous occupant, which
+	// scrubs pending activations for this slot — so we add our queue entry AFTER
+	// AssignToSlot returns. The downside: if the streamable callback fired inline
+	// (synchronously-resident asset), FinalizeAssignment already drained an empty
+	// queue. The DrainPendingActivationsAfterAssignment(SlotTag) call at the end
+	// picks up our just-added entry in that case.
+	if (!AssignToSlot(Instance, SlotTag)) return false;
+
+	// Latest call wins — if a previous AssignAndActivate for this slot was still
+	// queued, drop it so we don't double-activate when the load finishes.
+	PendingActivationsAfterAssignment.RemoveAll([SlotTag](const FPendingActivation& P)
+	{
+		return P.SlotTag.MatchesTagExact(SlotTag);
+	});
+	PendingActivationsAfterAssignment.Add({ SlotTag, UnholsterActionTag });
+
+	DrainPendingActivationsAfterAssignment(SlotTag);
+	return true;
+}
+
+void UNexusEquipmentComponent::DrainPendingActivationsAfterAssignment(FGameplayTag SlotTag)
+{
+	if (!SpawnedActors.Contains(SlotTag)) return;
+
+	// Reverse iteration so RemoveAt indices stay valid; activations within the
+	// queue for this slot are deduped by AssignAndActivate, so there's at most
+	// one in practice — the loop is defensive.
+	for (int32 i = PendingActivationsAfterAssignment.Num() - 1; i >= 0; --i)
+	{
+		if (!PendingActivationsAfterAssignment[i].SlotTag.MatchesTagExact(SlotTag)) continue;
+
+		const FGameplayTag Action = PendingActivationsAfterAssignment[i].UnholsterActionTag;
+		PendingActivationsAfterAssignment.RemoveAt(i);
+		RequestActivateSlot(SlotTag, Action);
+	}
+}
+
+FGameplayTag UNexusEquipmentComponent::PickAutoAssignSlot(const UNexusItemInstance* Instance) const
+{
+	if (!Instance) return FGameplayTag();
+
+	const UNexusItemDefinition* Definition = Instance->GetDefinition();
+	const FNexusFragment_Equippable* Eq = Definition
+		? Definition->FindFragment<FNexusFragment_Equippable>() : nullptr;
+	if (!Eq) return FGameplayTag();
+
+	// Definition-level veto: items flagged bAllowAutoAssign=false refuse to be
+	// silently slotted by *any* caller (pickup, library, debug). Manual UI-
+	// driven AssignToSlot still works — this only gates the auto-equip flow.
+	if (!Eq->bAllowAutoAssign) return FGameplayTag();
+
+	// Prefer the authored slot when it's currently free. Don't kick out an
+	// existing occupant — silent replacement on every pickup would destroy
+	// player loadout choices.
+	if (Eq->PreferredSlot.IsValid()
+		&& CanAssignToSlot(Instance, Eq->PreferredSlot)
+		&& !IsSlotOccupied(Eq->PreferredSlot))
+	{
+		return Eq->PreferredSlot;
+	}
+
+	// Fall back to the first compatible free slot. If none is free, the caller
+	// gets an invalid tag — the item stays in inventory and the player can
+	// swap it in manually.
+	for (const FGameplayTag& Slot : GetCompatibleSlotsForInstance(Instance))
+	{
+		if (!IsSlotOccupied(Slot))
+		{
+			return Slot;
+		}
+	}
+	return FGameplayTag();
 }
 
 bool UNexusEquipmentComponent::ClearSlot(FGameplayTag SlotTag)
@@ -205,6 +291,14 @@ bool UNexusEquipmentComponent::ClearSlotImmediate(FGameplayTag SlotTag)
 	if (!Instance) return false;
 
 	const bool bWasActive = ActiveSlot.MatchesTagExact(SlotTag);
+
+	// Drop any AssignAndActivate calls still waiting for this slot's actor —
+	// the instance is gone, the deferred activation would land on whatever
+	// (if anything) is assigned next.
+	PendingActivationsAfterAssignment.RemoveAll([SlotTag](const FPendingActivation& P)
+	{
+		return P.SlotTag.MatchesTagExact(SlotTag);
+	});
 
 	RemoveEquipEffects(SlotTag);
 	EquippedSlots.Remove(SlotTag);
@@ -266,7 +360,8 @@ bool UNexusEquipmentComponent::MoveAssignment(FGameplayTag FromSlot, FGameplayTa
 
 
 // Activation (input-driven)
-bool UNexusEquipmentComponent::RequestActivateSlot(const FGameplayTag SlotTag, const bool bSuppressArmsUnholsterAnim)
+bool UNexusEquipmentComponent::RequestActivateSlot(const FGameplayTag SlotTag,
+	const FGameplayTag UnholsterActionTag)
 {
 	if (!SlotTag.IsValid())
 	{
@@ -277,11 +372,7 @@ bool UNexusEquipmentComponent::RequestActivateSlot(const FGameplayTag SlotTag, c
 
 	if (SwapPhase != ENexusEquipSwapPhase::Idle)
 	{
-		PendingActivation = SlotTag;
-		// Queued activations don't carry the suppress flag — they fall back to
-		// standard unholster on resume. The pickup-ceremony caller doesn't
-		// queue, so this is acceptable; if you ever need queued suppression,
-		// thread the flag onto PendingActivation alongside the slot tag.
+		PendingActivation = FPendingActivation{ SlotTag, UnholsterActionTag };
 		return true;
 	}
 
@@ -292,7 +383,7 @@ bool UNexusEquipmentComponent::RequestActivateSlot(const FGameplayTag SlotTag, c
 
 	if (!IsSlotOccupied(SlotTag)) return false;
 
-	bPendingSuppressUnholster = bSuppressArmsUnholsterAnim;
+	PendingUnholsterActionTag = UnholsterActionTag;
 	BeginSlotTransition(ActiveSlot, SlotTag);
 	return true;
 }
@@ -301,7 +392,7 @@ bool UNexusEquipmentComponent::RequestHolster()
 {
 	if (SwapPhase != ENexusEquipSwapPhase::Idle)
 	{
-		PendingActivation = FGameplayTag(); // queue: holster on completion
+		PendingActivation = FPendingActivation{ FGameplayTag(), FGameplayTag() };
 		return true;
 	}
 
@@ -340,7 +431,7 @@ void UNexusEquipmentComponent::BeginHolsterPhase(const FGameplayTag OutgoingSlot
 	UAnimMontage* Unequip = nullptr;
 	if (const ANexusEquippedActor* OutActor = SpawnedActors.FindRef(OutgoingSlot))
 	{
-		Unequip = OutActor->GetEffectiveArmsMontage(NexusGameplayTags::Action_Weapon_Holster);
+		Unequip = OutActor->GetEffectiveArmsMontage(NexusGameplayTags::Action_Equipment_Holster);
 	}
 	const float Duration = PlayMontageOnOwner(Unequip);
 
@@ -376,11 +467,16 @@ void UNexusEquipmentComponent::HandleHolsterPhaseFinished()
 	{
 		OnActiveSlotChanged.Broadcast(ActiveSlot, nullptr);
 	}
-	
+
 	FGameplayTag NextDraw = SwapIncomingSlot;
 	if (PendingActivation.IsSet())
 	{
-		NextDraw = PendingActivation.GetValue();
+		// Queued activation supersedes the swap's original incoming slot AND its
+		// authored action tag. With nothing queued, PendingUnholsterActionTag
+		// stays as the original RequestActivateSlot caller's value — don't
+		// overwrite it with default-constructed-invalid.
+		NextDraw = PendingActivation->SlotTag;
+		PendingUnholsterActionTag = PendingActivation->UnholsterActionTag;
 		PendingActivation.Reset();
 	}
 
@@ -391,7 +487,7 @@ void UNexusEquipmentComponent::HandleHolsterPhaseFinished()
 		BeginDrawPhase(NextDraw);
 		return;
 	}
-	
+
 	SwapIncomingSlot = FGameplayTag();
 	CompleteSwap();
 }
@@ -408,26 +504,28 @@ void UNexusEquipmentComponent::BeginDrawPhase(const  FGameplayTag IncomingSlot)
 
 	OnActiveSlotChanged.Broadcast(ActiveSlot, GetEquippedInSlot(ActiveSlot));
 
-	// Consume the suppress-unholster flag — it's a one-shot, set by the most
-	// recent RequestActivateSlot. Clearing here means a queued activation that
-	// resumes via ProcessPendingActivation gets standard unholster.
-	const bool bSuppress = bPendingSuppressUnholster;
-	bPendingSuppressUnholster = false;
-
-	if (bSuppress)
-	{
-		// Caller (e.g. ANexusItemPickup mid-ceremony) is driving the arms anim
-		// itself. Skip the unholster montage and its duration timer; the draw
-		// phase is otherwise complete (actor is already spawned + attached +
-		// visible above).
-		HandleDrawPhaseFinished();
-		return;
-	}
+	// Consume the action-tag override; it's a one-shot. Invalid → standard unholster.
+	const FGameplayTag RequestedAction = PendingUnholsterActionTag;
+	PendingUnholsterActionTag = FGameplayTag();
 
 	UAnimMontage* Equip = nullptr;
 	if (const ANexusEquippedActor* InActor = SpawnedActors.FindRef(IncomingSlot))
 	{
-		Equip = InActor->GetEffectiveArmsMontage(NexusGameplayTags::Action_Weapon_Unholster);
+		const FGameplayTag PrimaryTag = RequestedAction.IsValid()
+			? RequestedAction
+			: NexusGameplayTags::Action_Equipment_Unholster;
+
+		Equip = InActor->GetEffectiveArmsMontage(PrimaryTag);
+
+		// Caller-requested overrides fall back to the standard unholster so an
+		// item that doesn't author (e.g.) a Ceremony anim still draws normally
+		// instead of silently producing no animation. Action.Equipment.Unholster
+		// has no fallback — if it's missing, the draw phase finishes without anim.
+		if (!Equip && RequestedAction.IsValid()
+			&& !RequestedAction.MatchesTagExact(NexusGameplayTags::Action_Equipment_Unholster))
+		{
+			Equip = InActor->GetEffectiveArmsMontage(NexusGameplayTags::Action_Equipment_Unholster);
+		}
 	}
 	const float Duration = PlayMontageOnOwner(Equip);
 
@@ -471,10 +569,10 @@ void UNexusEquipmentComponent::ProcessPendingActivation()
 {
 	if (!PendingActivation.IsSet()) return;
 
-	const FGameplayTag Next = PendingActivation.GetValue();
+	const FPendingActivation Next = PendingActivation.GetValue();
 	PendingActivation.Reset();
-	
-	RequestActivateSlot(Next);
+
+	RequestActivateSlot(Next.SlotTag, Next.UnholsterActionTag);
 }
 
 void UNexusEquipmentComponent::NotifyHideOutgoingSlot()
