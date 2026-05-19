@@ -5,9 +5,11 @@
 #include "Animation/Skeleton.h"
 
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 
 #include "Engine/AssetManager.h"
 #include "Engine/SkeletalMesh.h"
+#include "Engine/StaticMesh.h"
 
 #include "StructUtils/InstancedStruct.h"
 
@@ -373,13 +375,13 @@ TArray<FGameplayTag> UNexusAssemblyComponent::GetAllSlotIDs() const
 	return Out;
 }
 
-TArray<USkeletalMeshComponent*> UNexusAssemblyComponent::GetAttachmentMeshes() const
+TArray<UMeshComponent*> UNexusAssemblyComponent::GetAttachmentMeshes() const
 {
-	TArray<USkeletalMeshComponent*> Out;
+	TArray<UMeshComponent*> Out;
 	Out.Reserve(Attached.Num());
 	for (const TPair<FGameplayTag, FNexusAttachmentInstance>& Pair : Attached)
 	{
-		if (USkeletalMeshComponent* M = Pair.Value.Mesh) Out.Add(M);
+		if (UMeshComponent* M = Pair.Value.Mesh) Out.Add(M);
 	}
 	return Out;
 }
@@ -412,63 +414,94 @@ void UNexusAssemblyComponent::SpawnMeshForAttachment(FNexusAttachmentInstance& R
 	UMeshComponent* ParentMesh = GetParentMeshComponentForSlot(Record.ParentSlotID);
 	if (!ParentMesh) return; // Parent not ready yet; we'll retry from HandleAttachmentLoaded.
 
-	// Mesh + AnimInstance class come from the "Equipped" bundle that
-	// AttachItem just LoadPrimaryAsset'd, so they should be resident. Get()
-	// is expected; ensureAlways flags any missed bundle-await.
-	USkeletalMesh* MeshAsset = Record.Definition->Mesh.Get();
-	if (!MeshAsset)
-	{
-		ensureAlwaysMsgf(Record.Definition->Mesh.IsNull(),
-			TEXT("[Assembly] Mesh for attachment %s not resident; bundle 'Equipped' was not awaited"),
-			*GetNameSafe(Record.Definition));
-		MeshAsset = Record.Definition->Mesh.LoadSynchronous();
-	}
-	if (!MeshAsset) return;
-
 	AActor* Outer = GetOwner();
 	if (!Outer) return;
 
-	USkeletalMeshComponent* NewMesh = NewObject<USkeletalMeshComponent>(Outer);
-	if (!NewMesh) return;
+	UMeshComponent* NewMesh = nullptr;
 
-	NewMesh->SetSkeletalMesh(MeshAsset);
-	NewMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-
-	// Modular host: when the attachment shares its skeleton with the host
-	// mesh, drive its pose from the host via Leader Pose Component. The
-	// host's montage animates a single skeleton; the magazine, slide, etc.
-	// follow without their own AnimBP/montage. AAA-standard for split-mesh
-	// authoring (Lyra, modern shooter pipelines).
-	bool bUsedLeaderPose = false;
-	if (USkeletalMeshComponent* HostSkeletalMesh = Cast<USkeletalMeshComponent>(ParentMesh))
+	// Skeletal wins on conflict (see UNexusAttachmentDefinition::SkeletalMesh).
+	// Mesh + AnimInstance class come from the "Equipped" bundle that
+	// AttachItem just LoadPrimaryAsset'd, so they should be resident. Get()
+	// is expected; ensureAlways flags any missed bundle-await.
+	if (!Record.Definition->SkeletalMesh.IsNull())
 	{
-		const USkeleton* HostSkeleton = HostSkeletalMesh->GetSkeletalMeshAsset()
-			? HostSkeletalMesh->GetSkeletalMeshAsset()->GetSkeleton()
-			: nullptr;
-		const USkeleton* AttachSkeleton = MeshAsset->GetSkeleton();
-		if (HostSkeleton && AttachSkeleton == HostSkeleton)
-		{
-			NewMesh->SetLeaderPoseComponent(HostSkeletalMesh, /*bForceUpdate*/ true);
-			bUsedLeaderPose = true;
-		}
-	}
-
-	if (!bUsedLeaderPose)
-	{
-		// Independent skeleton — attachment runs its own AnimInstance if authored.
-		UClass* AnimClass = Record.Definition->AnimInstanceClass.Get();
-		if (!AnimClass && !Record.Definition->AnimInstanceClass.IsNull())
+		USkeletalMesh* MeshAsset = Record.Definition->SkeletalMesh.Get();
+		if (!MeshAsset)
 		{
 			ensureAlwaysMsgf(false,
-				TEXT("[Assembly] AnimInstance class for attachment %s not resident; bundle 'Equipped' was not awaited"),
+				TEXT("[Assembly] SkeletalMesh for attachment %s not resident; bundle 'Equipped' was not awaited"),
 				*GetNameSafe(Record.Definition));
-			AnimClass = Record.Definition->AnimInstanceClass.LoadSynchronous();
+			MeshAsset = Record.Definition->SkeletalMesh.LoadSynchronous();
 		}
-		if (AnimClass)
+		if (!MeshAsset) return;
+
+		USkeletalMeshComponent* SkeletalComp = NewObject<USkeletalMeshComponent>(Outer);
+		if (!SkeletalComp) return;
+
+		SkeletalComp->SetSkeletalMesh(MeshAsset);
+
+		// Modular host: when the attachment shares its skeleton with the host
+		// mesh, drive its pose from the host via Leader Pose Component. The
+		// host's montage animates a single skeleton; the magazine, slide, etc.
+		// follow without their own AnimBP/montage. AAA-standard for split-mesh
+		// authoring (Lyra, modern shooter pipelines).
+		bool bUsedLeaderPose = false;
+		if (USkeletalMeshComponent* HostSkeletalMesh = Cast<USkeletalMeshComponent>(ParentMesh))
 		{
-			NewMesh->SetAnimInstanceClass(AnimClass);
+			const USkeleton* HostSkeleton = HostSkeletalMesh->GetSkeletalMeshAsset()
+				? HostSkeletalMesh->GetSkeletalMeshAsset()->GetSkeleton()
+				: nullptr;
+			const USkeleton* AttachSkeleton = MeshAsset->GetSkeleton();
+			if (HostSkeleton && AttachSkeleton == HostSkeleton)
+			{
+				SkeletalComp->SetLeaderPoseComponent(HostSkeletalMesh, /*bForceUpdate*/ true);
+				bUsedLeaderPose = true;
+			}
 		}
+
+		if (!bUsedLeaderPose)
+		{
+			// Independent skeleton — attachment runs its own AnimInstance if authored.
+			UClass* AnimClass = Record.Definition->AnimInstanceClass.Get();
+			if (!AnimClass && !Record.Definition->AnimInstanceClass.IsNull())
+			{
+				ensureAlwaysMsgf(false,
+					TEXT("[Assembly] AnimInstance class for attachment %s not resident; bundle 'Equipped' was not awaited"),
+					*GetNameSafe(Record.Definition));
+				AnimClass = Record.Definition->AnimInstanceClass.LoadSynchronous();
+			}
+			if (AnimClass)
+			{
+				SkeletalComp->SetAnimInstanceClass(AnimClass);
+			}
+		}
+
+		NewMesh = SkeletalComp;
 	}
+	else if (!Record.Definition->StaticMesh.IsNull())
+	{
+		UStaticMesh* MeshAsset = Record.Definition->StaticMesh.Get();
+		if (!MeshAsset)
+		{
+			ensureAlwaysMsgf(false,
+				TEXT("[Assembly] StaticMesh for attachment %s not resident; bundle 'Equipped' was not awaited"),
+				*GetNameSafe(Record.Definition));
+			MeshAsset = Record.Definition->StaticMesh.LoadSynchronous();
+		}
+		if (!MeshAsset) return;
+
+		UStaticMeshComponent* StaticComp = NewObject<UStaticMeshComponent>(Outer);
+		if (!StaticComp) return;
+
+		StaticComp->SetStaticMesh(MeshAsset);
+		NewMesh = StaticComp;
+	}
+	else
+	{
+		return;
+	}
+
+	NewMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 	// Register, then attach. SetupAttachment is for unregistered components only;
 	// after RegisterComponent the attachment is finalized via AttachToComponent.

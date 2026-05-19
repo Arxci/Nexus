@@ -95,17 +95,20 @@ namespace NexusGameplayTags
 	// Attachment slot identity (used as keys in FWeaponSlotDefinition::SlotID).
 	// Slot identity is data-driven — these are common roots shipped in C++.
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Slot_Slide);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Slot_Sight);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Slot_Magazine);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Slot_Barrel);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Slot_Trigger);
 
 	// Attachment type taxonomy (used for AcceptedTags / ProvidedTags compatibility).
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Type_Slide);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Type_Sight);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Type_Magazine);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Type_Barrel);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Type_Trigger);
 
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Identity_Slide_Standard);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Identity_Sight_Standard);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Identity_Magazine_Standard);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Identity_Barrel_Standard);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Identity_Trigger_Standard);

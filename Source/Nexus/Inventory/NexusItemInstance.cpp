@@ -1,5 +1,9 @@
 ﻿#include "NexusItemInstance.h"
 
+#include "Engine/AssetManager.h"
+
+#include "Nexus/Inventory/Fragments/Equippable/NexusFragment_Equippable.h"
+
 #include "Nexus/Equipment/Attachments/NexusAttachmentDefinition.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemFragment.h"
@@ -27,7 +31,9 @@ void UNexusItemInstance::Initialize(UNexusItemDefinition* InDefinition, int32 In
 			Frag.Get().InitializeInstance(this);
 		}
 	}
-
+	
+	RequestEquippedBundleLoad();
+	
 	bInitialized = true;
 }
 
@@ -37,6 +43,8 @@ void UNexusItemInstance::RestoreLoadedState()
 	{
 		CachedDefinition = DefinitionRef.LoadSynchronous();
 	}
+
+	RequestEquippedBundleLoad();
 }
 
 // Utility
@@ -165,4 +173,22 @@ void UNexusItemInstance::BroadcastChanged()
 {
 	if (!bInitialized) return; 
 	OnInstanceChanged.Broadcast(this);
+}
+
+void UNexusItemInstance::RequestEquippedBundleLoad()
+{
+	if (EquippedBundleHandle.IsValid()) return;
+
+	const UNexusItemDefinition* Def = CachedDefinition;
+	if (!Def) return;
+
+	// Skip non-equippables — ammo, herbs, keys, etc. have nothing in the
+	// Equipped bundle, so the load would just hold an empty handle.
+	if (!Def->HasFragment<FNexusFragment_Equippable>()) return;
+
+	const FPrimaryAssetId Id = Def->GetPrimaryAssetId();
+	if (!Id.IsValid()) return;
+
+	EquippedBundleHandle = UAssetManager::Get().LoadPrimaryAsset(
+		Id, TArray<FName>{ TEXT("Equipped") });
 }

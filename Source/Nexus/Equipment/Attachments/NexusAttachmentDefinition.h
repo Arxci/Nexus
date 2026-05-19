@@ -16,6 +16,7 @@
 
 class UAnimInstance;
 class USkeletalMesh;
+class UStaticMesh;
 class UTexture2D;
 
 
@@ -48,11 +49,17 @@ public:
 		meta = (Categories = "Attachment.Type"))
 	FGameplayTagContainer ProvidedTags;
 
-	// Visual
+	// Visual — author EITHER SkeletalMesh OR StaticMesh. Skeletal wins if both
+	// are set (and AnimInstanceClass applies); StaticMesh is then ignored.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual",
 		meta = (AssetBundles = "Equipped"))
-	TSoftObjectPtr<USkeletalMesh> Mesh;
-	
+	TSoftObjectPtr<USkeletalMesh> SkeletalMesh;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual",
+		meta = (AssetBundles = "Equipped"))
+	TSoftObjectPtr<UStaticMesh> StaticMesh;
+
+	/** Only applies when SkeletalMesh is authored and the mesh isn't driven by the host's leader-pose. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual",
 		meta = (AssetBundles = "Equipped"))
 	TSoftClassPtr<UAnimInstance> AnimInstanceClass;

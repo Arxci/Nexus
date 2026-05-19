@@ -40,7 +40,7 @@ void UNexusAbility::ForceEndAbility()
 bool UNexusAbility::RequestActivateAbility()
 {
 	if (IsOnCooldown()) return false;
-	if (!CanActivateAbility_Implementation()) return false;
+	if (!CanActivateAbility()) return false;
 	
 	K2_OnAbilityActivate();
 	return true;

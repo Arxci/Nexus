@@ -185,7 +185,7 @@ void ANexusEquippedActor::ApplyOwnerViewpointRendering()
 	// view change at runtime updates the whole gun, not just the receiver.
 	if (Assembly)
 	{
-		for (USkeletalMeshComponent* AttachMesh : Assembly->GetAttachmentMeshes())
+		for (UMeshComponent* AttachMesh : Assembly->GetAttachmentMeshes())
 		{
 			ApplyViewpointToMesh(AttachMesh);
 		}
@@ -203,7 +203,7 @@ void ANexusEquippedActor::ApplyOwnerViewpointRendering()
 	K2_OnOwnerViewpointApplied(bIsFirstPersonView);
 }
 
-void ANexusEquippedActor::ApplyViewpointToMesh(USkeletalMeshComponent* TargetMesh) const
+void ANexusEquippedActor::ApplyViewpointToMesh(UMeshComponent* TargetMesh) const
 {
 	if (!TargetMesh) return;
 

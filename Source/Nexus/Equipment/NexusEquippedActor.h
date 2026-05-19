@@ -10,6 +10,7 @@
 
 class UAnimMontage;
 class UAnimSequence;
+class UMeshComponent;
 class UNexusItemInstance;
 class USkeletalMeshComponent;
 
@@ -42,7 +43,7 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Equipped")
     void ApplyOwnerViewpointRendering();
 
-    void ApplyViewpointToMesh(USkeletalMeshComponent* TargetMesh) const;
+    void ApplyViewpointToMesh(UMeshComponent* TargetMesh) const;
 
     UFUNCTION(BlueprintPure, Category = "Equipped")
     bool IsRenderedFirstPerson() const { return bIsFirstPersonView; }

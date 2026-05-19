@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 
+#include "Engine/StreamableManager.h"
+
 #include "GameplayTagContainer.h"
 
 #include "NexusItemInstance.generated.h"
@@ -111,4 +113,18 @@ protected:
 
 	UPROPERTY(SaveGame)
 	TMap<FGameplayTag, TSoftObjectPtr<UNexusAttachmentDefinition>> Attachments;
+
+private:
+	/**
+ * Held while this instance is alive. Keeps the Equipped bundle resident
+ * for as long as the player owns the item — covers carryover across
+ * chapters where the level manifest no longer lists this item. Released
+ * when the instance is GC'd (item removed from inventory or dropped).
+ *
+ * Only acquired for definitions with FNexusFragment_Equippable — ammo and
+ * consumables don't have an Equipped-bundle payload to load.
+ */
+	TSharedPtr<FStreamableHandle> EquippedBundleHandle;
+
+	void RequestEquippedBundleLoad();
 };

@@ -209,8 +209,14 @@ void UNexusWeaponBehaviorComponent::RefreshMagazineVisual()
 		if (!Record.Definition || !Record.Mesh) continue;
 
 		const FNexusAttachmentFragment_Magazine* MagFrag =
-			Record.Definition->FindFragment<FNexusAttachmentFragment_Magazine>();
+	Record.Definition->FindFragment<FNexusAttachmentFragment_Magazine>();
 		if (!MagFrag) continue;
+
+		// Loaded/empty swap is intrinsically skeletal — the magazine fragment
+		// only stores USkeletalMesh refs. A static-mesh magazine has no
+		// per-state visual and is silently skipped here.
+		USkeletalMeshComponent* MagMesh = Cast<USkeletalMeshComponent>(Record.Mesh);
+		if (!MagMesh) continue;
 
 		const TSoftObjectPtr<USkeletalMesh>& Target = bLoaded ? MagFrag->LoadedMesh : MagFrag->EmptyMesh;
 		USkeletalMesh* TargetMesh = Target.Get();
@@ -220,10 +226,10 @@ void UNexusWeaponBehaviorComponent::RefreshMagazineVisual()
 		}
 		if (!TargetMesh) continue; // designer left this state's mesh blank — keep the current visual
 
-		USkeletalMesh* CurrentMesh = Record.Mesh->GetSkeletalMeshAsset();
+		USkeletalMesh* CurrentMesh = MagMesh->GetSkeletalMeshAsset();
 		if (CurrentMesh == TargetMesh) continue;
 
-		Record.Mesh->SetSkeletalMesh(TargetMesh);
+		MagMesh->SetSkeletalMesh(TargetMesh);
 	}
 }
 

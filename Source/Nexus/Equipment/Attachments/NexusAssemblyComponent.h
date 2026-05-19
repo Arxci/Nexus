@@ -70,7 +70,7 @@ struct FNexusAttachmentInstance
 	TObjectPtr<UNexusAttachmentDefinition> Definition;
 
 	UPROPERTY()
-	TObjectPtr<USkeletalMeshComponent> Mesh;
+	TObjectPtr<UMeshComponent> Mesh;
 
 	UPROPERTY()
 	FName AttachSocket;
@@ -166,7 +166,7 @@ public:
 	TArray<FGameplayTag> GetAllSlotIDs() const;
 
 	/** All currently-spawned attachment mesh components (in arbitrary order). */
-	TArray<USkeletalMeshComponent*> GetAttachmentMeshes() const;
+	TArray<UMeshComponent*> GetAttachmentMeshes() const;
 
 	/**
 	 * C++-only accessor for iterating the live attachment tree. Used by

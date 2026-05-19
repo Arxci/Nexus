@@ -7,8 +7,8 @@
 #include "NexusAbility.generated.h"
 
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FActivationStateChanged, UNexusAbility*, Ability);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FEnabledStateChanged);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnActivationStateChanged, UNexusAbility*, Ability);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnEnabledStateChanged);
 
 
 UENUM(BlueprintType)
@@ -123,16 +123,16 @@ public:
 public:
 	// Delegates
 	UPROPERTY(BlueprintAssignable)
-	FActivationStateChanged OnActivated;
+	FOnActivationStateChanged OnActivated;
 
 	UPROPERTY(BlueprintAssignable)
-	FActivationStateChanged OnDeactivated;
+	FOnActivationStateChanged OnDeactivated;
 
 	UPROPERTY(BlueprintAssignable)
-	FEnabledStateChanged OnAbilityDisabled;
+	FOnEnabledStateChanged OnAbilityDisabled;
 
 	UPROPERTY(BlueprintAssignable)
-	FEnabledStateChanged OnAbilityEnabled;
+	FOnEnabledStateChanged OnAbilityEnabled;
 	
 protected:
 	virtual void TickAbility(float DeltaTime) { K2_OnTickAbility(); }

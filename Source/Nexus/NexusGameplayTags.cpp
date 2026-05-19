@@ -89,11 +89,13 @@ namespace NexusGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(Attachment_Slot_Trigger,     "Attachment.Slot.Trigger");
 
 	UE_DEFINE_GAMEPLAY_TAG(Attachment_Type_Slide,     "Attachment.Type.Slide");
+	UE_DEFINE_GAMEPLAY_TAG(Attachment_Type_Sight,     "Attachment.Type.Sight");
 	UE_DEFINE_GAMEPLAY_TAG(Attachment_Type_Magazine,  "Attachment.Type.Magazine");
 	UE_DEFINE_GAMEPLAY_TAG(Attachment_Type_Barrel,    "Attachment.Type.Barrel");
 	UE_DEFINE_GAMEPLAY_TAG(Attachment_Type_Trigger,   "Attachment.Type.Trigger");
 
 	UE_DEFINE_GAMEPLAY_TAG(Attachment_Identity_Slide_Standard,    "Attachment.Identity.Slide.Standard");
+	UE_DEFINE_GAMEPLAY_TAG(Attachment_Identity_Sight_Standard,    "Attachment.Identity.Sight.Standard");
 	UE_DEFINE_GAMEPLAY_TAG(Attachment_Identity_Magazine_Standard, "Attachment.Identity.Magazine.Standard");
 	UE_DEFINE_GAMEPLAY_TAG(Attachment_Identity_Barrel_Standard,   "Attachment.Identity.Barrel.Standard");
 	UE_DEFINE_GAMEPLAY_TAG(Attachment_Identity_Trigger_Standard,   "Attachment.Identity.Trigger.Standard");
