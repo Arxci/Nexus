@@ -10,6 +10,7 @@
 #include "Engine/AssetManager.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
+#include "Nexus/NexusAssetManager.h"
 
 #include "StructUtils/InstancedStruct.h"
 
@@ -270,7 +271,7 @@ bool UNexusAssemblyComponent::AttachItem(const FGameplayTag SlotID, UNexusAttach
 				});
 
 			const TSharedPtr<FStreamableHandle> Handle = AM.LoadPrimaryAsset(
-				AssetId, TArray<FName>{ TEXT("Equipped") }, OnReady);
+				AssetId, TArray<FName>{ UNexusAssetManager::BundleEquipped }, OnReady);
 			if (Handle.IsValid())
 			{
 				SlotLoadHandles.Add(SlotID, Handle);

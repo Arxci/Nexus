@@ -1,6 +1,7 @@
 ﻿#include "NexusItemInstance.h"
 
 #include "Engine/AssetManager.h"
+#include "Nexus/NexusAssetManager.h"
 
 #include "Nexus/Inventory/Fragments/Equippable/NexusFragment_Equippable.h"
 
@@ -190,5 +191,5 @@ void UNexusItemInstance::RequestEquippedBundleLoad()
 	if (!Id.IsValid()) return;
 
 	EquippedBundleHandle = UAssetManager::Get().LoadPrimaryAsset(
-		Id, TArray<FName>{ TEXT("Equipped") });
+		Id, TArray<FName>{ UNexusAssetManager::BundleEquipped });
 }

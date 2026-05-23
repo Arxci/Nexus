@@ -12,6 +12,7 @@
 #include "Animation/AnimSequence.h"
 
 #include "NexusEquippedActor.h"
+#include "Nexus/NexusAssetManager.h"
 #include "Nexus/Character/NexusCharacterBase.h"
 #include "Nexus/NexusGameplayTags.h"
 #include "Nexus/AbilitySystem/NexusAbility.h"
@@ -174,7 +175,7 @@ bool UNexusEquipmentComponent::AssignToSlot(UNexusItemInstance* Instance, FGamep
 
 	UAssetManager& AM = UAssetManager::Get();
 	const TSharedPtr<FStreamableHandle> Handle = AM.LoadPrimaryAsset(
-		AssetId, TArray<FName>{ TEXT("Equipped") }, OnReady);
+		AssetId, TArray<FName>{ UNexusAssetManager::BundleEquipped }, OnReady);
 	if (Handle.IsValid())
 	{
 		EquippableLoadHandles.Add(Instance, Handle);
@@ -811,7 +812,7 @@ void UNexusEquipmentComponent::ComponentLoaded_Implementation()
 		if (!Id.IsValid()) continue;
 
 		if (TSharedPtr<FStreamableHandle> Handle = AM.LoadPrimaryAsset(
-			Id, TArray<FName>{ TEXT("Equipped") }))
+			Id, TArray<FName>{ 	UNexusAssetManager::BundleEquipped }))
 		{
 			EquippableLoadHandles.Add(Instance, Handle);
 		}

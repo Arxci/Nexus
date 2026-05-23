@@ -1,6 +1,8 @@
 ﻿#include "NexusAttachmentDefinition.h"
 
+#include "Nexus/NexusAssetManager.h"
+
 FPrimaryAssetId UNexusAttachmentDefinition::GetPrimaryAssetId() const
 {
-	return FPrimaryAssetId(TEXT("NexusAttachmentDefinition"), GetFName());
+	return FPrimaryAssetId(UNexusAssetManager::TypeAttachmentDefinition, GetFName());
 }

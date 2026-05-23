@@ -2,32 +2,22 @@
 
 #include "CoreMinimal.h"
 
+#include "Engine/LevelStreaming.h"
 #include "Engine/StreamableManager.h"
 
 #include "Subsystems/WorldSubsystem.h"
 
 #include "NexusLevelLoaderSubsystem.generated.h"
 
+class ULevelStreaming;
 class UNexusLevelManifest;
 
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNexusLevelLoadComplete);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNexusSubLevelLoaded, ULevelStreaming*, StreamingLevel);
+DECLARE_DYNAMIC_DELEGATE(FOnNexusPersistentLoadCallback);
 
 
-/**
- * Resolves the active world's UNexusLevelManifest (via ANexusWorldSettings)
- * and preloads the "Equipped" bundle for every item/attachment listed in it.
- * Memory is scoped to the world: leaving the level releases the streamable
- * handle and the bundles become GC-eligible.
- *
- * Canonical Lyra Experience pattern, scaled down: load only what the current
- * gameplay scope can reach, not the full game roster. Memory grows with
- * chapter complexity, not project size.
- *
- * Loading-screen sync: bind OnLoadComplete or poll IsLoadComplete from the
- * player controller / HUD. The delegate fires exactly once per world load,
- * after every manifest entry's Equipped bundle has finished deserialising.
- */
 UCLASS()
 class NEXUS_API UNexusLevelLoaderSubsystem : public UWorldSubsystem
 {
@@ -38,15 +28,57 @@ public:
 	virtual void Deinitialize() override;
 
 	UFUNCTION(BlueprintPure, Category = "Levels|Preload")
-	bool IsLoadComplete() const { return bLoadComplete; }
+	bool IsPersistentLoadComplete() const { return bPersistentLoadComplete; }
 
 	UPROPERTY(BlueprintAssignable, Category = "Levels|Preload")
-	FOnNexusLevelLoadComplete OnLoadComplete;
+	FOnNexusLevelLoadComplete OnPersistentLoadComplete;
+
+	/**
+	 * Lyra-style "call now if already complete, otherwise register and fire on
+	 * completion." Use this from UMG widgets / player controllers that might
+	 * spawn after the persistent load has already finished — the multicast
+	 * above won't fire for late binders.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Levels|Preload",
+		meta = (AutoCreateRefTerm = "Callback"))
+	void CallOrRegisterOnPersistentLoadComplete(const FOnNexusPersistentLoadCallback& Callback);
+
+	UFUNCTION(BlueprintPure, Category = "Levels|Preload")
+	bool IsSubLevelLoaded(const ULevelStreaming* StreamingLevel) const;
+
+	/** Fires when a specific sub-level's bundle finishes loading. */
+	UPROPERTY(BlueprintAssignable, Category = "Levels|Preload")
+	FOnNexusSubLevelLoaded OnSubLevelLoaded;
 
 private:
-	UNexusLevelManifest* ResolveManifest() const;
-	void HandleLoadFinished();
+	void LoadPersistentManifest();
+	void MarkPersistentLoadComplete();
 
-	TSharedPtr<FStreamableHandle> LevelLoadHandle;
-	bool bLoadComplete = false;
+	void HandleLevelStreamingStateChanged(
+		UWorld* StreamingWorld,
+		const ULevelStreaming* StreamingLevel,
+		ULevel* LevelIfLoaded,
+		ELevelStreamingState PreviousState,
+		ELevelStreamingState NewState);
+
+	void LoadManifestForSubLevel(const ULevelStreaming* StreamingLevel, ULevel* Level);
+	void ReleaseManifestForSubLevel(const ULevelStreaming* StreamingLevel);
+
+	/**
+	 * Walk SubLevelHandles and drop any entry whose ULevelStreaming has been
+	 * GC'd. Defensive against ReleaseManifestForSubLevel never being called
+	 * (engine never fires the state-change event during a hard world teardown,
+	 * PIE shutdown, or programmatic RemoveFromWorld).
+	 */
+	void PruneStaleSubLevelHandles();
+
+	TSharedPtr<FStreamableHandle> PersistentHandle;
+	bool bPersistentLoadComplete = false;
+
+	/** Callbacks waiting on the persistent load. Drained when it completes. */
+	TArray<FOnNexusPersistentLoadCallback> PendingPersistentLoadCallbacks;
+
+	TMap<TWeakObjectPtr<const ULevelStreaming>, TSharedPtr<FStreamableHandle>> SubLevelHandles;
+
+	FDelegateHandle StreamingStateHandle;
 };

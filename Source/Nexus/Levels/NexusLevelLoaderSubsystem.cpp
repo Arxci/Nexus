@@ -1,102 +1,271 @@
 ﻿#include "NexusLevelLoaderSubsystem.h"
 
 #include "Engine/AssetManager.h"
+#include "Engine/Level.h"
+#include "Engine/LevelStreaming.h"
 #include "Engine/World.h"
+#include "Nexus/NexusAssetManager.h"
+
+#include "Streaming/LevelStreamingDelegates.h"
 
 #include "Nexus/Equipment/Attachments/NexusAttachmentDefinition.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Levels/NexusLevelManifest.h"
 #include "Nexus/Levels/NexusWorldSettings.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogNexusLevelLoader, Log, All);
+
 namespace
 {
-	const FName EquippedBundle(TEXT("Equipped"));
+	TArray<FPrimaryAssetId> CollectManifestIds(const UNexusLevelManifest& Manifest)
+	{
+		UAssetManager& AM = UAssetManager::Get();
+		TArray<FPrimaryAssetId> Ids;
+		Ids.Reserve(Manifest.Items.Num() + Manifest.Attachments.Num());
+
+		auto Add = [&](const FSoftObjectPath& Path)
+		{
+			if (Path.IsNull()) return;
+			const FPrimaryAssetId Id = AM.GetPrimaryAssetIdForPath(Path);
+			if (Id.IsValid()) Ids.Add(Id);
+		};
+
+		for (const TSoftObjectPtr<UNexusItemDefinition>& Item : Manifest.Items)
+		{
+			Add(Item.ToSoftObjectPath());
+		}
+		for (const TSoftObjectPtr<UNexusAttachmentDefinition>& Att : Manifest.Attachments)
+		{
+			Add(Att.ToSoftObjectPath());
+		}
+		return Ids;
+	}
+
+	/** Returns the manifest authored on Level's WorldSettings, or null. Distinguishes
+	 *  "wrong WorldSettings class" (bug — log) from "no manifest authored" (intentional). */
+	const UNexusLevelManifest* GetManifestForLevel(const ULevel* Level, bool& bOutWasNexusSettings)
+	{
+		bOutWasNexusSettings = false;
+		if (!Level) return nullptr;
+
+		const ANexusWorldSettings* WS = Cast<ANexusWorldSettings>(Level->GetWorldSettings());
+		if (!WS) return nullptr;
+
+		bOutWasNexusSettings = true;
+		return WS->LevelManifest;
+	}
 }
 
 void UNexusLevelLoaderSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 {
 	Super::OnWorldBeginPlay(InWorld);
 
-	UNexusLevelManifest* Manifest = ResolveManifest();
-	if (!Manifest)
+	StreamingStateHandle = FLevelStreamingDelegates::OnLevelStreamingStateChanged.AddUObject(
+		this, &UNexusLevelLoaderSubsystem::HandleLevelStreamingStateChanged);
+
+	LoadPersistentManifest();
+
+	// Already-streamed-in sub-levels (always-loaded, or loaded during world init)
+	// don't fire OnLevelStreamingStateChanged — handle them directly.
+	for (ULevelStreaming* Streaming : InWorld.GetStreamingLevels())
 	{
-		// No manifest authored for this level. First equip of any item will
-		// hitch (the equipment component's own per-item load is the fallback).
-		// Log so the gap isn't silent during playtest.
-		UE_LOG(LogTemp, Warning,
-			TEXT("[LevelLoader] No NexusLevelManifest assigned for world %s; first-equip hitches possible."),
-			*InWorld.GetName());
-		HandleLoadFinished();
-		return;
-	}
-
-	UAssetManager& AM = UAssetManager::Get();
-
-	TArray<FPrimaryAssetId> IdsToLoad;
-	IdsToLoad.Reserve(Manifest->Items.Num() + Manifest->Attachments.Num());
-
-	auto AddSoftRef = [&](const FSoftObjectPath& Path)
-	{
-		if (Path.IsNull()) return;
-		const FPrimaryAssetId Id = AM.GetPrimaryAssetIdForPath(Path);
-		if (Id.IsValid()) IdsToLoad.Add(Id);
-	};
-
-	for (const TSoftObjectPtr<UNexusItemDefinition>& Item : Manifest->Items)
-	{
-		AddSoftRef(Item.ToSoftObjectPath());
-	}
-	for (const TSoftObjectPtr<UNexusAttachmentDefinition>& Att : Manifest->Attachments)
-	{
-		AddSoftRef(Att.ToSoftObjectPath());
-	}
-
-	if (IdsToLoad.Num() == 0)
-	{
-		HandleLoadFinished();
-		return;
-	}
-
-	TWeakObjectPtr WeakSelf(this);
-	LevelLoadHandle = AM.ChangeBundleStateForPrimaryAssets(
-		IdsToLoad,
-		TArray<FName>{ EquippedBundle },
-		TArray<FName>{},
-		/*bRemoveAllBundles*/ false,
-		FStreamableDelegate::CreateLambda([WeakSelf]()
+		if (!Streaming) continue;
+		if (ULevel* Loaded = Streaming->GetLoadedLevel())
 		{
-			if (UNexusLevelLoaderSubsystem* Self = WeakSelf.Get())
-			{
-				Self->HandleLoadFinished();
-			}
-		}),
-		FStreamableManager::AsyncLoadHighPriority);
-
-	if (!LevelLoadHandle.IsValid() || LevelLoadHandle->HasLoadCompleted())
-	{
-		HandleLoadFinished();
+			LoadManifestForSubLevel(Streaming, Loaded);
+		}
 	}
 }
 
 void UNexusLevelLoaderSubsystem::Deinitialize()
 {
-	LevelLoadHandle.Reset();
-	bLoadComplete = false;
+	FLevelStreamingDelegates::OnLevelStreamingStateChanged.Remove(StreamingStateHandle);
+	StreamingStateHandle.Reset();
+
+	SubLevelHandles.Reset();
+	PendingPersistentLoadCallbacks.Reset();
+	PersistentHandle.Reset();
+	bPersistentLoadComplete = false;
+
 	Super::Deinitialize();
 }
 
-void UNexusLevelLoaderSubsystem::HandleLoadFinished()
-{
-	if (bLoadComplete) return;
-	bLoadComplete = true;
-	OnLoadComplete.Broadcast();
-}
-
-UNexusLevelManifest* UNexusLevelLoaderSubsystem::ResolveManifest() const
+void UNexusLevelLoaderSubsystem::LoadPersistentManifest()
 {
 	const UWorld* World = GetWorld();
-	if (!World) return nullptr;
+	if (!World) { MarkPersistentLoadComplete(); return; }
 
-	const ANexusWorldSettings* WS = Cast<ANexusWorldSettings>(World->GetWorldSettings());
-	return WS ? WS->LevelManifest : nullptr;
+	bool bWasNexusSettings = false;
+	const UNexusLevelManifest* Manifest = GetManifestForLevel(World->PersistentLevel, bWasNexusSettings);
+
+	if (!bWasNexusSettings)
+	{
+		UE_LOG(LogNexusLevelLoader, Warning,
+			TEXT("Persistent level %s has non-Nexus WorldSettings; no manifest will be preloaded. "
+			     "Convert WorldSettings actor to ANexusWorldSettings to fix."),
+			*World->GetName());
+	}
+	if (!Manifest)
+	{
+		MarkPersistentLoadComplete();
+		return;
+	}
+
+	const TArray<FPrimaryAssetId> Ids = CollectManifestIds(*Manifest);
+	if (Ids.Num() == 0)
+	{
+		MarkPersistentLoadComplete();
+		return;
+	}
+
+	UAssetManager& AM = UAssetManager::Get();
+	TWeakObjectPtr WeakSelf(this);
+	PersistentHandle = AM.ChangeBundleStateForPrimaryAssets(
+		Ids,
+		TArray<FName>{ UNexusAssetManager::BundleEquipped },
+		TArray<FName>{},
+		false,
+		FStreamableDelegate::CreateLambda([WeakSelf]()
+		{
+			if (UNexusLevelLoaderSubsystem* Self = WeakSelf.Get())
+			{
+				Self->MarkPersistentLoadComplete();
+			}
+		}),
+		FStreamableManager::AsyncLoadHighPriority);
+
+	if (!PersistentHandle.IsValid() || PersistentHandle->HasLoadCompleted())
+	{
+		MarkPersistentLoadComplete();
+	}
+}
+
+void UNexusLevelLoaderSubsystem::MarkPersistentLoadComplete()
+{
+	if (bPersistentLoadComplete) return;
+	bPersistentLoadComplete = true;
+
+	OnPersistentLoadComplete.Broadcast();
+
+	for (const FOnNexusPersistentLoadCallback& Cb : PendingPersistentLoadCallbacks)
+	{
+		if (Cb.IsBound()) Cb.Execute();
+	}
+	PendingPersistentLoadCallbacks.Reset();
+}
+
+void UNexusLevelLoaderSubsystem::CallOrRegisterOnPersistentLoadComplete(
+	const FOnNexusPersistentLoadCallback& Callback)
+{
+	if (!Callback.IsBound()) return;
+
+	if (bPersistentLoadComplete)
+	{
+		Callback.Execute();
+		return;
+	}
+	PendingPersistentLoadCallbacks.Add(Callback);
+}
+
+bool UNexusLevelLoaderSubsystem::IsSubLevelLoaded(const ULevelStreaming* StreamingLevel) const
+{
+	if (!StreamingLevel) return false;
+	const TSharedPtr<FStreamableHandle>* Handle = SubLevelHandles.Find(StreamingLevel);
+	if (!Handle || !Handle->IsValid()) return false;
+	return (*Handle)->HasLoadCompleted();
+}
+
+void UNexusLevelLoaderSubsystem::HandleLevelStreamingStateChanged(
+	UWorld* StreamingWorld,
+	const ULevelStreaming* StreamingLevel,
+	ULevel* LevelIfLoaded,
+	ELevelStreamingState PreviousState,
+	ELevelStreamingState NewState)
+{
+	if (StreamingWorld != GetWorld() || !StreamingLevel) return;
+
+	// Idempotent: if NewState indicates "loaded," try to load. LoadManifestForSubLevel
+	// already guards with SubLevelHandles.Contains() so repeat calls are no-ops.
+	// Avoids relying on PreviousState — which can reorder between engine versions.
+	const bool bLoaded =
+		(NewState == ELevelStreamingState::LoadedNotVisible ||
+		 NewState == ELevelStreamingState::LoadedVisible);
+
+	const bool bUnloaded =
+		(NewState == ELevelStreamingState::Unloaded ||
+		 NewState == ELevelStreamingState::Removed);
+
+	if (bLoaded && LevelIfLoaded)
+	{
+		LoadManifestForSubLevel(StreamingLevel, LevelIfLoaded);
+	}
+	else if (bUnloaded)
+	{
+		ReleaseManifestForSubLevel(StreamingLevel);
+	}
+}
+
+void UNexusLevelLoaderSubsystem::LoadManifestForSubLevel(
+	const ULevelStreaming* StreamingLevel, ULevel* Level)
+{
+	if (!StreamingLevel || !Level) return;
+
+	PruneStaleSubLevelHandles();
+
+	if (SubLevelHandles.Contains(StreamingLevel)) return;
+
+	bool bWasNexusSettings = false;
+	const UNexusLevelManifest* Manifest = GetManifestForLevel(Level, bWasNexusSettings);
+
+	if (!bWasNexusSettings)
+	{
+		UE_LOG(LogNexusLevelLoader, Warning,
+			TEXT("Sub-level %s has non-Nexus WorldSettings; nothing preloaded. "
+			     "Convert WorldSettings actor to ANexusWorldSettings to enable per-sub-level manifests."),
+			*Level->GetOuter()->GetName());
+		return;
+	}
+	if (!Manifest) return;   // Authored correctly but no items in this sub-level. Silent — intentional.
+
+	const TArray<FPrimaryAssetId> Ids = CollectManifestIds(*Manifest);
+	if (Ids.Num() == 0) return;
+
+	UAssetManager& AM = UAssetManager::Get();
+	TWeakObjectPtr WeakSelf(this);
+	TWeakObjectPtr<const ULevelStreaming> WeakLevel(StreamingLevel);
+
+	const TSharedPtr<FStreamableHandle> Handle = AM.ChangeBundleStateForPrimaryAssets(
+		Ids,
+		TArray<FName>{ UNexusAssetManager::BundleEquipped },
+		TArray<FName>{},
+		false,
+		FStreamableDelegate::CreateLambda([WeakSelf, WeakLevel]()
+		{
+			UNexusLevelLoaderSubsystem* Self = WeakSelf.Get();
+			if (!Self) return;
+			Self->OnSubLevelLoaded.Broadcast(const_cast<ULevelStreaming*>(WeakLevel.Get()));
+		}),
+		FStreamableManager::AsyncLoadHighPriority);
+
+	if (Handle.IsValid())
+	{
+		SubLevelHandles.Add(StreamingLevel, Handle);
+	}
+}
+
+void UNexusLevelLoaderSubsystem::ReleaseManifestForSubLevel(const ULevelStreaming* StreamingLevel)
+{
+	SubLevelHandles.Remove(StreamingLevel);
+	PruneStaleSubLevelHandles();
+}
+
+void UNexusLevelLoaderSubsystem::PruneStaleSubLevelHandles()
+{
+	for (auto It = SubLevelHandles.CreateIterator(); It; ++It)
+	{
+		if (!It.Key().IsValid())
+		{
+			It.RemoveCurrent();
+		}
+	}
 }

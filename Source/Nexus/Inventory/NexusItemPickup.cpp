@@ -11,6 +11,7 @@
 #include "Kismet/GameplayStatics.h"
 
 #include "TimerManager.h"
+#include "Nexus/NexusAssetManager.h"
 
 #include "Nexus/Inventory/NexusInventoryAcquireLibrary.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
@@ -108,7 +109,7 @@ void ANexusItemPickup::RequestPickupMeshLoad()
 	TWeakObjectPtr<ANexusItemPickup> WeakSelf(this);
 	UAssetManager& AM = UAssetManager::Get();
 	PickupMeshHandle = AM.LoadPrimaryAsset(
-		AssetId, TArray<FName>{ TEXT("Pickup") },
+		AssetId, TArray<FName>{ UNexusAssetManager::BundlePickup },
 		FStreamableDelegate::CreateLambda([WeakSelf]()
 		{
 			ANexusItemPickup* Self = WeakSelf.Get();

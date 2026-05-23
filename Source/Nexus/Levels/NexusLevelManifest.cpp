@@ -1,13 +1,8 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+﻿#include "NexusLevelManifest.h"
 
+#include "Nexus/NexusAssetManager.h"
 
-#include "NexusLevelManifest.h"
-
-
-NexusLevelManifest::NexusLevelManifest()
+FPrimaryAssetId UNexusLevelManifest::GetPrimaryAssetId() const
 {
-}
-
-NexusLevelManifest::~NexusLevelManifest()
-{
+	return FPrimaryAssetId(UNexusAssetManager::TypeLevelManifest, GetFName());
 }
