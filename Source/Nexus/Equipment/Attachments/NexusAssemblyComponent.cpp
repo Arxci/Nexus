@@ -80,7 +80,7 @@ void UNexusAssemblyComponent::ClearAssembly()
 	SlotLoadHandles.Reset();
 	Attached.Reset();
 
-	InvalidateStatCache();
+	InvalidateCaches();
 }
 
 void UNexusAssemblyComponent::RebuildFromInstance()
@@ -286,7 +286,7 @@ bool UNexusAssemblyComponent::AttachItem(const FGameplayTag SlotID, UNexusAttach
 			HandleAttachmentLoaded(SlotID);
 		}
 
-		InvalidateStatCache();
+		InvalidateCaches();
 
 		// If the new attachment exposed sub-slots, fill their defaults so a
 		// runtime swap (UI-driven) behaves the same as the initial Rebuild.
@@ -314,7 +314,7 @@ bool UNexusAssemblyComponent::DetachItem(const FGameplayTag SlotID)
 			Instance->ClearAttachmentForSlot(SlotID);
 		}
 
-		InvalidateStatCache();
+		InvalidateCaches();
 	}
 
 	BroadcastChanged();
@@ -360,7 +360,7 @@ void UNexusAssemblyComponent::DetachSubtree(const FGameplayTag SlotID)
 	}
 
 	SlotLoadHandles.Remove(SlotID);
-	InvalidateStatCache();
+	InvalidateCaches();
 }
 
 UNexusAttachmentDefinition* UNexusAssemblyComponent::GetAttachment(const FGameplayTag SlotID) const
@@ -600,7 +600,7 @@ void UNexusAssemblyComponent::RebuildStatCache() const
 	bStatCacheValid = true;
 }
 
-void UNexusAssemblyComponent::InvalidateStatCache()
+void UNexusAssemblyComponent::InvalidateCaches()
 {
 	bStatCacheValid = false;
 }
@@ -647,6 +647,18 @@ UAnimMontage* UNexusAssemblyComponent::ResolveActionStream(
     const FGameplayTag ActionTag, const bool bArmsStream) const
 {
     if (!ActionTag.IsValid()) return nullptr;
+
+    // Cache lookup: a key present (even with nullptr value) means we've already
+    // walked the override-then-fallback chain for this action under the current
+    // assembly tree. Caches are dropped via InvalidateCaches on every
+    // Attach/Detach/ClearAssembly so stale entries can't survive a config change.
+    TMap<FGameplayTag, UAnimMontage*>& Cache = bArmsStream
+        ? CachedArmsMontages
+        : CachedItemMontages;
+    if (UAnimMontage* const* Hit = Cache.Find(ActionTag))
+    {
+        return *Hit;
+    }
 
     const FActionStreamPtr StreamPtr = bArmsStream
         ? &FEquipmentActionAnim::ArmsMontage
@@ -703,20 +715,25 @@ UAnimMontage* UNexusAssemblyComponent::ResolveActionStream(
 
             if (UAnimMontage* Loaded = LoadStream(Override->*StreamPtr, ActionTag, Rec->Definition))
             {
+                Cache.Add(ActionTag, Loaded);
                 return Loaded;
             }
         }
     }
 
+    UAnimMontage* Fallback = nullptr;
     if (const FNexusFragment_Equippable* Eq = GetEquippableFragment())
     {
         if (const FEquipmentActionAnim* Pair = Eq->Animations.Actions.Find(ActionTag))
         {
-            return LoadStream(Pair->*StreamPtr, ActionTag, GetSourceInstance());
+            Fallback = LoadStream(Pair->*StreamPtr, ActionTag, GetSourceInstance());
         }
     }
 
-    return nullptr;
+    // Cache the negative result too — a non-overridden, non-authored action
+    // should not re-walk every attachment + fragment lookup on every shot.
+    Cache.Add(ActionTag, Fallback);
+    return Fallback;
 }
 
 

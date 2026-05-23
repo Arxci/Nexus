@@ -54,6 +54,7 @@ void UNexusEquipmentComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	PendingActivation.Reset();
 	PendingActivationsAfterAssignment.Empty();
 	PendingUnholsterActionTag = FGameplayTag();
+	SlotPendingClear = FGameplayTag();
 	SwapPhase = ENexusEquipSwapPhase::Idle;
 	SwapOutgoingSlot = FGameplayTag();
 	SwapIncomingSlot = FGameplayTag();
@@ -283,13 +284,55 @@ FGameplayTag UNexusEquipmentComponent::PickAutoAssignSlot(const UNexusItemInstan
 
 bool UNexusEquipmentComponent::ClearSlot(FGameplayTag SlotTag)
 {
-	return ClearSlotImmediate(SlotTag);
+	UNexusItemInstance* Instance = EquippedSlots.FindRef(SlotTag);
+	if (!Instance) return false;
+
+	// Non-active slot: nothing on the player's mesh to animate — snap.
+	if (!ActiveSlot.MatchesTagExact(SlotTag))
+	{
+		return ClearSlotImmediate(SlotTag);
+	}
+
+	// Active slot: defer the actual removal until the holster montage finishes
+	// so the player sees the gun being stowed. SlotPendingClear is the marker
+	// HandleHolsterPhaseFinished consults to convert the holster into a clear
+	// instead of an idle-empty state.
+	SlotPendingClear = SlotTag;
+
+	// A queued activation for this very slot would otherwise win after the
+	// holster runs and immediately re-spawn what we just told to leave —
+	// drop it. Other queued activations (a slot the player WANTS to draw to
+	// after this clear) remain.
+	if (PendingActivation.IsSet() && PendingActivation->SlotTag.MatchesTagExact(SlotTag))
+	{
+		PendingActivation.Reset();
+	}
+
+	// If a holster of this same slot is already in flight (e.g. the player
+	// previously called RequestHolster), the existing PhaseTimer will deliver
+	// HandleHolsterPhaseFinished and we'll be picked up there. Otherwise, kick
+	// off the transition now. BeginSlotTransition (via BeginHolsterPhase) calls
+	// SetTimer with our shared PhaseTimer, which replaces any earlier draw-side
+	// timer cleanly.
+	if (SwapPhase != ENexusEquipSwapPhase::Holstering || !SwapOutgoingSlot.MatchesTagExact(SlotTag))
+	{
+		BeginSlotTransition(SlotTag, FGameplayTag());
+	}
+	return true;
 }
 
 bool UNexusEquipmentComponent::ClearSlotImmediate(FGameplayTag SlotTag)
 {
 	UNexusItemInstance* Instance = EquippedSlots.FindRef(SlotTag);
 	if (!Instance) return false;
+
+	// If this slot had an animated-clear deferred via ClearSlot(), we're
+	// handling the actual removal now — drop the marker so a later, unrelated
+	// holster phase can't pick it up and clear an innocent slot.
+	if (SlotPendingClear.MatchesTagExact(SlotTag))
+	{
+		SlotPendingClear = FGameplayTag();
+	}
 
 	const bool bWasActive = ActiveSlot.MatchesTagExact(SlotTag);
 
@@ -462,11 +505,26 @@ void UNexusEquipmentComponent::HandleHolsterPhaseFinished()
 		OutgoingPendingHide = FGameplayTag();
 	}
 
-	const FGameplayTag OldActive = ActiveSlot;
-	ActiveSlot = FGameplayTag();
-	if (OldActive.IsValid())
+	// Honor a deferred clear from ClearSlot(active): drop the slot entirely now
+	// that the player has seen the holster montage play. ClearSlotImmediate
+	// handles ActiveSlot reset, swap-state cleanup, and the OnActiveSlotChanged
+	// + OnSlotCleared broadcasts in one pass — must run BEFORE we decide on the
+	// next draw, or a queued activation could re-occupy the slot we just told
+	// to clear.
+	if (SlotPendingClear.IsValid())
 	{
-		OnActiveSlotChanged.Broadcast(ActiveSlot, nullptr);
+		const FGameplayTag SlotToClear = SlotPendingClear;
+		SlotPendingClear = FGameplayTag();
+		ClearSlotImmediate(SlotToClear);
+	}
+	else
+	{
+		const FGameplayTag OldActive = ActiveSlot;
+		ActiveSlot = FGameplayTag();
+		if (OldActive.IsValid())
+		{
+			OnActiveSlotChanged.Broadcast(ActiveSlot, nullptr);
+		}
 	}
 
 	FGameplayTag NextDraw = SwapIncomingSlot;

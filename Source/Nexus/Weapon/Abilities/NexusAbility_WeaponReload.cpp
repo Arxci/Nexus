@@ -20,6 +20,7 @@
 #include "Nexus/Inventory/NexusInventoryComponent.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
 #include "Nexus/NexusGameplayTags.h"
+#include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/Fragments/Weapon/NexusFragment_Weapon.h"
 
 UNexusAbility_WeaponReload::UNexusAbility_WeaponReload()
@@ -117,7 +118,8 @@ void UNexusAbility_WeaponReload::CommitAbility()
 	BoundAnimInstance   = ReloadAnimInstance;
 	BoundReloadMontage  = ArmsReload;
 
-	if (USoundBase* ReloadSound = Weapon->Presentation.ReloadSound.LoadSynchronous())
+	if (USoundBase* ReloadSound = NexusWeapon::GetEquippedAsset(Weapon->Presentation.ReloadSound,
+	TEXT("ReloadSound"), GetActiveDefinition()))
 	{
 		if (const AActor* Owner = GetOwner())
 		{

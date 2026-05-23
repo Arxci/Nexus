@@ -32,6 +32,7 @@
 #include "Nexus/NexusCollisionChannels.h"
 #include "Nexus/NexusGameplayTags.h"
 #include "Nexus/Equipment/NexusEquippedActor.h"
+#include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/Fragments/Weapon/NexusFragment_Weapon.h"
 
 
@@ -184,12 +185,14 @@ void UNexusAbility_WeaponFire::FireShot() const
 		PlayMontage(EquippedActor->GetEffectiveArmsMontage(NexusGameplayTags::Action_Equipment_Weapon_Fire));
 	}
 
-	if (USoundBase* S = Weapon->Presentation.FireSound.LoadSynchronous())
+	if (USoundBase* S = NexusWeapon::GetEquippedAsset(Weapon->Presentation.FireSound,
+		TEXT("FireSound"), GetActiveDefinition()))
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, S, ViewLoc);
 	}
-	
-	if (UFXSystemAsset* FX = Weapon->Presentation.MuzzleFlash.LoadSynchronous())
+
+	if (UFXSystemAsset* FX = NexusWeapon::GetEquippedAsset(Weapon->Presentation.MuzzleFlash,
+		TEXT("MuzzleFlash"), GetActiveDefinition()))
 	{
 		FVector MuzzleLoc = ViewLoc;
 		FRotator MuzzleRot = ViewRot;
@@ -294,14 +297,36 @@ void UNexusAbility_WeaponFire::FireOnePellet(const FVector& ViewLoc, const FRota
 		INexusDamageReceiver::Execute_ReceiveDamage(HitActor, Ctx);
 	}
 
-	if (UFXSystemAsset* Impact = Weapon->Presentation.ImpactFX.LoadSynchronous())
+	if (UFXSystemAsset* Impact = NexusWeapon::GetEquippedAsset(Weapon->Presentation.ImpactFX,
+		TEXT("ImpactFX"), GetActiveDefinition()))
 	{
 		SpawnFXAtLocation(this, Impact, Hit.ImpactPoint, Hit.ImpactNormal.Rotation());
 	}
 
-	if (USoundBase* ImpactS = Weapon->Presentation.ImpactSound.LoadSynchronous())
+	if (USoundBase* ImpactS = NexusWeapon::GetEquippedAsset(Weapon->Presentation.ImpactSound,
+		TEXT("ImpactSound"), GetActiveDefinition()))
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, ImpactS, Hit.ImpactPoint);
+	}
+}
+
+void UNexusAbility_WeaponFire::HandleDryFire() const
+{
+	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
+	if (!Weapon) return;
+
+	if (const ANexusEquippedActor* EquippedActor = GetEquippedActor())
+	{
+		PlayMontage(EquippedActor->GetEffectiveArmsMontage(NexusGameplayTags::Action_Equipment_Weapon_DryFire));
+	}
+
+	if (USoundBase* S = NexusWeapon::GetEquippedAsset(Weapon->Presentation.DryFireSound,
+		TEXT("DryFireSound"), GetActiveDefinition()))
+	{
+		if (const AActor* Owner = GetOwner())
+		{
+			UGameplayStatics::PlaySoundAtLocation(this, S, Owner->GetActorLocation());
+		}
 	}
 }
 
@@ -321,23 +346,4 @@ UAnimMontage* UNexusAbility_WeaponFire::PlayMontage(UAnimMontage* Montage) const
 		}
 	}
 	return nullptr;
-}
-
-void UNexusAbility_WeaponFire::HandleDryFire() const
-{
-	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
-	if (!Weapon) return;
-
-	if (const ANexusEquippedActor* EquippedActor = GetEquippedActor())
-	{
-		PlayMontage(EquippedActor->GetEffectiveArmsMontage(NexusGameplayTags::Action_Equipment_Weapon_DryFire));
-	}
-
-	if (USoundBase* S = Weapon->Presentation.DryFireSound.LoadSynchronous())
-	{
-		if (const AActor* Owner = GetOwner())
-		{
-			UGameplayStatics::PlaySoundAtLocation(this, S, Owner->GetActorLocation());
-		}
-	}
 }

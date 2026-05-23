@@ -211,7 +211,13 @@ private:
 	FGameplayTag FindParentSlotFor(FGameplayTag SlotID) const;
 
 	void RebuildStatCache() const;
-	void InvalidateStatCache();
+	/**
+	 * Wipes every lazy-resolved cache on the component (stats + per-action
+	 * arms/item montages). Called from every mutation point — Attach, Detach,
+	 * ClearAssembly, Rebuild — so the next read recomputes against the
+	 * post-mutation tree.
+	 */
+	void InvalidateCaches();
 
 	void BroadcastChanged();
 
@@ -250,4 +256,15 @@ private:
 	/** Lazy-resolved effective stats; rebuilt on read after invalidation. */
 	mutable FResolvedItemStats CachedStats;
 	mutable bool bStatCacheValid = false;
+
+	/**
+	 * Lazy-resolved per-action montage caches. Keys present indicate "resolved
+	 * once" — a null value means "no override or fallback authored," which is a
+	 * valid result we don't want to re-resolve on every shot. Stored as raw
+	 * UAnimMontage* because the live attachment streamable handles in
+	 * SlotLoadHandles + the item instance's EquippedBundleHandle keep every
+	 * cached montage resident between cache invalidations.
+	 */
+	mutable TMap<FGameplayTag, UAnimMontage*> CachedArmsMontages;
+	mutable TMap<FGameplayTag, UAnimMontage*> CachedItemMontages;
 };

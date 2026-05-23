@@ -275,6 +275,16 @@ private:
 
 	FGameplayTag OutgoingPendingHide;
 
+	/**
+	 * Slot that ClearSlot() asked us to drop *after* its holster montage finishes.
+	 * Lets clearing the active slot stay animated (player sees the gun being
+	 * stowed) while the actual EquippedSlots removal waits for the montage —
+	 * matches the header contract on ClearSlot and the survival-horror feel of
+	 * deliberate weapon handling. Snap clears (non-active slot, EndPlay teardown,
+	 * inventory removal) bypass this and call ClearSlotImmediate directly.
+	 */
+	FGameplayTag SlotPendingClear;
+
 	FTimerHandle PhaseTimer;
 
 	/**
