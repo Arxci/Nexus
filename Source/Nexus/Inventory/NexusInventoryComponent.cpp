@@ -1,8 +1,6 @@
 ﻿#include "NexusInventoryComponent.h"
 
-#include "EMSData.h"
-#include "EMSFunctionLibrary.h"
-
+#include "Nexus/Nexus.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
 #include "Nexus/Inventory/Fragments/Stackable/NexusFragment_Stackable.h"
@@ -22,6 +20,26 @@ UNexusInventoryComponent::UNexusInventoryComponent()
 	PrimaryComponentTick.bCanEverTick = false;
 }
 
+void UNexusInventoryComponent::BeginPlay()
+{
+	Super::BeginPlay();
+
+#if !UE_BUILD_SHIPPING
+	if (GridWidth <= 0 || GridHeight <= 0)
+	{
+		UE_LOG(LogNexusInventory, Warning,
+			TEXT("%s: inventory grid is %dx%d — it can hold no items. Set positive GridWidth/GridHeight."),
+			*GetName(), GridWidth, GridHeight);
+	}
+	if (bUnlimitedWeight && WeightCapacity > 0.0f)
+	{
+		UE_LOG(LogNexusInventory, Warning,
+			TEXT("%s: WeightCapacity (%.1f) is set but bUnlimitedWeight is true, so it is ignored. "
+				 "Set bUnlimitedWeight=false to enforce the weight limit."), *GetName(), WeightCapacity);
+	}
+#endif
+}
+
 
 // Add/Remove
 FNexusAddItemResult UNexusInventoryComponent::AddItem(UNexusItemDefinition* Definition, int32 Count)
@@ -35,7 +53,7 @@ FNexusAddItemResult UNexusInventoryComponent::AddItem(UNexusItemDefinition* Defi
 
 	const int32 OriginalCount = Count;
 
-	if (WeightCapacity > 0.0f && Definition->Weight > 0.0f)
+	if (!bUnlimitedWeight && Definition->Weight > 0.0f)
 	{
 		const float Available     = WeightCapacity - GetUsedWeight();
 		const int32 MaxByWeight   = Available > 0.0f
@@ -60,17 +78,16 @@ FNexusAddItemResult UNexusInventoryComponent::AddItem(UNexusItemDefinition* Defi
 
 	if (MaxStack > 1)
 	{
-		TArray<UNexusItemInstance*> Snapshot;
-		Snapshot.Reserve(Items.Num());
-		for (UNexusItemInstance* I : Items) { Snapshot.Add(I); }
-
-		for (UNexusItemInstance* Existing : Snapshot)
+		// Safe to iterate Items directly: the only mutation in this loop is
+		// ModifyStack on an existing element (no add/remove), and EnqueueChange
+		// only defers a broadcast — nothing fires until the FBroadcastScope exits.
+		for (UNexusItemInstance* Existing : Items)
 		{
 			const int32 Remaining = Count - Placed;
 			if (Remaining <= 0) break;
 			if (!Existing || Existing->GetDefinition() != Definition) continue;
 			if (Existing->GetStackCount() >= MaxStack) continue;
-			if (Existing->GetStatTags().Num() > 0) continue;
+			if (!Existing->IsMergeableStack()) continue;
 
 			const int32 Applied = Existing->ModifyStack(Remaining, MaxStack);
 			if (Applied > 0)
@@ -83,15 +100,20 @@ FNexusAddItemResult UNexusInventoryComponent::AddItem(UNexusItemDefinition* Defi
 		}
 	}
 
+	const FIntPoint DefFootprint(FMath::Max(1, Definition->GridSize.X), FMath::Max(1, Definition->GridSize.Y));
+
 	while (Placed < Count)
 	{
-		if (SlotCapacity > 0 && Items.Num() >= SlotCapacity) break;
+		FIntPoint PlacePos;
+		bool bPlaceRotated = false;
+		if (!FindFreePlacement(DefFootprint, PlacePos, bPlaceRotated)) break; // grid full
 
 		const int32 Remaining = Count - Placed;
 		const int32 ToPlace   = FMath::Min(Remaining, MaxStack);
 
 		UNexusItemInstance* NewInstance = NewObject<UNexusItemInstance>(this);
 		NewInstance->Initialize(Definition, ToPlace);
+		NewInstance->SetGridPlacement(PlacePos, bPlaceRotated);
 		Items.Add(NewInstance);
 		BindInstance(NewInstance);
 
@@ -111,11 +133,11 @@ bool UNexusInventoryComponent::AddInstance(UNexusItemInstance* Instance)
 {
 	if (!Instance || !Instance->GetDefinition()) return false;
 	if (Items.Contains(Instance)) return false;
-	if (SlotCapacity > 0 && Items.Num() >= SlotCapacity) return false;
 
-	if (WeightCapacity > 0.0f)
+	const UNexusItemDefinition* Def = Instance->GetDefinition();
+
+	if (!bUnlimitedWeight)
 	{
-		const UNexusItemDefinition* Def = Instance->GetDefinition();
 		const float Adding = Def->Weight * Instance->GetStackCount();
 		if (Adding > 0.0f && GetUsedWeight() + Adding > WeightCapacity)
 		{
@@ -123,12 +145,20 @@ bool UNexusInventoryComponent::AddInstance(UNexusItemInstance* Instance)
 		}
 	}
 
+	// Find a free region in this container — a transferred instance's prior position
+	// from another grid is meaningless here.
+	const FIntPoint Footprint(FMath::Max(1, Def->GridSize.X), FMath::Max(1, Def->GridSize.Y));
+	FIntPoint PlacePos;
+	bool bPlaceRotated = false;
+	if (!FindFreePlacement(Footprint, PlacePos, bPlaceRotated)) return false; // no room
+
 	FBroadcastScope Scope(this);
 
 	if (Instance->GetOuter() != this)
 	{
 		Instance->Rename(nullptr, this, REN_DontCreateRedirectors);
 	}
+	Instance->SetGridPlacement(PlacePos, bPlaceRotated);
 	Items.Add(Instance);
 	BindInstance(Instance);
 	CachedUsedWeight += GetWeightContribution(Instance);
@@ -221,14 +251,34 @@ void UNexusInventoryComponent::FlushPendingChanges()
 			UNexusItemInstance* Inst = Change.Instance.Get();
 			if (!Inst) continue;
 
-			if (Change.bAdded)        OnItemAdded.Broadcast(Inst);
-			else if (Change.bRemoved) OnItemRemoved.Broadcast(Inst);
-			else                      OnItemChanged.Broadcast(Inst);
+			if (Change.bAdded)
+			{
+				OnItemAdded.Broadcast(Inst);
+			}
+			else if (Change.bRemoved)
+			{
+				OnItemRemoved.Broadcast(Inst);
+			}
+			else if (Items.Contains(Inst))
+			{
+				OnItemChanged.Broadcast(Inst);
+			}
+			else
+			{
+				// A "changed" enqueued for an instance that a prior listener removed
+				// within this same flush batch. The weak ptr is still resolvable but
+				// the item is gone — don't report a phantom change on it.
+				continue;
+			}
 			bAnyChange = true;
 		}
 
 		if (bAnyChange) OnInventoryChanged.Broadcast();
 	}
+
+#if !UE_BUILD_SHIPPING
+	VerifyWeightInvariant();
+#endif
 }
 
 void UNexusInventoryComponent::BindInstance(UNexusItemInstance* Instance)
@@ -333,6 +383,16 @@ UNexusItemInstance* UNexusInventoryComponent::FindFirstByIdentityTag(FGameplayTa
 	return nullptr;
 }
 
+UNexusItemInstance* UNexusInventoryComponent::FindInstanceByGuid(FGuid InstanceGuid) const
+{
+	if (!InstanceGuid.IsValid()) return nullptr;
+	for (UNexusItemInstance* Instance : Items)
+	{
+		if (Instance && Instance->GetInstanceGuid() == InstanceGuid) return Instance;
+	}
+	return nullptr;
+}
+
 int32 UNexusInventoryComponent::GetMaxStackForDefinition(const UNexusItemDefinition* Definition)
 {
 	if (!Definition) return 1;
@@ -352,37 +412,140 @@ float UNexusInventoryComponent::GetUsedWeight() const
 }
 
 
-// Save
-void UNexusInventoryComponent::ComponentSaved_Implementation()
+// Grid
+bool UNexusInventoryComponent::CanPlaceAt(FIntPoint Footprint, FIntPoint TopLeft, const UNexusItemInstance* IgnoreInstance) const
 {
-	for (UNexusItemInstance* Instance : Items)
+	if (Footprint.X <= 0 || Footprint.Y <= 0) return false;
+	if (TopLeft.X < 0 || TopLeft.Y < 0) return false;
+	if (TopLeft.X + Footprint.X > GridWidth)  return false;
+	if (TopLeft.Y + Footprint.Y > GridHeight) return false;
+
+	for (const UNexusItemInstance* Other : Items)
+	{
+		if (!Other || Other == IgnoreInstance) continue;
+		const FIntPoint OPos = Other->GetGridPosition();
+		if (OPos.X < 0 || OPos.Y < 0) continue; // unplaced — occupies nothing
+
+		const FIntPoint OFoot = Other->GetGridFootprint();
+		const bool bDisjoint =
+			TopLeft.X + Footprint.X <= OPos.X ||
+			OPos.X    + OFoot.X     <= TopLeft.X ||
+			TopLeft.Y + Footprint.Y <= OPos.Y ||
+			OPos.Y    + OFoot.Y     <= TopLeft.Y;
+		if (!bDisjoint) return false;
+	}
+	return true;
+}
+
+bool UNexusInventoryComponent::FindFreePlacement(FIntPoint UnrotatedSize, FIntPoint& OutTopLeft, bool& bOutRotated) const
+{
+	const int32 W = FMath::Max(1, UnrotatedSize.X);
+	const int32 H = FMath::Max(1, UnrotatedSize.Y);
+
+	for (int32 Pass = 0; Pass < 2; ++Pass)
+	{
+		const bool bRot = (Pass == 1);
+		if (bRot && W == H) continue; // rotation is a no-op for square footprints
+
+		const FIntPoint Foot = bRot ? FIntPoint(H, W) : FIntPoint(W, H);
+		for (int32 Y = 0; Y + Foot.Y <= GridHeight; ++Y)
+		{
+			for (int32 X = 0; X + Foot.X <= GridWidth; ++X)
+			{
+				if (CanPlaceAt(Foot, FIntPoint(X, Y)))
+				{
+					OutTopLeft  = FIntPoint(X, Y);
+					bOutRotated = bRot;
+					return true;
+				}
+			}
+		}
+	}
+	return false;
+}
+
+bool UNexusInventoryComponent::MoveItemTo(UNexusItemInstance* Instance, FIntPoint TopLeft, bool bRotated)
+{
+	if (!Instance || !Items.Contains(Instance)) return false;
+
+	FIntPoint Footprint(1, 1);
+	if (const UNexusItemDefinition* Def = Instance->GetDefinition())
+	{
+		Footprint.X = FMath::Max(1, Def->GridSize.X);
+		Footprint.Y = FMath::Max(1, Def->GridSize.Y);
+	}
+	if (bRotated) { Swap(Footprint.X, Footprint.Y); }
+
+	// Exclude the instance itself so it doesn't collide with its own current cells.
+	if (!CanPlaceAt(Footprint, TopLeft, Instance)) return false;
+	if (Instance->GetGridPosition() == TopLeft && Instance->IsRotated() == bRotated) return true;
+
+	FBroadcastScope Scope(this);
+	Instance->SetGridPlacement(TopLeft, bRotated);
+	EnqueueChange(Instance, false, false);
+	return true;
+}
+
+
+// Save
+void UNexusInventoryComponent::ComponentPreSave_Implementation()
+{
+	// Snapshot the live instances into flat descriptors *before* EMS serializes the
+	// component's SaveGame properties (PreSave runs ahead of serialization). The live
+	// Items pointers are deliberately not SaveGame — see ComponentLoaded for why.
+	SavedItems.Reset();
+	SavedItems.Reserve(Items.Num());
+	for (const UNexusItemInstance* Instance : Items)
 	{
 		if (!Instance) continue;
-		const FString Key = FString::Printf(TEXT("InventoryItem_%s"),
-			*Instance->GetInstanceGuid().ToString(EGuidFormats::DigitsWithHyphens));
-		UEMSFunctionLibrary::SaveRawObject(GetOwner(), FRawObjectSaveData{ Instance, Key });
+		SavedItems.Add(Instance->ToSaveData());
 	}
 }
 
 void UNexusInventoryComponent::ComponentLoaded_Implementation()
 {
-	CachedUsedWeight = 0.0f;
-	for (UNexusItemInstance* Instance : Items)
+	// EMS cannot recreate the per-item subobjects: it serializes a UObject* as a path
+	// and LoadSynchronous-resolves it on load, which is null for a transient subobject.
+	// So persistence rides on SavedItems (flat descriptors) and we own recreation here
+	// — the step the earlier BP prototype performed via ConstructObjectFromClass, and
+	// the ASC performs by re-granting abilities before its own load pass. Rebuild each
+	// instance from its descriptor, dropping any whose definition asset is gone.
+	for (UNexusItemInstance* Old : Items)
 	{
-		if (!Instance) continue;
-
-		const FString Key = FString::Printf(TEXT("InventoryItem_%s"),
-			*Instance->GetInstanceGuid().ToString(EGuidFormats::DigitsWithHyphens));
-
-		UEMSFunctionLibrary::LoadRawObject(GetOwner(), FRawObjectSaveData{ Instance, Key });
-		Instance->RestoreLoadedState();
-
-		BindInstance(Instance);
-		if (const UNexusItemDefinition* Def = Instance->GetDefinition())
-		{
-			CachedUsedWeight += Def->Weight * Instance->GetStackCount();
-		}
+		UnbindInstance(Old);
 	}
+	Items.Reset();
+	Items.Reserve(SavedItems.Num());
+	CachedUsedWeight = 0.0f;
+
+	for (const FNexusItemSaveData& Saved : SavedItems)
+	{
+		UNexusItemInstance* Instance = NewObject<UNexusItemInstance>(this);
+		if (!Instance->LoadFromSaveData(Saved))
+		{
+			continue; // definition missing from build — already logged, skip
+		}
+		Items.Add(Instance);
+		BindInstance(Instance);
+		CachedUsedWeight += GetWeightContribution(Instance);
+	}
+
+	SavedItems.Reset(); // transient restore buffer; don't keep it resident
 
 	OnInventoryChanged.Broadcast();
 }
+
+#if !UE_BUILD_SHIPPING
+void UNexusInventoryComponent::VerifyWeightInvariant() const
+{
+	float Recomputed = 0.0f;
+	for (const UNexusItemInstance* Instance : Items)
+	{
+		Recomputed += GetWeightContribution(Instance);
+	}
+	ensureMsgf(FMath::IsNearlyEqual(Recomputed, CachedUsedWeight, 0.01f),
+		TEXT("Inventory CachedUsedWeight (%.3f) drifted from recomputed sum (%.3f). "
+			 "A mutator changed a stack without updating the cache."),
+		CachedUsedWeight, Recomputed);
+}
+#endif

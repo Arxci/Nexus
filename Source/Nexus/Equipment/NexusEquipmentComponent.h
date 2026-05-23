@@ -194,6 +194,7 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
+	virtual void ComponentPreSave_Implementation() override;
 	virtual void ComponentPreLoad_Implementation() override;
 	virtual void ComponentLoaded_Implementation() override;
 
@@ -204,8 +205,18 @@ protected:
 		meta = (Categories = "Equipment.Slot"))
 	TArray<FGameplayTag> AvailableSlots;
 
-	UPROPERTY(SaveGame)
+	/**
+	 * Live slot -> equipped instance map. Not persisted directly: the instances are
+	 * runtime subobjects owned by the inventory, whose pointers cannot round-trip
+	 * through EMS. Rebuilt on load from SavedSlotGuids by resolving each GUID against
+	 * the restored inventory (see ResolveEquippedFromSave).
+	 */
+	UPROPERTY()
 	TMap<FGameplayTag, TObjectPtr<UNexusItemInstance>> EquippedSlots;
+
+	/** Persisted slot -> instance GUID. The save-safe form of EquippedSlots. */
+	UPROPERTY(SaveGame)
+	TMap<FGameplayTag, FGuid> SavedSlotGuids;
 
 	UPROPERTY(Transient)
 	TMap<FGameplayTag, TObjectPtr<ANexusEquippedActor>> SpawnedActors;
@@ -272,6 +283,18 @@ private:
 	 */
 	TArray<FPendingActivation> PendingActivationsAfterAssignment;
 	void DrainPendingActivationsAfterAssignment(FGameplayTag SlotTag);
+
+	/**
+	 * Deferred save-restore: rebuild EquippedSlots from SavedSlotGuids by resolving
+	 * each GUID against the restored inventory, then load bundles, mount actors, and
+	 * restore the active slot. Scheduled for the next tick from ComponentLoaded so it
+	 * runs after the inventory component's own restore regardless of EMS component
+	 * load order.
+	 */
+	void ResolveEquippedFromSave();
+
+	/** Active slot captured from the save, consumed by the deferred ResolveEquippedFromSave. */
+	FGameplayTag PendingRestoreActiveSlot;
 
 	FGameplayTag OutgoingPendingHide;
 

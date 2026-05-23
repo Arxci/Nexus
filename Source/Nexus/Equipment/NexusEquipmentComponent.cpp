@@ -7,6 +7,8 @@
 #include "Components/SkeletalMeshComponent.h"
 
 #include "Engine/World.h"
+#include "Engine/World.h"
+#include "TimerManager.h"
 
 #include "Animation/AnimMontage.h"
 #include "Animation/AnimSequence.h"
@@ -841,6 +843,22 @@ TArray<FGameplayTag> UNexusEquipmentComponent::GetOccupiedSlots() const
 
 
 // Save / Load
+// Save / Load
+void UNexusEquipmentComponent::ComponentPreSave_Implementation()
+{
+	// EquippedSlots holds runtime instance pointers that cannot round-trip through
+	// EMS. Persist the stable per-instance GUIDs instead; ResolveEquippedFromSave
+	// rebuilds the pointer map on load by looking each GUID up in the inventory.
+	SavedSlotGuids.Reset();
+	for (const TPair<FGameplayTag, TObjectPtr<UNexusItemInstance>>& Pair : EquippedSlots)
+	{
+		if (Pair.Value)
+		{
+			SavedSlotGuids.Add(Pair.Key, Pair.Value->GetInstanceGuid());
+		}
+	}
+}
+
 void UNexusEquipmentComponent::ComponentPreLoad_Implementation()
 {
 	ClearAll();
@@ -848,13 +866,42 @@ void UNexusEquipmentComponent::ComponentPreLoad_Implementation()
 
 void UNexusEquipmentComponent::ComponentLoaded_Implementation()
 {
-	const FGameplayTag SavedActiveSlot = ActiveSlot;
+	// The equipped instances are owned by the inventory, which rebuilds them in its
+	// own ComponentLoaded. Defer resolution one tick so it runs after the inventory
+	// restore regardless of EMS component load order. ActiveSlot and SavedSlotGuids
+	// were just restored by EMS and persist until the deferred pass consumes them.
+	PendingRestoreActiveSlot = ActiveSlot;
 	ActiveSlot = FGameplayTag();
-	
-	for (auto It = EquippedSlots.CreateIterator(); It; ++It)
+	EquippedSlots.Reset();
+
+	if (UWorld* World = GetWorld())
 	{
-		if (!It.Value()) It.RemoveCurrent();
+		World->GetTimerManager().SetTimerForNextTick(this, &UNexusEquipmentComponent::ResolveEquippedFromSave);
 	}
+	else
+	{
+		ResolveEquippedFromSave();
+	}
+}
+
+void UNexusEquipmentComponent::ResolveEquippedFromSave()
+{
+	const FGameplayTag SavedActiveSlot = PendingRestoreActiveSlot;
+	PendingRestoreActiveSlot = FGameplayTag();
+
+	if (const UNexusInventoryComponent* Inventory = GetInventory())
+	{
+		for (const TPair<FGameplayTag, FGuid>& Pair : SavedSlotGuids)
+		{
+			// A null result means the inventory dropped the item (e.g. its definition
+			// was removed from the build); skip the slot rather than restore an empty one.
+			if (UNexusItemInstance* Instance = Inventory->FindInstanceByGuid(Pair.Value))
+			{
+				EquippedSlots.Add(Pair.Key, Instance);
+			}
+		}
+	}
+	SavedSlotGuids.Reset();
 
 	TArray<FGameplayTag, TInlineAllocator<4>> Slots;
 	EquippedSlots.GetKeys(Slots);
@@ -870,7 +917,7 @@ void UNexusEquipmentComponent::ComponentLoaded_Implementation()
 		if (!Id.IsValid()) continue;
 
 		if (TSharedPtr<FStreamableHandle> Handle = AM.LoadPrimaryAsset(
-			Id, TArray<FName>{ 	UNexusAssetManager::BundleEquipped }))
+			Id, TArray<FName>{ UNexusAssetManager::BundleEquipped }))
 		{
 			EquippableLoadHandles.Add(Instance, Handle);
 		}

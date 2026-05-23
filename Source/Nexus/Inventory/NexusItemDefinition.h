@@ -44,9 +44,19 @@ public:
 	TSoftObjectPtr<UTexture2D> Icon;
 
 	// Inventory footprint
+	/**
+	 * Grid footprint in cells (Width x Height), unrotated — the attaché-case model.
+	 * Most consumables/ammo are 1x1; long guns are larger (e.g. 1x3). The inventory
+	 * packs items spatially against this; a stack occupies one footprint regardless
+	 * of stack count. Clamped to a minimum of 1x1 at read sites.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Inventory")
+	FIntPoint GridSize = FIntPoint(1, 1);
+
+	/** Optional secondary scarcity axis; off unless the inventory enforces weight. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Inventory", meta = (ClampMin = "0.0"))
 	float Weight = 0.0f;
-	
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Inventory")
 	bool bDropOnDeath = true;
 	

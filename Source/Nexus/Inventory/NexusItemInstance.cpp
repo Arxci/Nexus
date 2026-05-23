@@ -1,6 +1,7 @@
 ﻿#include "NexusItemInstance.h"
 
 #include "Engine/AssetManager.h"
+#include "Nexus/Nexus.h"
 #include "Nexus/NexusAssetManager.h"
 
 #include "Nexus/Inventory/Fragments/Equippable/NexusFragment_Equippable.h"
@@ -38,34 +39,58 @@ void UNexusItemInstance::Initialize(UNexusItemDefinition* InDefinition, int32 In
 	bInitialized = true;
 }
 
-void UNexusItemInstance::RestoreLoadedState()
+FNexusItemSaveData UNexusItemInstance::ToSaveData() const
 {
-	// SaveGame path only: instance came back from disk with DefinitionRef but
-	// no CachedDefinition. The sync load is intentional and acceptable here
-	// because save-restore always runs behind the loading screen; afterwards
-	// GetDefinition() is hot and never re-enters this branch.
-	if (!CachedDefinition && !DefinitionRef.IsNull())
+	FNexusItemSaveData Data;
+	Data.DefinitionRef = CachedDefinition
+		? TSoftObjectPtr<UNexusItemDefinition>(CachedDefinition.Get())
+		: DefinitionRef;
+	Data.InstanceGuid = InstanceGuid;
+	Data.StackCount   = StackCount;
+	Data.StatTags     = StatTags;
+	Data.Attachments  = Attachments;
+	Data.GridPosition = GridPosition;
+	Data.bRotated     = bRotated;
+	return Data;
+}
+
+bool UNexusItemInstance::LoadFromSaveData(const FNexusItemSaveData& SaveData)
+{
+	DefinitionRef = SaveData.DefinitionRef;
+
+	// Sync load is intentional: save-restore always runs behind the loading screen.
+	CachedDefinition = DefinitionRef.LoadSynchronous();
+	if (!CachedDefinition)
 	{
-		CachedDefinition = DefinitionRef.LoadSynchronous();
+		UE_LOG(LogNexusInventory, Warning,
+			TEXT("Saved item definition '%s' could not be loaded (asset removed or renamed "
+				 "without a redirector). Dropping item from restored inventory."),
+			*DefinitionRef.ToSoftObjectPath().ToString());
+		return false;
 	}
 
+	InstanceGuid = SaveData.InstanceGuid.IsValid() ? SaveData.InstanceGuid : FGuid::NewGuid();
+	StackCount   = FMath::Max(0, SaveData.StackCount);
+	StatTags     = SaveData.StatTags;
+	Attachments  = SaveData.Attachments;
+	GridPosition = SaveData.GridPosition;
+	bRotated     = SaveData.bRotated;
+
+	// H1: a restored instance must be considered live, otherwise BroadcastChanged
+	// early-outs forever and reloading a restored weapon never updates the HUD.
+	bInitialized = true;
+
 	RequestEquippedBundleLoad();
+	return true;
 }
 
 UNexusItemDefinition* UNexusItemInstance::GetDefinition() const
 {
-	// Manifest preload + Initialize() (or RestoreLoadedState() on save-restore)
-	// are the sole authorized populators of CachedDefinition. A null here means
-	// either Initialize never ran, the instance was deserialized without
-	// RestoreLoadedState being called, or someone is querying an instance whose
-	// def isn't in the active level manifest. Any of those is a bug — fail
-	// loudly rather than mask it with a hidden sync load that hitches the
-	// game thread.
-	checkf(CachedDefinition,
-		TEXT("UNexusItemInstance::GetDefinition called with null CachedDefinition on %s (DefinitionRef=%s). "
-			 "Ensure Initialize()/RestoreLoadedState() ran and the definition is listed in the level manifest."),
-		*GetName(),
-		*DefinitionRef.ToSoftObjectPath().ToString());
+	// Populated by Initialize() or LoadFromSaveData(). Null is possible only in
+	// degenerate cases: an instance queried before either ran, or a save whose
+	// definition asset was dropped from the build (LoadFromSaveData logs and skips
+	// those on restore). Every caller null-checks the result — we degrade
+	// gracefully rather than crash a player's session over one missing data asset.
 	return CachedDefinition;
 }
 
@@ -92,51 +117,47 @@ int32 UNexusItemInstance::ModifyStack(int32 Delta, int32 MaxStack)
 	return Applied;
 }
 
+bool UNexusItemInstance::IsMergeableStack() const
+{
+	// A fungible stack carries no per-instance state: no stat tags (e.g. a partial
+	// magazine), no attachments. Anything customised gets its own slot so merging
+	// can never silently drop one side's ammo count or attachment map.
+	return StatTags.Num() == 0 && Attachments.Num() == 0;
+}
+
 bool UNexusItemInstance::CanStackWith(const UNexusItemInstance* Other) const
 {
 	if (!Other || Other == this) return false;
 	if (GetDefinition() != Other->GetDefinition()) return false;
-	if (StatTags.Num() != Other->StatTags.Num()) return false;
-
-	for (const TPair<FGameplayTag, int32>& Pair : StatTags)
-	{
-		const int32* OtherVal = Other->StatTags.Find(Pair.Key);
-		if (!OtherVal || *OtherVal != Pair.Value) return false;
-	}
-
-	// Stacking would silently drop one side's attachment configuration.
-	// Refuse stacking if either side carries customizations.
-	if (Attachments.Num() > 0 || Other->Attachments.Num() > 0) return false;
-
-	return true;
+	return IsMergeableStack() && Other->IsMergeableStack();
 }
 
 
 // Stat
-int32 UNexusItemInstance::GetStat(FGameplayTag StatTag, int32 Default) const
+float UNexusItemInstance::GetStat(FGameplayTag StatTag, float Default) const
 {
-	if (const int32* Found = StatTags.Find(StatTag))
+	if (const float* Found = StatTags.Find(StatTag))
 	{
 		return *Found;
 	}
 	return Default;
 }
 
-void UNexusItemInstance::SetStat(FGameplayTag StatTag, int32 Value)
+void UNexusItemInstance::SetStat(FGameplayTag StatTag, float Value)
 {
 	if (!StatTag.IsValid()) return;
-	int32* Existing = StatTags.Find(StatTag);
-	if (Existing && *Existing == Value) return; 
+	float* Existing = StatTags.Find(StatTag);
+	if (Existing && *Existing == Value) return;
 	StatTags.Add(StatTag, Value);
 	BroadcastChanged();
 }
 
-int32 UNexusItemInstance::ModifyStat(FGameplayTag StatTag, int32 Delta)
+float UNexusItemInstance::ModifyStat(FGameplayTag StatTag, float Delta)
 {
-	if (!StatTag.IsValid()) return 0;
-	int32& Value = StatTags.FindOrAdd(StatTag, 0);
+	if (!StatTag.IsValid()) return 0.0f;
+	float& Value = StatTags.FindOrAdd(StatTag, 0.0f);
 	Value += Delta;
-	if (Delta != 0)
+	if (Delta != 0.0f)
 	{
 		BroadcastChanged();
 	}
@@ -181,6 +202,28 @@ void UNexusItemInstance::ClearAttachmentForSlot(FGameplayTag SlotPath)
 	{
 		BroadcastChanged();
 	}
+}
+
+// Grid placement
+FIntPoint UNexusItemInstance::GetGridFootprint() const
+{
+	FIntPoint Size(1, 1);
+	if (const UNexusItemDefinition* Def = GetDefinition())
+	{
+		Size.X = FMath::Max(1, Def->GridSize.X);
+		Size.Y = FMath::Max(1, Def->GridSize.Y);
+	}
+	if (bRotated)
+	{
+		Swap(Size.X, Size.Y);
+	}
+	return Size;
+}
+
+void UNexusItemInstance::SetGridPlacement(FIntPoint InPosition, bool bInRotated)
+{
+	GridPosition = InPosition;
+	bRotated     = bInRotated;
 }
 
 void UNexusItemInstance::BroadcastChanged()

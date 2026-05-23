@@ -54,7 +54,7 @@ bool UNexusAbility_WeaponReload::CanActivateAbility_Implementation() const
 				static_cast<float>(Weapon->Ammo.MagazineSize)));
 	}
 
-	const int32 InMag = Instance->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0);
+	const int32 InMag = FMath::RoundToInt(Instance->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0));
 	if (InMag >= EffectiveMagSize) return false;
 
 	return GetReserveAmmo() > 0;
@@ -198,7 +198,7 @@ void UNexusAbility_WeaponReload::TransferAmmo()
 				static_cast<float>(Weapon->Ammo.MagazineSize)));
 	}
 
-	const int32 CurrentInMag = Instance->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0);
+	const int32 CurrentInMag = FMath::RoundToInt(Instance->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0));
 	const int32 Needed       = FMath::Max(0, EffectiveMagSize - CurrentInMag);
 	const int32 Available    = GetReserveAmmo();
 	const int32 Transferring = FMath::Min(Needed, Available);

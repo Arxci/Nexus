@@ -34,7 +34,7 @@ void UNexusWeaponBehaviorComponent::OnInstalled(ANexusEquippedActor* InEquippedA
 		Instance->OnInstanceChanged.AddDynamic(this, &UNexusWeaponBehaviorComponent::HandleInstanceChanged);
 		bSubscribedToInstance = true;
 
-		LastInMagazine = Instance->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0);
+		LastInMagazine = FMath::RoundToInt(Instance->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0));
 	}
 
 	if (UNexusAssemblyComponent* AssemblyComp = EquippedActor ? EquippedActor->GetAssembly() : nullptr)
@@ -162,7 +162,7 @@ void UNexusWeaponBehaviorComponent::HandleInstanceChanged(UNexusItemInstance* In
 	if (!Instance) return;
 	if (!EquippedActor || Instance != EquippedActor->GetSourceInstance()) return;
 
-	const int32 NewInMagazine = Instance->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0);
+	const int32 NewInMagazine = FMath::RoundToInt(Instance->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0));
 	const bool bWasEmpty = LastInMagazine == 0;
 	const bool bIsEmpty  = NewInMagazine == 0;
 
@@ -197,7 +197,7 @@ void UNexusWeaponBehaviorComponent::RefreshMagazineVisual()
 	UNexusItemInstance* Instance = EquippedActor->GetSourceInstance();
 	if (!Instance) return;
 
-	const int32 InMagazine = Instance->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0);
+	const int32 InMagazine = FMath::RoundToInt(Instance->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0));
 	const bool bLoaded = InMagazine > 0;
 
 	// Slot-tag-agnostic: any attachment that carries the Magazine fragment is
