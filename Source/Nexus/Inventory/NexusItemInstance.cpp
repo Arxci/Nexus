@@ -40,6 +40,10 @@ void UNexusItemInstance::Initialize(UNexusItemDefinition* InDefinition, int32 In
 
 void UNexusItemInstance::RestoreLoadedState()
 {
+	// SaveGame path only: instance came back from disk with DefinitionRef but
+	// no CachedDefinition. The sync load is intentional and acceptable here
+	// because save-restore always runs behind the loading screen; afterwards
+	// GetDefinition() is hot and never re-enters this branch.
 	if (!CachedDefinition && !DefinitionRef.IsNull())
 	{
 		CachedDefinition = DefinitionRef.LoadSynchronous();
@@ -48,12 +52,21 @@ void UNexusItemInstance::RestoreLoadedState()
 	RequestEquippedBundleLoad();
 }
 
-// Utility
 UNexusItemDefinition* UNexusItemInstance::GetDefinition() const
 {
-	if (CachedDefinition) return CachedDefinition;
-	
-	return DefinitionRef.LoadSynchronous();
+	// Manifest preload + Initialize() (or RestoreLoadedState() on save-restore)
+	// are the sole authorized populators of CachedDefinition. A null here means
+	// either Initialize never ran, the instance was deserialized without
+	// RestoreLoadedState being called, or someone is querying an instance whose
+	// def isn't in the active level manifest. Any of those is a bug — fail
+	// loudly rather than mask it with a hidden sync load that hitches the
+	// game thread.
+	checkf(CachedDefinition,
+		TEXT("UNexusItemInstance::GetDefinition called with null CachedDefinition on %s (DefinitionRef=%s). "
+			 "Ensure Initialize()/RestoreLoadedState() ran and the definition is listed in the level manifest."),
+		*GetName(),
+		*DefinitionRef.ToSoftObjectPath().ToString());
+	return CachedDefinition;
 }
 
 FGameplayTag UNexusItemInstance::GetIdentityTag() const

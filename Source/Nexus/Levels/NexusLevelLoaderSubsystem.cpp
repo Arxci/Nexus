@@ -23,11 +23,27 @@ namespace
 		TArray<FPrimaryAssetId> Ids;
 		Ids.Reserve(Manifest.Items.Num() + Manifest.Attachments.Num());
 
+		int32 Unresolved = 0;
 		auto Add = [&](const FSoftObjectPath& Path)
 		{
 			if (Path.IsNull()) return;
 			const FPrimaryAssetId Id = AM.GetPrimaryAssetIdForPath(Path);
-			if (Id.IsValid()) Ids.Add(Id);
+			if (Id.IsValid())
+			{
+				Ids.Add(Id);
+			}
+			else
+			{
+				// A non-null path that doesn't resolve to a primary asset id means
+				// the AssetManager's PrimaryAssetTypesToScan rules don't cover this
+				// asset's folder. The bundle preload will silently skip it.
+				++Unresolved;
+				UE_LOG(LogNexusLevelLoader, Warning,
+					TEXT("[Manifest %s] Path %s did not resolve to a valid FPrimaryAssetId. "
+						 "Check Project Settings -> Asset Manager -> Primary Asset Types To Scan "
+						 "covers this asset's folder."),
+					*Manifest.GetName(), *Path.ToString());
+			}
 		};
 
 		for (const TSoftObjectPtr<UNexusItemDefinition>& Item : Manifest.Items)
@@ -38,6 +54,16 @@ namespace
 		{
 			Add(Att.ToSoftObjectPath());
 		}
+
+		UE_LOG(LogNexusLevelLoader, Log,
+			TEXT("[Manifest %s] Resolved %d/%d entries to primary asset ids (%d items + %d attachments, %d unresolved)."),
+			*Manifest.GetName(),
+			Ids.Num(),
+			Manifest.Items.Num() + Manifest.Attachments.Num(),
+			Manifest.Items.Num(),
+			Manifest.Attachments.Num(),
+			Unresolved);
+
 		return Ids;
 	}
 
