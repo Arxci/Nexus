@@ -15,6 +15,7 @@
 
 #include "TimerManager.h"
 
+#include "Nexus/Nexus.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 #include "Nexus/Equipment/NexusEquippedActor.h"
 #include "Nexus/Inventory/NexusInventoryComponent.h"
@@ -137,6 +138,10 @@ void UNexusAbility_WeaponReload::CommitAbility()
 	EffectiveConfigDuration = FMath::Max(0.0f, EffectiveConfigDuration);
 
 	const float Duration = MontageDuration > 0.0f ? MontageDuration : EffectiveConfigDuration;
+#if !UE_BUILD_SHIPPING
+	UE_LOG(LogNexusWeapon, Verbose, TEXT("[Reload] %s reload started (duration=%.2fs, reserve=%d)."),
+		*GetNameSafe(GetOwner()), Duration, GetReserveAmmo());
+#endif
 	if (Duration <= 0.0f)
 	{
 		FinishReload();
@@ -207,6 +212,10 @@ void UNexusAbility_WeaponReload::TransferAmmo()
 	{
 		const int32 Consumed = ConsumeReserveAmmo(Transferring);
 		Instance->SetStat(NexusGameplayTags::Stat_Ammo_InMagazine, CurrentInMag + Consumed);
+#if !UE_BUILD_SHIPPING
+		UE_LOG(LogNexusWeapon, Verbose, TEXT("[Reload] %s loaded %d round(s) into magazine (%d -> %d)."),
+			*GetNameSafe(GetOwner()), Consumed, CurrentInMag, CurrentInMag + Consumed);
+#endif
 	}
 	bAmmoTransferred = true;
 }

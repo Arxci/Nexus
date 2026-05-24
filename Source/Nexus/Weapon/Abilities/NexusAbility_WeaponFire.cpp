@@ -25,6 +25,7 @@
 
 #include "Sound/SoundBase.h"
 
+#include "Nexus/Nexus.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 #include "Nexus/Combat/NexusDamageContext.h"
 #include "Nexus/Combat/NexusDamageReceiverInterface.h"
@@ -261,7 +262,7 @@ void UNexusAbility_WeaponFire::FireOnePellet(const FVector& ViewLoc, const FRota
 #if !(UE_BUILD_SHIPPING)
 	if (GNexusWeaponDebugTrace > 1)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[WeaponFire] hit=%d actor=%s bone=%s dist=%.0f"),
+		UE_LOG(LogNexusWeapon, Log, TEXT("[WeaponFire] hit=%d actor=%s bone=%s dist=%.0f"),   // was LogTemp
 			bHit, *GetNameSafe(Hit.GetActor()), *Hit.BoneName.ToString(),
 			bHit ? FVector::Distance(ViewLoc, Hit.ImpactPoint) : -1.0f);
 	}

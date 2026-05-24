@@ -1,5 +1,6 @@
 ﻿#include "NexusCharacterBase.h"
 
+#include "Nexus/Nexus.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 #include "Nexus/Character/NexusCharacterMovementComponent.h"
 #include "Nexus/AbilitySystem/NexusAbility.h"
@@ -26,6 +27,11 @@ void ANexusCharacterBase::PossessedBy(AController* NewController)
 	{
 		NexusAbilitySystemComponent->InitAbilityActorInfo(NewController);
 
+#if !UE_BUILD_SHIPPING
+		UE_LOG(LogNexusCharacter, Verbose, TEXT("[Character] %s possessed by %s; granting %d default ability(ies)."),
+			*GetNameSafe(this), *GetNameSafe(NewController), DefaultAbilities.Num());
+#endif
+		
 		for (const TSubclassOf<UNexusAbility>& AbilityClass : DefaultAbilities)
 		{
 			if (AbilityClass)

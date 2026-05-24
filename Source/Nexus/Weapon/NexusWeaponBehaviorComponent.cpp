@@ -6,6 +6,7 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/SkeletalMesh.h"
 
+#include "Nexus/Nexus.h" 
 #include "Nexus/Equipment/Attachments/NexusAttachmentDefinition.h"
 #include "Nexus/Equipment/Attachments/NexusAssemblyComponent.h"
 #include "Nexus/Equipment/Attachments/Fragments/NexusAttachmentFragment_Magazine.h"
@@ -122,7 +123,7 @@ void UNexusWeaponBehaviorComponent::SpawnChamberRoundMesh(const FNexusFragment_W
 	const FName Socket = WeaponFragment.AmmoVisual.AmmoSocket;
 	if (!HostMesh->DoesSocketExist(Socket))
 	{
-		UE_LOG(LogTemp, Warning,
+		UE_LOG(LogNexusWeapon, Warning,         // was LogTemp
 			TEXT("[WeaponBehavior] Ammo socket '%s' not found on equipped mesh; chamber round visual will be inert."),
 			*Socket.ToString());
 	}

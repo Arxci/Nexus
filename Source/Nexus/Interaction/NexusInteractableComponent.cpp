@@ -2,6 +2,7 @@
 
 #include "Components/WidgetComponent.h"
 
+#include "Nexus/Nexus.h" 
 #include "Nexus/NexusCollisionChannels.h"
 #include "Nexus/NexusGameplayTags.h"
 #include "Nexus/UI/World/NexusWorldMarkerWidget.h"
@@ -52,6 +53,12 @@ void UNexusInteractableComponent::TryStartInteraction_Implementation(AActor* Int
 	}
 	OnInteractionStarted.Broadcast(Interactor);
 
+#if !UE_BUILD_SHIPPING
+	UE_LOG(LogNexusInteraction, Verbose, TEXT("[Interact] %s started interaction on %s (duration=%.2fs)."),
+		*GetNameSafe(Interactor), *GetNameSafe(GetOwner()), InteractionDuration);
+#endif
+	
+
 	if (InteractionDuration <= 0.0f)
 	{
 		// Tap-to-interact: no hold required, complete on the same call so callers
@@ -93,6 +100,11 @@ void UNexusInteractableComponent::CompleteInteraction()
 	CurrentInteractor = nullptr;
 	SetComponentTickEnabled(false);
 
+#if !UE_BUILD_SHIPPING
+	UE_LOG(LogNexusInteraction, Verbose, TEXT("[Interact] %s completed interaction on %s."),
+		*GetNameSafe(Interactor), *GetNameSafe(GetOwner()));
+#endif
+
 	OnInteractionCompleted.Broadcast(Interactor);
 	OnInteractionEnded.Broadcast(Interactor);
 }
@@ -102,6 +114,11 @@ void UNexusInteractableComponent::CancelInteraction()
 	AActor* Interactor = CurrentInteractor;
 	CurrentInteractor = nullptr;
 	SetComponentTickEnabled(false);
+
+#if !UE_BUILD_SHIPPING
+	UE_LOG(LogNexusInteraction, Verbose, TEXT("[Interact] %s cancelled interaction on %s."),
+		*GetNameSafe(Interactor), *GetNameSafe(GetOwner()));
+#endif
 
 	OnInteractionCancelled.Broadcast(Interactor);
 	OnInteractionEnded.Broadcast(Interactor);

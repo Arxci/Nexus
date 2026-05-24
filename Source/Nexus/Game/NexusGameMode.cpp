@@ -4,6 +4,7 @@
 
 #include "GameFramework/PlayerController.h"
 
+#include "Nexus/Nexus.h"
 #include "Nexus/Levels/NexusLevelLoaderSubsystem.h"
 
 void ANexusGameMode::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
@@ -14,6 +15,9 @@ void ANexusGameMode::InitGame(const FString& MapName, const FString& Options, FS
 	if (!Sub)
 	{
 		// No subsystem — fail open so we don't strand the player.
+		UE_LOG(LogNexusGame, Warning,
+			TEXT("[GameMode] No NexusLevelLoaderSubsystem for map %s; skipping manifest preload gate (failing open)."),
+			*MapName);
 		bPersistentLoadComplete = true;
 		return;
 	}
@@ -35,6 +39,11 @@ void ANexusGameMode::HandleStartingNewPlayer_Implementation(APlayerController* N
 		return;
 	}
 
+#if !UE_BUILD_SHIPPING
+	UE_LOG(LogNexusGame, Verbose,
+		TEXT("[GameMode] Deferring spawn for %s until persistent manifest finishes loading."),
+		*GetNameSafe(NewPlayer));
+#endif
 	// Defer: do NOT call Super. RestartPlayer therefore never runs and no
 	// pawn is spawned for this controller. The controller exists, but it has
 	// no pawn — so no character ticks, no input target, no camera attached
@@ -47,6 +56,12 @@ void ANexusGameMode::HandlePersistentLoadComplete()
 {
 	if (bPersistentLoadComplete) return;
 	bPersistentLoadComplete = true;
+
+#if !UE_BUILD_SHIPPING
+	UE_LOG(LogNexusGame, Verbose,
+		TEXT("[GameMode] Persistent manifest load complete; releasing %d deferred player(s)."),
+		PendingPlayers.Num());
+#endif
 
 	// Move-swap so a re-entrant call from inside Super doesn't iterate the
 	// same array we're appending to.

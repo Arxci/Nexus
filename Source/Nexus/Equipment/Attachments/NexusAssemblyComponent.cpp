@@ -14,6 +14,7 @@
 
 #include "StructUtils/InstancedStruct.h"
 
+#include "Nexus/Nexus.h"
 #include "Nexus/Equipment/Attachments/NexusAttachmentDefinition.h"
 #include "Nexus/Equipment/NexusEquippedActor.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
@@ -173,10 +174,10 @@ void UNexusAssemblyComponent::RegisterSlotDefinition(const FAssemblySlotDefiniti
 	{
 		// Two attachments authored the same SlotID — treat as a hierarchy bug,
 		// log and skip the duplicate so the older registration survives.
-		UE_LOG(LogTemp, Warning,
-			TEXT("[Assembly] Duplicate slot id %s in %s; ignoring duplicate"),
-			*Slot.SlotID.ToString(),
-			*GetNameSafe(GetSourceInstance()));
+		UE_LOG(LogNexusEquipment, Warning,      // was LogTemp
+	TEXT("[Assembly] Duplicate slot id %s in %s; ignoring duplicate"),
+	*Slot.SlotID.ToString(),
+	*GetNameSafe(GetSourceInstance()));
 		return;
 	}
 
@@ -203,7 +204,7 @@ bool UNexusAssemblyComponent::CanAttachItem(const FGameplayTag SlotID, const UNe
 		WarnedSlots.Add(SlotID, &bAlreadyWarned);
 		if (!bAlreadyWarned)
 		{
-			UE_LOG(LogTemp, Warning,
+			UE_LOG(LogNexusEquipment, Warning,      // was LogTemp
 				TEXT("[Assembly] Slot %s has empty AcceptedTags and bAcceptsAny=false; treating as wildcard. ")
 				TEXT("Set bAcceptsAny=true on the slot definition to silence this warning."),
 				*SlotID.ToString());

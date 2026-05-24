@@ -8,12 +8,12 @@
 
 #include "Streaming/LevelStreamingDelegates.h"
 
+#include "Nexus/Nexus.h" 
 #include "Nexus/Equipment/Attachments/NexusAttachmentDefinition.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Levels/NexusLevelManifest.h"
 #include "Nexus/Levels/NexusWorldSettings.h"
 
-DEFINE_LOG_CATEGORY_STATIC(LogNexusLevelLoader, Log, All);
 
 namespace
 {

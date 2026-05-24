@@ -13,6 +13,7 @@
 #include "TimerManager.h"
 #include "Nexus/NexusAssetManager.h"
 
+#include "Nexus/Nexus.h"
 #include "Nexus/Inventory/NexusInventoryAcquireLibrary.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Interaction/NexusInteractableComponent.h"
@@ -140,6 +141,11 @@ void ANexusItemPickup::HandleInteractionCompleted(AActor* Interactor)
 		Pawn, Definition, InitialCount, bAutoEquipOnPickup, bSkipCeremony, InitialStatTags);
 
 	if (Result.AmountAdded <= 0) return;
+
+#if !UE_BUILD_SHIPPING
+	UE_LOG(LogNexusInventory, Verbose, TEXT("[Pickup] %s acquired %d x %s (remainder=%d)."),
+		*GetNameSafe(Pawn), Result.AmountAdded, *GetNameSafe(Definition), Result.Remainder);
+#endif
 
 	// Partial placement (weight / slot cap) leaves the remainder visible so the
 	// player can interact again after dropping something. No teardown — the

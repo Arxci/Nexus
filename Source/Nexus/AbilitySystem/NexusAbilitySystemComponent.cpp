@@ -3,6 +3,7 @@
 #include "EMSData.h"
 #include "EMSFunctionLibrary.h"
 
+#include "Nexus/Nexus.h" 
 #include "NexusAbility.h" 
 
 
@@ -96,10 +97,17 @@ UNexusAbility* UNexusAbilitySystemComponent::GiveAbility(const TSubclassOf<UNexu
 		NewAbility->OnDeactivated.AddDynamic(this, &UNexusAbilitySystemComponent::HandleAbilityDeactivated);
 		// Init before broadcast so subscribers see a fully-prepared ability.
 		NewAbility->InitializeAbility();
+#if !UE_BUILD_SHIPPING
+		UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("[ASC] %s granted ability %s."),
+			*GetNameSafe(GetOwner()), *GetNameSafe(AbilityClass));
+#endif
 		OnAbilityGiven.Broadcast(NewAbility);
 		return NewAbility;
 	}
 
+	UE_LOG(LogNexusAbilitySystem, Warning,
+		TEXT("[ASC] Failed to instantiate ability %s on %s."),
+		*GetNameSafe(AbilityClass), *GetNameSafe(GetOwner()));
 	return nullptr;
 }
 
@@ -134,6 +142,11 @@ bool UNexusAbilitySystemComponent::RemoveAbility(const TSubclassOf<UNexusAbility
 
 	Existing->OnActivated.RemoveAll(this);
 	Existing->OnDeactivated.RemoveAll(this);
+
+#if !UE_BUILD_SHIPPING
+	UE_LOG(LogNexusAbilitySystem, Verbose, TEXT("[ASC] %s removed ability %s."),
+		*GetNameSafe(GetOwner()), *GetNameSafe(AbilityClass));
+#endif
 
 	GrantedAbilities.Remove(AbilityClass);
 	return true;
