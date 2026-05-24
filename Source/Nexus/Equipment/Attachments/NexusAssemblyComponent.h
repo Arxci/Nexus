@@ -122,17 +122,17 @@ public:
 	 * isn't part of the current tree, or the attachment's ProvidedTags don't
 	 * overlap the slot's AcceptedTags.
 	 *
-	 * When bPersist is true (the default — runtime/UI path), the change is
-	 * written to the source UNexusItemInstance so it survives unequip/save/load.
-	 * When false (default-fill path during Rebuild), the install is treated as
-	 * "what the slot already wants" and is NOT persisted, so future updates to
-	 * a slot's DefaultAttachment continue to apply.
+	* Source = PlayerAction (the default — runtime/UI path) writes the change to
+	 * the source UNexusItemInstance so it survives unequip/save/load. Source =
+	 * Default (the default-fill path during Rebuild) treats the install as "what
+	 * the slot already wants" and does NOT persist it, so future updates to a
+	 * slot's DefaultAttachment continue to apply.
 	 *
 	 * Sub-slots introduced by the new attachment are auto-filled with their own
 	 * defaults (or the player's persisted choice for those sub-slots).
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Assembly")
-	bool AttachItem(FGameplayTag SlotID, UNexusAttachmentDefinition* Definition, bool bPersist = true);
+	bool AttachItem(FGameplayTag SlotID, UNexusAttachmentDefinition* Definition, ENexusAttachSource Source = ENexusAttachSource::PlayerAction);
 
 	UFUNCTION(BlueprintCallable, Category = "Assembly")
 	bool DetachItem(FGameplayTag SlotID);

@@ -150,6 +150,18 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Inventory|Capacity")
 	FIntPoint GetGridSize() const { return FIntPoint(GridWidth, GridHeight); }
 
+	/**
+	 * How many more of Definition AddItem could place right now: stack room on
+	 * existing mergeable stacks plus first-fit packing into free cells, clamped by
+	 * weight if enforced. Mirrors AddItem's merge-then-place rule, so
+	 * AddItem(Definition, GetRemainingCapacityForDefinition(Definition)) places
+	 * everything and leaves no remainder. 0 means a pickup would be fully rejected —
+	 * UI can grey it out. Result is exact, not an estimate; it runs the same
+	 * first-fit placement AddItem uses on a scratch occupancy grid.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Inventory|Capacity")
+	int32 GetRemainingCapacityForDefinition(const UNexusItemDefinition* Definition) const;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Inventory|Capacity", meta = (ClampMin = "1"))
 	int32 MaxItemsPerAddCall = 10000;
 
@@ -171,6 +183,18 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Inventory|Grid")
 	bool MoveItemTo(UNexusItemInstance* Instance, FIntPoint TopLeft, bool bRotated);
+
+	/**
+	 * The item occupying Cell, or null if the cell is empty or out of bounds. The
+	 * grid UI's primary query — hover, drag-target, right-click all start here so
+	 * callers don't re-implement the footprint overlap test.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Inventory|Grid")
+	UNexusItemInstance* GetItemAt(FIntPoint Cell) const;
+
+	/** Every grid cell Instance currently occupies. Empty if it isn't held or isn't placed. */
+	UFUNCTION(BlueprintPure, Category = "Inventory|Grid")
+	TArray<FIntPoint> GetOccupiedCells(const UNexusItemInstance* Instance) const;
 
 public:
 	//Delegates

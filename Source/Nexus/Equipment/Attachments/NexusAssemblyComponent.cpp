@@ -159,9 +159,9 @@ void UNexusAssemblyComponent::FillMissingDefaults()
 
 			if (!CanAttachItem(SlotID, Definition)) continue;
 
-			// bPersist=false here — defaults shouldn't pollute the player's
-			// per-instance attachment map. Only player-driven AttachItem persists.
-			AttachItem(SlotID, Definition, /*bPersist*/ false);
+			// Default-fill must not persist — defaults shouldn't pollute the player's
+			// per-instance attachment map. Only player-driven installs persist.
+			AttachItem(SlotID, Definition, ENexusAttachSource::Default);
 			bChanged = true;
 		}
 	} while (bChanged);
@@ -174,7 +174,7 @@ void UNexusAssemblyComponent::RegisterSlotDefinition(const FAssemblySlotDefiniti
 	{
 		// Two attachments authored the same SlotID — treat as a hierarchy bug,
 		// log and skip the duplicate so the older registration survives.
-		UE_LOG(LogNexusEquipment, Warning,      // was LogTemp
+		UE_LOG(LogNexusEquipment, Warning,      
 	TEXT("[Assembly] Duplicate slot id %s in %s; ignoring duplicate"),
 	*Slot.SlotID.ToString(),
 	*GetNameSafe(GetSourceInstance()));
@@ -215,10 +215,13 @@ bool UNexusAssemblyComponent::CanAttachItem(const FGameplayTag SlotID, const UNe
 	return Definition->FitsSlot(SlotDef->AcceptedTags);
 }
 
-bool UNexusAssemblyComponent::AttachItem(const FGameplayTag SlotID, UNexusAttachmentDefinition* Definition, const bool bPersist)
+bool UNexusAssemblyComponent::AttachItem(const FGameplayTag SlotID, UNexusAttachmentDefinition* Definition, const ENexusAttachSource Source)
 {
 	if (!Definition) return false;
 	if (!CanAttachItem(SlotID, Definition)) return false;
+
+	// Only player/runtime installs persist to the item instance; default-fill does not.
+	const bool bPersist = (Source == ENexusAttachSource::PlayerAction);
 
 	const FAssemblySlotDefinition* SlotDef = FindSlotDefinition(SlotID);
 	if (!SlotDef) return false;

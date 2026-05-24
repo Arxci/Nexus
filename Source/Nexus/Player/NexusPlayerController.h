@@ -18,4 +18,12 @@ class NEXUS_API ANexusPlayerController : public APlayerController, public IEMSAc
 
 public:
 	ANexusPlayerController();
+
+protected:
+	virtual void BeginPlay() override;
+
+private:
+	/** Reveal (fade in + restore input) once the persistent manifest finishes loading. */
+	UFUNCTION()
+	void HandleManifestLoadComplete();
 };

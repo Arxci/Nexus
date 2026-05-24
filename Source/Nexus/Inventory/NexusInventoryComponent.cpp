@@ -411,6 +411,105 @@ float UNexusInventoryComponent::GetUsedWeight() const
 	return CachedUsedWeight;
 }
 
+int32 UNexusInventoryComponent::GetRemainingCapacityForDefinition(const UNexusItemDefinition* Definition) const
+{
+	if (!Definition || GridWidth <= 0 || GridHeight <= 0) return 0;
+
+	const int32 MaxStack = GetMaxStackForDefinition(Definition);
+
+	// Weight ceiling first — mirrors AddItem's weight clamp.
+	int32 WeightCap = MAX_int32;
+	if (!bUnlimitedWeight && Definition->Weight > 0.0f)
+	{
+		const float Available = WeightCapacity - GetUsedWeight();
+		WeightCap = Available > 0.0f ? FMath::FloorToInt(Available / Definition->Weight) : 0;
+	}
+	if (WeightCap <= 0) return 0;
+
+	// Scratch occupancy + stack room, computed exactly as AddItem would: merge into
+	// existing mergeable stacks first, then first-fit new footprints into free cells.
+	TArray<bool> Occupied;
+	Occupied.Init(false, GridWidth * GridHeight);
+
+	int32 StackRoom = 0;
+	for (const UNexusItemInstance* Instance : Items)
+	{
+		if (!Instance) continue;
+		const FIntPoint Pos  = Instance->GetGridPosition();
+		const FIntPoint Foot = Instance->GetGridFootprint();
+		if (Pos.X >= 0 && Pos.Y >= 0)
+		{
+			for (int32 Y = 0; Y < Foot.Y; ++Y)
+			{
+				for (int32 X = 0; X < Foot.X; ++X)
+				{
+					const int32 CX = Pos.X + X;
+					const int32 CY = Pos.Y + Y;
+					if (CX >= 0 && CX < GridWidth && CY >= 0 && CY < GridHeight)
+					{
+						Occupied[CY * GridWidth + CX] = true;
+					}
+				}
+			}
+		}
+
+		if (MaxStack > 1 && Instance->GetDefinition() == Definition && Instance->IsMergeableStack())
+		{
+			StackRoom += FMath::Max(0, MaxStack - Instance->GetStackCount());
+		}
+	}
+
+	const int32 BaseW = FMath::Max(1, Definition->GridSize.X);
+	const int32 BaseH = FMath::Max(1, Definition->GridSize.Y);
+
+	auto TryPlace = [&Occupied, this](int32 W, int32 H) -> bool
+	{
+		for (int32 Y = 0; Y + H <= GridHeight; ++Y)
+		{
+			for (int32 X = 0; X + W <= GridWidth; ++X)
+			{
+				bool bFree = true;
+				for (int32 dy = 0; dy < H && bFree; ++dy)
+				{
+					for (int32 dx = 0; dx < W && bFree; ++dx)
+					{
+						if (Occupied[(Y + dy) * GridWidth + (X + dx)]) bFree = false;
+					}
+				}
+				if (bFree)
+				{
+					for (int32 dy = 0; dy < H; ++dy)
+					{
+						for (int32 dx = 0; dx < W; ++dx)
+						{
+							Occupied[(Y + dy) * GridWidth + (X + dx)] = true;
+						}
+					}
+					return true;
+				}
+			}
+		}
+		return false;
+	};
+
+	int32 NewStacks = 0;
+	const int32 MaxStacksByGrid = GridWidth * GridHeight; // hard upper bound on iterations
+	for (int32 i = 0; i < MaxStacksByGrid; ++i)
+	{
+		if (TryPlace(BaseW, BaseH) || (BaseW != BaseH && TryPlace(BaseH, BaseW)))
+		{
+			++NewStacks;
+		}
+		else
+		{
+			break;
+		}
+	}
+
+	const int64 Capacity = static_cast<int64>(StackRoom) + static_cast<int64>(NewStacks) * MaxStack;
+	return static_cast<int32>(FMath::Min<int64>(Capacity, WeightCap));
+}
+
 
 // Grid
 bool UNexusInventoryComponent::CanPlaceAt(FIntPoint Footprint, FIntPoint TopLeft, const UNexusItemInstance* IgnoreInstance) const
@@ -486,6 +585,54 @@ bool UNexusInventoryComponent::MoveItemTo(UNexusItemInstance* Instance, FIntPoin
 	return true;
 }
 
+UNexusItemInstance* UNexusInventoryComponent::GetItemAt(FIntPoint Cell) const
+{
+	if (Cell.X < 0 || Cell.Y < 0 || Cell.X >= GridWidth || Cell.Y >= GridHeight) return nullptr;
+
+	for (UNexusItemInstance* Instance : Items)
+	{
+		if (!Instance) continue;
+		const FIntPoint Pos = Instance->GetGridPosition();
+		if (Pos.X < 0 || Pos.Y < 0) continue; // unplaced — occupies nothing
+
+		const FIntPoint Foot = Instance->GetGridFootprint();
+		if (Cell.X >= Pos.X && Cell.X < Pos.X + Foot.X &&
+			Cell.Y >= Pos.Y && Cell.Y < Pos.Y + Foot.Y)
+		{
+			return Instance;
+		}
+	}
+	return nullptr;
+}
+
+TArray<FIntPoint> UNexusInventoryComponent::GetOccupiedCells(const UNexusItemInstance* Instance) const
+{
+	TArray<FIntPoint> Cells;
+	if (!Instance) return Cells;
+
+	bool bHeld = false;
+	for (const UNexusItemInstance* Held : Items)
+	{
+		if (Held == Instance) { bHeld = true; break; }
+	}
+	if (!bHeld) return Cells;
+
+	const FIntPoint Pos = Instance->GetGridPosition();
+	if (Pos.X < 0 || Pos.Y < 0) return Cells; // unplaced
+
+	const FIntPoint Foot = Instance->GetGridFootprint();
+	Cells.Reserve(Foot.X * Foot.Y);
+	for (int32 Y = 0; Y < Foot.Y; ++Y)
+	{
+		for (int32 X = 0; X < Foot.X; ++X)
+		{
+			Cells.Add(FIntPoint(Pos.X + X, Pos.Y + Y));
+		}
+	}
+	return Cells;
+}
+
+
 
 // Save
 void UNexusInventoryComponent::ComponentPreSave_Implementation()
@@ -518,21 +665,36 @@ void UNexusInventoryComponent::ComponentLoaded_Implementation()
 	Items.Reserve(SavedItems.Num());
 	CachedUsedWeight = 0.0f;
 
-	for (const FNexusItemSaveData& Saved : SavedItems)
 	{
-		UNexusItemInstance* Instance = NewObject<UNexusItemInstance>(this);
-		if (!Instance->LoadFromSaveData(Saved))
+		// Replay each restored item as an "added" change so a UI built on the
+		// runtime OnItemAdded path repopulates on load. The restore path used to
+		// fire only the aggregate OnInventoryChanged, which left such UIs empty
+		// after a load while the equipment component (which broadcasts per-slot on
+		// restore) populated fine. The scope coalesces these into per-item
+		// OnItemAdded + a single OnInventoryChanged, exactly like a multi-item add.
+		FBroadcastScope Scope(this);
+		for (const FNexusItemSaveData& Saved : SavedItems)
 		{
-			continue; // definition missing from build — already logged, skip
+			UNexusItemInstance* Instance = NewObject<UNexusItemInstance>(this);
+			if (!Instance->LoadFromSaveData(Saved))
+			{
+				continue; // definition missing from build — already logged, skip
+			}
+			Items.Add(Instance);
+			BindInstance(Instance);
+			CachedUsedWeight += GetWeightContribution(Instance);
+			EnqueueChange(Instance, /*bAdded*/ true, /*bRemoved*/ false);
 		}
-		Items.Add(Instance);
-		BindInstance(Instance);
-		CachedUsedWeight += GetWeightContribution(Instance);
 	}
 
 	SavedItems.Reset(); // transient restore buffer; don't keep it resident
 
-	OnInventoryChanged.Broadcast();
+	// An empty restore enqueues nothing, so the scope's flush won't fire. Still
+	// signal a load completed so a bound UI can clear any pre-load contents.
+	if (Items.Num() == 0)
+	{
+		OnInventoryChanged.Broadcast();
+	}
 }
 
 #if !UE_BUILD_SHIPPING

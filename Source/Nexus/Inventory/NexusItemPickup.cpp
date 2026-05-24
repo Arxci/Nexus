@@ -137,8 +137,13 @@ void ANexusItemPickup::HandleInteractionCompleted(AActor* Interactor)
 	}
 	if (!Pawn) return;
 
+	FNexusAcquireParams AcquireParams;
+	AcquireParams.bAutoEquipIfPossible = bAutoEquipOnPickup;
+	AcquireParams.bSkipCeremony        = bSkipCeremony;
+	AcquireParams.InitialStatTags      = InitialStatTags;
+
 	const FNexusAcquireResult Result = UNexusInventoryAcquireLibrary::AcquireItem(
-		Pawn, Definition, InitialCount, bAutoEquipOnPickup, bSkipCeremony, InitialStatTags);
+		Pawn, Definition, InitialCount, AcquireParams);
 
 	if (Result.AmountAdded <= 0) return;
 

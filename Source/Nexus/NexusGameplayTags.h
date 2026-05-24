@@ -92,7 +92,7 @@ namespace NexusGameplayTags
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Weapon_ADSTime);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Weapon_ReloadDuration);
 
-	// Attachment slot identity (used as keys in FWeaponSlotDefinition::SlotID).
+	// Attachment slot identity (used as keys in FAssemblySlotDefinition::SlotID).
 	// Slot identity is data-driven — these are common roots shipped in C++.
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Slot_Slide);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attachment_Slot_Sight);

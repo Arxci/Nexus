@@ -9,6 +9,20 @@
 class UNexusAttachmentDefinition;
 
 
+/**
+ * Why an attachment is being installed — controls whether the change persists to
+ * the owning item instance. Replaces the old opaque bPersist bool on AttachItem.
+ */
+UENUM(BlueprintType)
+enum class ENexusAttachSource : uint8
+{
+	/** Player/runtime action. Persists to the item instance so it survives unequip / save / load. */
+	PlayerAction,
+	/** Slot default-fill during a rebuild. NOT persisted, so future DefaultAttachment changes keep applying. */
+	Default,
+};
+
+
 USTRUCT(BlueprintType, DisplayName = "Attachment Stat Modifier")
 struct NEXUS_API FAttachmentStatModifier
 {

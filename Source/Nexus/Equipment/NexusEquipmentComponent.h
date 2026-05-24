@@ -31,8 +31,10 @@ enum class ENexusEquipSwapPhase : uint8
 	Drawing    UMETA(DisplayName = "Drawing"),
 };
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnEquipmentChanged,         FGameplayTag, SlotTag, UNexusItemInstance*, Instance);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnEquipmentSlotAssignment,  FGameplayTag, SlotTag, UNexusItemInstance*, Instance);
+// One slot-event shape for all three equipment dispatchers: (SlotTag, Instance).
+// OnSlotAssigned / OnSlotCleared report loadout edits; OnActiveSlotChanged reports
+// the drawn weapon (Instance is null when holstered to empty hands).
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnEquipmentSlotChanged, FGameplayTag, SlotTag, UNexusItemInstance*, Instance);
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class NEXUS_API UNexusEquipmentComponent : public UActorComponent, public IEMSCompSaveInterface
@@ -81,7 +83,7 @@ public:
 	 * or incompatibility.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Loadout")
-	bool MoveAssignment(FGameplayTag FromSlot, FGameplayTag ToSlot);
+	bool MoveItemBetweenSlots(FGameplayTag FromSlot, FGameplayTag ToSlot);
 
 	/** True if Instance can be placed in SlotTag (compatibility + slot exposed). */
 	UFUNCTION(BlueprintPure, Category = "Equipment|Loadout")
@@ -122,6 +124,27 @@ public:
 	bool RequestHolster();
 
 	/**
+	 * Quick-swap to the most-recently-active slot — the weapon in hand before the
+	 * current one. Back-end for a "previous weapon" key; pressing it twice returns
+	 * you where you started (the holster re-captures the stowed slot). No-op when
+	 * there's no remembered slot, it's no longer occupied, or it's already active.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Equipment|Activation")
+	bool RequestActivateLastSlot();
+
+	/**
+	 * Activate the next / previous occupied slot in AvailableSlots order, wrapping
+	 * and skipping empty slots — the "cycle weapons" keys (InputTag.Weapon.SwapNext /
+	 * SwapPrev). No-op if no other occupied slot exists. Honors the swap lock exactly
+	 * like RequestActivateSlot.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Equipment|Activation")
+	bool RequestActivateNextSlot();
+
+	UFUNCTION(BlueprintCallable, Category = "Equipment|Activation")
+	bool RequestActivatePrevSlot();
+
+	/**
 	 * Assign Instance to SlotTag and activate it once the (async) Equipped-bundle
 	 * load resolves. Fixes the obvious race in "AssignToSlot + RequestActivateSlot"
 	 * pairs where activation ran before FinalizeAssignment spawned the actor —
@@ -147,6 +170,10 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Equipment|Activation")
 	FGameplayTag GetActiveSlot() const { return ActiveSlot; }
+
+	/** The slot active immediately before the current one (quick-swap target), or invalid. */
+	UFUNCTION(BlueprintPure, Category = "Equipment|Activation")
+	FGameplayTag GetLastActiveSlot() const { return LastActiveSlot; }
 
 	UFUNCTION(BlueprintPure, Category = "Equipment|Activation")
 	UNexusItemInstance* GetActiveInstance() const { return GetEquippedInSlot(ActiveSlot); }
@@ -174,6 +201,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Equipment")
 	TArray<FGameplayTag> GetOccupiedSlots() const;
 
+	/** The slot Instance is assigned to, or invalid if it isn't equipped. Reverse of GetEquippedInSlot. */
+	UFUNCTION(BlueprintPure, Category = "Equipment")
+	FGameplayTag GetSlotForInstance(const UNexusItemInstance* Instance) const;
+
 
 public:
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Anim Notify")
@@ -182,13 +213,13 @@ public:
 public:
 	// Delegates
 	UPROPERTY(BlueprintAssignable, Category = "Equipment")
-	FOnEquipmentSlotAssignment OnSlotAssigned;
+	FOnEquipmentSlotChanged OnSlotAssigned;
 
 	UPROPERTY(BlueprintAssignable, Category = "Equipment")
-	FOnEquipmentSlotAssignment OnSlotCleared;
+	FOnEquipmentSlotChanged OnSlotCleared;
 
 	UPROPERTY(BlueprintAssignable, Category = "Equipment")
-	FOnEquipmentChanged OnActiveSlotChanged;
+	FOnEquipmentSlotChanged OnActiveSlotChanged;
 
 protected:
 	virtual void BeginPlay() override;
@@ -240,6 +271,9 @@ private:
 	void CompleteSwap();
 	void ProcessPendingActivation();
 
+	/** Shared back-end for RequestActivateNextSlot / PrevSlot. Direction is +1 / -1. */
+	bool CycleActiveSlot(int32 Direction);
+
 	UFUNCTION()
 	void HandleHolsterPhaseFinished();
 
@@ -259,6 +293,13 @@ private:
 	ENexusEquipSwapPhase SwapPhase = ENexusEquipSwapPhase::Idle;
 	FGameplayTag         SwapOutgoingSlot;
 	FGameplayTag         SwapIncomingSlot;
+
+	/**
+	 * Most-recently-active slot, captured when a swap stows the current weapon.
+	 * Drives RequestActivateLastSlot (quick-swap-to-previous). Runtime-only and not
+	 * persisted — a restored session starts with no remembered previous weapon.
+	 */
+	FGameplayTag LastActiveSlot;
 
 	/**
 	 * Slot + unholster action tag queued by RequestActivateSlot while a swap is
