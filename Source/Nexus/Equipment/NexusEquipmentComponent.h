@@ -15,6 +15,7 @@
 class USceneComponent;
 class UAnimMontage;
 class UAnimSequence;
+class UAnimInstance;
 
 class ANexusEquippedActor;
 class UNexusAbility;
@@ -117,6 +118,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Activation")
 	bool RequestActivateSlot(FGameplayTag SlotTag, FGameplayTag UnholsterActionTag = FGameplayTag());
 
+	/**
+	 * Quick-swap to the most-recently-active slot — the weapon that was in hand
+	 * before the current one. The back-end for a "previous weapon" key or a weapon
+	 * wheel's quick-toggle; pressing it twice returns you to where you started.
+	 * Returns false (no-op) when there is no remembered slot, it's no longer
+	 * occupied, or it's already active. Honors the swap lock exactly like
+	 * RequestActivateSlot — queues if a swap is in flight.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Equipment|Activation")
+	bool RequestActivateLastSlot();
+
 	/** Holster the currently active slot. Queues if a swap is in flight. */
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Activation")
 	bool RequestHolster();
@@ -147,6 +159,10 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Equipment|Activation")
 	FGameplayTag GetActiveSlot() const { return ActiveSlot; }
+
+	/** The slot that was active immediately before the current one (quick-swap target), or invalid. */
+	UFUNCTION(BlueprintPure, Category = "Equipment|Activation")
+	FGameplayTag GetLastActiveSlot() const { return LastActiveSlot; }
 
 	UFUNCTION(BlueprintPure, Category = "Equipment|Activation")
 	UNexusItemInstance* GetActiveInstance() const { return GetEquippedInSlot(ActiveSlot); }
@@ -247,7 +263,18 @@ private:
 	void HandleDrawPhaseFinished();
 
 	void AttachActorForSlotState(FGameplayTag SlotTag, bool bActive) const;
-	float PlayMontageOnOwner(UAnimMontage* Montage) const;
+	/**
+ * Play a swap-phase arms montage on the owner mesh and bind its end delegate so
+ * the phase completes when the montage actually ends — including an early
+ * blend-out from an interrupting montage (hit react, stagger). Returns the
+ * montage length so callers can arm PhaseTimer as a fallback. Unbinds any prior
+ * phase montage first.
+ */
+	float PlayPhaseMontage(UAnimMontage* Montage);
+	void  UnbindPhaseMontage();
+
+	UFUNCTION()
+	void HandlePhaseMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
 	void SetSwapTag(const bool bOn) const;
 	
@@ -259,6 +286,12 @@ private:
 	ENexusEquipSwapPhase SwapPhase = ENexusEquipSwapPhase::Idle;
 	FGameplayTag         SwapOutgoingSlot;
 	FGameplayTag         SwapIncomingSlot;
+	/**
+	 * Most-recently-active slot, captured when a swap stows the current weapon.
+	 * Drives RequestActivateLastSlot (quick-swap-to-previous). Runtime-only and not
+	 * persisted — a session restored from save starts with no remembered weapon.
+	 */
+	FGameplayTag LastActiveSlot;
 
 	/**
 	 * Slot + unholster action tag queued by RequestActivateSlot while a swap is
@@ -309,6 +342,17 @@ private:
 	FGameplayTag SlotPendingClear;
 
 	FTimerHandle PhaseTimer;
+	/**
+	 * The arms montage currently driving the active swap phase, and the anim
+	 * instance it plays on. Phase completion is driven by this montage's end
+	 * delegate (HandlePhaseMontageEnded) so an interrupt — a hit react or stagger
+	 * that blends the draw/holster out early — completes the phase immediately
+	 * instead of leaving Swapping (and the Fire/Reload lockout) latched for the
+	 * montage's full nominal length. PhaseTimer is the fallback if the delegate
+	 * never fires (no anim instance, 0-length montage).
+	 */
+	TWeakObjectPtr<UAnimInstance> SwapMontageAnimInstance;
+	TWeakObjectPtr<UAnimMontage>  SwapMontage;
 
 	/**
 	 * Pulled by BeginDrawPhase and cleared right after. When set, the next draw's

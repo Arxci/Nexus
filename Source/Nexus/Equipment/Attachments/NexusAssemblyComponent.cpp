@@ -66,21 +66,29 @@ FGameplayTag UNexusAssemblyComponent::FindParentSlotFor(const FGameplayTag SlotI
 // Lifecycle
 void UNexusAssemblyComponent::ClearAssembly()
 {
-	TGuardValue SuppressGuard(bSuppressBroadcasts, true);
-
-	TArray<FGameplayTag> Slots;
-	Attached.GetKeys(Slots);
-	for (const FGameplayTag& SlotID : Slots)
 	{
-		DetachSubtree(SlotID);
+		TGuardValue SuppressGuard(bSuppressBroadcasts, true);
+
+		TArray<FGameplayTag> Slots;
+		Attached.GetKeys(Slots);
+		for (const FGameplayTag& SlotID : Slots)
+		{
+			DetachSubtree(SlotID);
+		}
+
+		SlotDefinitions.Reset();
+		SlotParents.Reset();
+		SlotLoadHandles.Reset();
+		Attached.Reset();
+
+		InvalidateCaches();
 	}
 
-	SlotDefinitions.Reset();
-	SlotParents.Reset();
-	SlotLoadHandles.Reset();
-	Attached.Reset();
-
-	InvalidateCaches();
+	// Broadcast the now-empty state so direct ClearAssembly() callers (e.g. a
+	// workbench tearing a gun down) refresh their listeners. When this runs nested
+	// inside RebuildFromInstance the outer suppress guard is still active, so it's
+	// a no-op there and the single consolidated broadcast fires from Rebuild.
+	BroadcastChanged();
 }
 
 void UNexusAssemblyComponent::RebuildFromInstance()
@@ -603,6 +611,13 @@ void UNexusAssemblyComponent::RebuildStatCache() const
 void UNexusAssemblyComponent::InvalidateCaches()
 {
 	bStatCacheValid = false;
+
+	// Per-action montage resolutions go stale the moment the tree changes. The
+	// player can modify attachments on a live (equipped/holstered) weapon, so an
+	// attachment that overrides the reload/fire/unholster montage must take effect
+	// on that live assembly — not only after the actor is destroyed and respawned.
+	CachedArmsMontages.Reset();
+	CachedItemMontages.Reset();
 }
 
 const FResolvedItemStats& UNexusAssemblyComponent::ResolveStatsRef() const
