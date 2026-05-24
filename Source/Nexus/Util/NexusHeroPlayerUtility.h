@@ -12,12 +12,13 @@ class NEXUS_API UNexusHeroPlayerUtility : public UBlueprintFunctionLibrary
 
 public:
 	/** Trace forward from the camera. Returns true on hit. */
-	UFUNCTION(BlueprintCallable, Category = "Trace", meta = (DefaultToSelf = "Pawn"))
 	static bool CameraForwardTrace(
 		const APawn* Pawn,
 		const float Distance,
 		const ETraceTypeQuery TraceChannel,
 		FHitResult& OutHit,
 		const TEnumAsByte<EDrawDebugTrace::Type> DrawDebugType = EDrawDebugTrace::None,
-		const float DrawTime = 0.0f);
+		const float DrawTime = 0.0f,
+		const bool  bTraceComplex = false,            // NEW
+		const float SpreadHalfAngleDegrees = 0.0f);   // NEW
 };

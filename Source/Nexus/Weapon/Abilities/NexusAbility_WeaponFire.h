@@ -26,7 +26,7 @@ protected:
 
 protected:
 	void FireShot() const;
-	void FireOnePellet(const FVector& ViewLoc, const FRotator& ViewRot) const;
+	void FireOnePellet() const;          
 	void HandleDryFire() const;
 
 	class UAnimMontage* PlayMontage(class UAnimMontage* Montage) const;

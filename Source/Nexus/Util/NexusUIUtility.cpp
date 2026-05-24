@@ -4,6 +4,7 @@
 #include "CommonInputBaseTypes.h"
 
 #include "Engine/LocalPlayer.h"
+#include "InputCoreTypes.h"
 
 //Input
 FSlateBrush UNexusUIUtility::GetIconForFKey(UObject* WorldContextObject, FKey Key)
@@ -58,6 +59,28 @@ FSlateBrush UNexusUIUtility::GetIconForFKey(UObject* WorldContextObject, FKey Ke
 
 	PlatformSettings->TryGetInputBrush(Brush, Key, InputType, GamepadName);
 	return Brush;
+}
+
+void UNexusUIUtility::PreloadInputBrushes()
+{
+	const UCommonInputPlatformSettings* PlatformSettings = UCommonInputPlatformSettings::Get();
+	if (!PlatformSettings)
+	{
+		return;
+	}
+
+	// TryGetInputBrush() calls InitializeControllerData() internally, which
+	// LoadSynchronous()es every configured controller-data class (keyboard +
+	// gamepad). Loading those classes pulls in their CDOs and the hard-referenced
+	// key-icon textures, so this pass warms the entire set. The returned brush is
+	// irrelevant — we only want that side-effect load to happen here (behind the
+	// load screen) rather than on the first GetIconForFKey() during play.
+	FSlateBrush Discard;
+	for (const ECommonInputType InputType :
+		{ ECommonInputType::MouseAndKeyboard, ECommonInputType::Gamepad, ECommonInputType::Touch })
+	{
+		PlatformSettings->TryGetInputBrush(Discard, EKeys::AnyKey, InputType, FName());
+	}
 }
 
 

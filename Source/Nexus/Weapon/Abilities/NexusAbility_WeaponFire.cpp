@@ -17,7 +17,6 @@
 #include "HAL/IConsoleManager.h"
 
 #include "Kismet/GameplayStatics.h"
-#include "Kismet/KismetSystemLibrary.h"
 
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
@@ -26,6 +25,7 @@
 #include "Sound/SoundBase.h"
 
 #include "Nexus/Nexus.h"
+#include "Nexus/Util/NexusHeroPlayerUtility.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 #include "Nexus/Combat/NexusDamageContext.h"
 #include "Nexus/Combat/NexusDamageReceiverInterface.h"
@@ -168,7 +168,7 @@ void UNexusAbility_WeaponFire::FireShot() const
 	const int32 Pellets = FMath::Max(1, Weapon->Combat.PelletsPerShot);
 	for (int32 i = 0; i < Pellets; ++i)
 	{
-		FireOnePellet(ViewLoc, ViewRot);
+		FireOnePellet();                 
 	}
 
 	if (Weapon->Combat.FireCameraShake)
@@ -207,13 +207,16 @@ void UNexusAbility_WeaponFire::FireShot() const
 	}
 }
 
-void UNexusAbility_WeaponFire::FireOnePellet(const FVector& ViewLoc, const FRotator& ViewRot) const
+void UNexusAbility_WeaponFire::FireOnePellet() const
 {
 	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
 	if (!Weapon) return;
 
 	const UWorld* World = GetWorld();
 	if (!World) return;
+
+	const APawn* Pawn = Cast<APawn>(GetOwner());
+	if (!Pawn) return;
 
 	bool bAiming = false;
 	if (const UNexusAbilitySystemComponent* ASC = GetNexusAbilitySystemComponent())
@@ -236,13 +239,6 @@ void UNexusAbility_WeaponFire::FireOnePellet(const FVector& ViewLoc, const FRota
 
 	const float ConeHalfDeg = bAiming ? AdsSpread : HipSpread;
 
-	const FVector AimDir = ViewRot.Vector();
-	const FVector Spread = FMath::VRandCone(AimDir, FMath::DegreesToRadians(ConeHalfDeg));
-	const FVector End    = ViewLoc + Spread * MaxRange;
-
-	TArray<AActor*> ActorsToIgnore;
-	if (AActor* Owner = GetOwner()) ActorsToIgnore.Add(Owner);
-
 	const ETraceTypeQuery TraceType = UEngineTypes::ConvertToTraceType(NexusCollisionChannels::WeaponTrace);
 
 	EDrawDebugTrace::Type DrawDebug = EDrawDebugTrace::None;
@@ -253,18 +249,18 @@ void UNexusAbility_WeaponFire::FireOnePellet(const FVector& ViewLoc, const FRota
 	}
 #endif
 
+	// Camera-origin trace with per-pellet cone spread; ignores the owning pawn.
 	FHitResult Hit;
-	const bool bHit = UKismetSystemLibrary::LineTraceSingle(
-		this, ViewLoc, End, TraceType, /*bTraceComplex*/true,
-		ActorsToIgnore, DrawDebug, Hit, /*bIgnoreSelf*/true,
-		FLinearColor::Red, FLinearColor::Green, /*DrawTime*/1.5f);
+	const bool bHit = UNexusHeroPlayerUtility::CameraForwardTrace(
+		Pawn, MaxRange, TraceType, Hit, DrawDebug, /*DrawTime*/1.5f,
+		/*bTraceComplex*/true, /*SpreadHalfAngleDegrees*/ConeHalfDeg);
 
 #if !(UE_BUILD_SHIPPING)
 	if (GNexusWeaponDebugTrace > 1)
 	{
 		UE_LOG(LogNexusWeapon, Log, TEXT("[WeaponFire] hit=%d actor=%s bone=%s dist=%.0f"),   // was LogTemp
 			bHit, *GetNameSafe(Hit.GetActor()), *Hit.BoneName.ToString(),
-			bHit ? FVector::Distance(ViewLoc, Hit.ImpactPoint) : -1.0f);
+			bHit ? (Hit.ImpactPoint - Hit.TraceStart).Size() : -1.0f);
 	}
 #endif
 
@@ -272,6 +268,8 @@ void UNexusAbility_WeaponFire::FireOnePellet(const FVector& ViewLoc, const FRota
 
 	AActor* HitActor = Hit.GetActor();
 	if (!HitActor) return;
+
+	const FVector ToImpact = Hit.ImpactPoint - Hit.TraceStart;
 
 	if (HitActor->Implements<UNexusDamageReceiver>())
 	{
@@ -286,10 +284,10 @@ void UNexusAbility_WeaponFire::FireOnePellet(const FVector& ViewLoc, const FRota
 		Ctx.DamageTypeTag    = Weapon->Combat.DamageTypeTag;
 		Ctx.BaseDamage       = EffectiveDamage;
 		Ctx.HitResult        = Hit;
-		Ctx.ImpulseDirection = Spread;
+		Ctx.ImpulseDirection = ToImpact.GetSafeNormal();
 		Ctx.ImpulseMagnitude = 1000.0f;
 
-		const float Distance = FVector::Distance(ViewLoc, Hit.ImpactPoint);
+		const float Distance = ToImpact.Size();
 		if (Weapon->Combat.DamageFalloffCurve.GetRichCurveConst() && Weapon->Combat.DamageFalloffCurve.GetRichCurveConst()->GetNumKeys() > 0)
 		{
 			Ctx.Multiplier = Weapon->Combat.DamageFalloffCurve.GetRichCurveConst()->Eval(Distance, 1.0f);

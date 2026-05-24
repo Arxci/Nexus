@@ -8,15 +8,26 @@
 
 #include "Streaming/LevelStreamingDelegates.h"
 
-#include "Nexus/Nexus.h" 
+#include "Nexus/Nexus.h"
 #include "Nexus/Equipment/Attachments/NexusAttachmentDefinition.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Levels/NexusLevelManifest.h"
 #include "Nexus/Levels/NexusWorldSettings.h"
+#include "Nexus/Loading/NexusLoadingGateSubsystem.h"
+
+#include "Engine/GameInstance.h"
 
 
 namespace
 {
+	const FName NexusLoadReason_LevelManifest(TEXT("LevelManifest"));
+
+	UNexusLoadingGateSubsystem* GetLoadingGate(const UWorld* World)
+	{
+		UGameInstance* GI = World ? World->GetGameInstance() : nullptr;
+		return GI ? GI->GetSubsystem<UNexusLoadingGateSubsystem>() : nullptr;
+	}
+
 	TArray<FPrimaryAssetId> CollectManifestIds(const UNexusLevelManifest& Manifest)
 	{
 		UAssetManager& AM = UAssetManager::Get();
@@ -108,6 +119,17 @@ void UNexusLevelLoaderSubsystem::Deinitialize()
 	FLevelStreamingDelegates::OnLevelStreamingStateChanged.Remove(StreamingStateHandle);
 	StreamingStateHandle.Reset();
 
+	// World tearing down mid-load: drop our gate hold so the screen doesn't leak
+	// into the next world (the gate is GameInstance-scoped and outlives us).
+	if (bGateHeldForPersistentLoad)
+	{
+		if (UNexusLoadingGateSubsystem* Gate = GetLoadingGate(GetWorld()))
+		{
+			Gate->PopHold(NexusLoadReason_LevelManifest);
+		}
+		bGateHeldForPersistentLoad = false;
+	}
+
 	SubLevelHandles.Reset();
 	PendingPersistentLoadCallbacks.Reset();
 	PersistentHandle.Reset();
@@ -144,6 +166,13 @@ void UNexusLevelLoaderSubsystem::LoadPersistentManifest()
 		return;
 	}
 
+	// Real async work ahead: hold the loading screen until MarkPersistentLoadComplete.
+	if (UNexusLoadingGateSubsystem* Gate = GetLoadingGate(World))
+	{
+		Gate->PushHold(NexusLoadReason_LevelManifest);
+		bGateHeldForPersistentLoad = true;
+	}
+
 	UAssetManager& AM = UAssetManager::Get();
 	TWeakObjectPtr WeakSelf(this);
 	PersistentHandle = AM.ChangeBundleStateForPrimaryAssets(
@@ -170,6 +199,15 @@ void UNexusLevelLoaderSubsystem::MarkPersistentLoadComplete()
 {
 	if (bPersistentLoadComplete) return;
 	bPersistentLoadComplete = true;
+
+	if (bGateHeldForPersistentLoad)
+	{
+		if (UNexusLoadingGateSubsystem* Gate = GetLoadingGate(GetWorld()))
+		{
+			Gate->PopHold(NexusLoadReason_LevelManifest);
+		}
+		bGateHeldForPersistentLoad = false;
+	}
 
 	OnPersistentLoadComplete.Broadcast();
 

@@ -75,6 +75,9 @@ private:
 	TSharedPtr<FStreamableHandle> PersistentHandle;
 	bool bPersistentLoadComplete = false;
 
+	/** True while we hold the loading gate for the persistent manifest load. */
+	bool bGateHeldForPersistentLoad = false;
+
 	/** Callbacks waiting on the persistent load. Drained when it completes. */
 	TArray<FOnNexusPersistentLoadCallback> PendingPersistentLoadCallbacks;
 

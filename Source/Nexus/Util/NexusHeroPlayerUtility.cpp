@@ -10,19 +10,31 @@ bool UNexusHeroPlayerUtility::CameraForwardTrace(
 	const float Distance,
 	const ETraceTypeQuery TraceChannel,
 	FHitResult& OutHit,
-	const TEnumAsByte<EDrawDebugTrace::Type> DrawDebugType, const float DrawTime)
+	const TEnumAsByte<EDrawDebugTrace::Type> DrawDebugType, const float DrawTime,
+	const bool bTraceComplex, const float SpreadHalfAngleDegrees)
 {
 	if (!Pawn) return false;
 
-	const APlayerController* PC = Cast<APlayerController>(Pawn->GetController());
-	if (!PC) return false;
-
 	FVector CamLoc;
 	FRotator CamRot;
-	PC->GetPlayerViewPoint(CamLoc, CamRot);
+	if (const AController* Controller = Pawn->GetController())
+	{
+		// APlayerController routes this through the camera manager; an AIController
+		// (or any other) falls back to the pawn's eye view point.
+		Controller->GetPlayerViewPoint(CamLoc, CamRot);
+	}
+	else
+	{
+		Pawn->GetActorEyesViewPoint(CamLoc, CamRot);
+	}
+
+	const FVector Forward   = CamRot.Vector();
+	const FVector Direction = SpreadHalfAngleDegrees > 0.0f
+		? FMath::VRandCone(Forward, FMath::DegreesToRadians(SpreadHalfAngleDegrees))
+		: Forward;
 
 	const FVector Start = CamLoc;
-	const FVector End   = Start + CamRot.Vector() * Distance;
+	const FVector End   = Start + Direction * Distance;
 
 	TArray<AActor*> ActorsToIgnore;
 	ActorsToIgnore.Add(const_cast<APawn*>(Pawn));
@@ -32,7 +44,7 @@ bool UNexusHeroPlayerUtility::CameraForwardTrace(
 		Start,
 		End,
 		TraceChannel,
-		false,                                             // bTraceComplex
+		bTraceComplex,
 		ActorsToIgnore,
 		DrawDebugType,
 		OutHit,
