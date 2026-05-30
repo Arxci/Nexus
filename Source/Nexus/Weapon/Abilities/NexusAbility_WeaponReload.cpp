@@ -16,7 +16,9 @@
 #include "TimerManager.h"
 
 #include "Nexus/Nexus.h"
+#include "Nexus/Character/NexusCharacterBase.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
+#include "Nexus/Equipment/NexusEquipmentInterface.h"
 #include "Nexus/Equipment/NexusEquippedActor.h"
 #include "Nexus/Inventory/NexusInventoryComponent.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
@@ -87,37 +89,35 @@ void UNexusAbility_WeaponReload::CommitAbility()
 	UAnimInstance* ReloadAnimInstance = nullptr;
 	float MontageDuration = 0.0f;
 
-	// The arms-side reload montage, resolved through the assembly so a drum-mag
-	// attachment can override it via ActionOverrides; falls back to the
-	// equippable fragment's authored Reload arms montage.
-	UAnimMontage* ArmsReload = nullptr;
+	// The reload montage that plays on the host's animated mesh, resolved through the
+	// assembly so a drum-mag attachment can override it via ActionOverrides; falls
+	// back to the equippable fragment's authored Reload montage.
+	UAnimMontage* HostReload = nullptr;
 	if (const ANexusEquippedActor* Equipped = GetEquippedActor())
 	{
-		ArmsReload = Equipped->GetEffectiveArmsMontage(NexusGameplayTags::Action_Equipment_Weapon_Reload);
+		HostReload = Equipped->GetEffectiveHostMontage(NexusGameplayTags::Action_Equipment_Weapon_Reload);
 	}
 
-	if (ArmsReload)
+	// Play it through the host interface so reload works on any equipment host
+	// (player view-space mesh or NPC body mesh). We resolve the AnimInstance from
+	// the host directly because we also need it to bind the ammo-transfer notify.
+	if (HostReload)
 	{
-		if (const ACharacter* Char = Cast<ACharacter>(GetOwner()))
+		INexusEquipmentInterface* Host = GetEquipmentHost();
+		if (UAnimInstance* AnimInstance = Host ? Host->GetAnimInstance() : nullptr)
 		{
-			if (USkeletalMeshComponent* Mesh = Char->GetMesh())
+			MontageDuration = AnimInstance->Montage_Play(HostReload);
+			if (MontageDuration > 0.0f)
 			{
-				if (UAnimInstance* AnimInstance = Mesh->GetAnimInstance())
-				{
-					MontageDuration = AnimInstance->Montage_Play(ArmsReload);
-					if (MontageDuration > 0.0f)
-					{
-						ReloadAnimInstance = AnimInstance;
-						AnimInstance->OnPlayMontageNotifyBegin.AddUniqueDynamic(
-							this, &UNexusAbility_WeaponReload::HandleNotifyBegin);
-					}
-				}
+				ReloadAnimInstance = AnimInstance;
+				AnimInstance->OnPlayMontageNotifyBegin.AddUniqueDynamic(
+					this, &UNexusAbility_WeaponReload::HandleNotifyBegin);
 			}
 		}
 	}
 
 	BoundAnimInstance   = ReloadAnimInstance;
-	BoundReloadMontage  = ArmsReload;
+	BoundReloadMontage  = HostReload;
 
 	if (USoundBase* ReloadSound = NexusWeapon::GetEquippedAsset(Weapon->Presentation.ReloadSound,
 	TEXT("ReloadSound"), GetActiveDefinition()))

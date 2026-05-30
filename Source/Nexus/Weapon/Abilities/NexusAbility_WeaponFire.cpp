@@ -25,8 +25,10 @@
 #include "Sound/SoundBase.h"
 
 #include "Nexus/Nexus.h"
+#include "Nexus/Character/NexusCharacterBase.h"
 #include "Nexus/Util/NexusHeroPlayerUtility.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
+#include "Nexus/Equipment/NexusEquipmentInterface.h"
 #include "Nexus/Combat/NexusDamageContext.h"
 #include "Nexus/Combat/NexusDamageReceiverInterface.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
@@ -183,7 +185,7 @@ void UNexusAbility_WeaponFire::FireShot() const
 
 	if (EquippedActor)
 	{
-		PlayMontage(EquippedActor->GetEffectiveArmsMontage(NexusGameplayTags::Action_Equipment_Weapon_Fire));
+		PlayMontage(EquippedActor->GetEffectiveHostMontage(NexusGameplayTags::Action_Equipment_Weapon_Fire));
 	}
 
 	if (USoundBase* S = NexusWeapon::GetEquippedAsset(Weapon->Presentation.FireSound,
@@ -252,8 +254,8 @@ void UNexusAbility_WeaponFire::FireOnePellet() const
 	// Camera-origin trace with per-pellet cone spread; ignores the owning pawn.
 	FHitResult Hit;
 	const bool bHit = UNexusHeroPlayerUtility::CameraForwardTrace(
-		Pawn, MaxRange, TraceType, Hit, DrawDebug, /*DrawTime*/1.5f,
-		/*bTraceComplex*/true, /*SpreadHalfAngleDegrees*/ConeHalfDeg);
+		Pawn, MaxRange, TraceType, Hit, DrawDebug, 1.5f,
+		true, ConeHalfDeg);
 
 #if !(UE_BUILD_SHIPPING)
 	if (GNexusWeaponDebugTrace > 1)
@@ -316,7 +318,7 @@ void UNexusAbility_WeaponFire::HandleDryFire() const
 
 	if (const ANexusEquippedActor* EquippedActor = GetEquippedActor())
 	{
-		PlayMontage(EquippedActor->GetEffectiveArmsMontage(NexusGameplayTags::Action_Equipment_Weapon_DryFire));
+		PlayMontage(EquippedActor->GetEffectiveHostMontage(NexusGameplayTags::Action_Equipment_Weapon_DryFire));
 	}
 
 	if (USoundBase* S = NexusWeapon::GetEquippedAsset(Weapon->Presentation.DryFireSound,
@@ -333,15 +335,12 @@ UAnimMontage* UNexusAbility_WeaponFire::PlayMontage(UAnimMontage* Montage) const
 {
 	if (!Montage) return nullptr;
 
-	if (const ACharacter* Char = Cast<ACharacter>(GetOwner()))
+	// Through the host interface — no Cast<ACharacter>, no first-person assumption.
+	if (INexusEquipmentInterface* Host = GetEquipmentHost())
 	{
-		if (const USkeletalMeshComponent* Mesh = Char->GetMesh())
+		if (Host->PlayMontage(Montage) > 0.0f)
 		{
-			if (UAnimInstance* AnimInstance = Mesh->GetAnimInstance())
-			{
-				AnimInstance->Montage_Play(Montage);
-				return Montage;
-			}
+			return Montage;
 		}
 	}
 	return nullptr;

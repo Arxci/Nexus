@@ -56,7 +56,8 @@ namespace NexusGameplayTags
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Weapon_Slot1);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Weapon_Slot2);
 
-	// Equipment slots (used as keys in EquipmentComponent::EquippedSlots)
+	// Equipment slot identity. Slots are data-driven (UNexusEquipmentLoadout); these
+	// are common roots shipped in C++ and used as runtime keys by the equipment component.
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Equipment_Slot_Primary);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Equipment_Slot_Secondary);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Equipment_Slot_Utility);
@@ -75,6 +76,9 @@ namespace NexusGameplayTags
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Item_Category_Consumable);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Item_Category_Key);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Item_Category_Document);
+	// Passive-equipment category (armor / charms). Slotted into a bIsPassive slot
+	// whose AcceptedItemTags include this; carried by items with a PassiveEquipment fragment.
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Item_Category_Armor);
 
 	// Stat tag roots stored on UNexusItemInstance::StatTags
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Ammo_InMagazine);

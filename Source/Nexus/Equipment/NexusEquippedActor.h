@@ -50,16 +50,17 @@ public:
 
 
     /**
-     * Resolve the effective arms-side montage for ActionTag, walking attachment
-     * overrides first (deeper wins) and falling back to the equippable
-     * fragment's authored Actions map. Returns null if neither path supplies
-     * an arms montage for that action.
+     * Resolve the effective montage ActionTag should play on the HOST's animated
+     * mesh (the wielder — body mesh for an NPC, view-space mesh for the player),
+     * walking attachment overrides first (deeper wins) then falling back to the
+     * equippable fragment's authored Actions map. Returns null if neither path
+     * supplies a host-mesh montage for that action.
      *
-     * Callers play the result on the player's first-person/character mesh —
-     * see UNexusEquipmentComponent::PlayMontageOnOwner and the weapon abilities.
+     * Callers play the result through INexusEquipmentInterface — see
+     * UNexusEquipmentComponent's transition montages and the weapon abilities.
      */
     UFUNCTION(BlueprintPure, Category = "Equipped|Anim")
-    UAnimMontage* GetEffectiveArmsMontage(FGameplayTag ActionTag) const;
+    UAnimMontage* GetEffectiveHostMontage(FGameplayTag ActionTag) const;
 
     /**
      * Resolve the effective item-mesh montage for ActionTag (the gun's slide /
@@ -94,7 +95,7 @@ public:
      * actor so AnimBP graphs don't have to walk fragment data each frame.
      *
      * Action montages (Holster/Unholster/Fire/Reload/etc.) are NOT cached here;
-     * they're resolved on demand via GetEffectiveArmsMontage / GetEffectiveItemMontage
+     * they're resolved on demand via GetEffectiveHostMontage / GetEffectiveItemMontage
      * so attachment overrides apply correctly.
      */
     UPROPERTY(BlueprintReadOnly, Category = "Equipment|Anims")

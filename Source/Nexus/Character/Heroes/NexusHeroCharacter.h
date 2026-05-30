@@ -38,8 +38,10 @@ public:
 	ANexusHeroCharacter(const FObjectInitializer& ObjectInitializer  = FObjectInitializer::Get());
 
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
+	
+	virtual USkeletalMeshComponent* GetEquipmentAttachMesh() const override { return FirstPersonArms ? FirstPersonArms.Get() : Super::GetEquipmentAttachMesh(); }
 
-	virtual USkeletalMeshComponent* GetEquipmentAttachMesh() const override { return FirstPersonArms ? ObjectPtrDecay(FirstPersonArms) : Super::GetEquipmentAttachMesh(); }
+	virtual UAnimInstance* GetAnimInstance() const override { return FirstPersonArms ? FirstPersonArms->GetAnimInstance() : nullptr; };
 	
 public:
 	// Utility
@@ -73,6 +75,11 @@ protected:
 	TObjectPtr<USceneComponent> ViewSource;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Camera")
 	TObjectPtr<UCameraComponent> FollowCamera;
+
+	// Sibling of the camera under the spring arm. Hosts the view-model arms so they
+	// inherit only the shared control rotation, never the camera-only view offset.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Camera")
+	TObjectPtr<USceneComponent> ViewModelRoot;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Arms")
 	TObjectPtr<USkeletalMeshComponent> FirstPersonArms;
@@ -112,6 +119,15 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Character|Input|Aim")
 	EInputMode AimInputMode = EInputMode::Hold;
 
+	/**
+	 * Hold duration (seconds) that upgrades a slot activation from a normal
+	 * unholster to the ceremony (inspect / flourish) variant. A tap draws normally;
+	 * holding past this plays the ceremony draw. Distinguished from the Enhanced
+	 * Input action's processed elapsed time on release.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Character|Input|Weapon", meta = (ClampMin = "0.0"))
+	float SlotCeremonyHoldThreshold = 0.3f;
+
 	UEnhancedInputComponent* GetEnhancedInputComponent() const { return EnhancedInputComponent; }
 
 protected:
@@ -148,9 +164,18 @@ private:
 	void OnInteractInputStarted();
 	void OnInteractInputCompleted();
 	
-	void OnSlotPrimaryInputStarted();
-	void OnSlotSecondaryInputStarted();
-	void HandleSlotInput(FGameplayTag SlotTag);
+	// Slot inputs use a single Hold trigger per action: a tap cancels the hold
+	// (Canceled → Normal draw); holding past the trigger's threshold fires Triggered
+	// (→ Ceremony draw). The threshold lives on the Input Action asset, not here.
+	void OnSlotPrimaryTap();
+	void OnSlotPrimaryHold();
+	void OnSlotSecondaryTap();
+	void OnSlotSecondaryHold();
+	void HandleSlotInput(FGameplayTag SlotTag, EUnholsterStyle Style);
 
 	void HandleToggleAbilityInput(const FGameplayTag AbilityTag, const FGameplayTag DeactivateIntentTag);
+
+	UFUNCTION()
+	void HandleActiveSlotChanged(FGameplayTag SlotTag, UNexusItemInstance* Instance);
+	void UpdateArmsVisibility();
 };

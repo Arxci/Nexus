@@ -7,6 +7,7 @@
 #include "NexusAbility_Weapon.generated.h"
 
 class ANexusEquippedActor;
+class INexusEquipmentInterface;
 class UNexusEquipmentComponent;
 class UNexusItemDefinition;
 class UNexusItemInstance;
@@ -60,6 +61,14 @@ public:
 
 	/** May be nullptr if the active item lacks an FNexusFragment_Weapon. */
 	const FNexusFragment_Weapon* GetWeaponFragment() const;
-	
+
+	/**
+	 * The owning actor as an equipment host. Weapon montages play through this
+	 * (Host->PlayMontage / Host->GetAnimInstance()->Montage_Play) so the same fire
+	 * and reload code drives the player's view-space mesh and an NPC's body mesh
+	 * alike — no Cast<ACharacter>, no first-person assumptions.
+	 */
+	INexusEquipmentInterface* GetEquipmentHost() const;
+
 	virtual bool CanActivateAbility_Implementation() const override;
 };

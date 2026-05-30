@@ -9,19 +9,22 @@
 
 #include "Nexus/AbilitySystem/NexusAbilitySystemInterface.h"
 #include "Nexus/Equipment/NexusEquipmentComponent.h"
+#include "Nexus/Equipment/NexusEquipmentInterface.h"
 #include "Nexus/Inventory/NexusInventoryComponent.h"
 
 #include "NexusCharacterBase.generated.h"
 
 class UNexusAbilitySystemComponent;
 class UNexusAbility;
+class UAnimInstance;
+class USkeletalMeshComponent;
 
 class UNexusCharacterMovementComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCharacterLoaded);
 
 UCLASS(PrioritizeCategories = ("Abilities"))
-class NEXUS_API ANexusCharacterBase : public ACharacter, public INexusAbilitySystemInterface, public IEMSActorSaveInterface
+class NEXUS_API ANexusCharacterBase : public ACharacter, public INexusAbilitySystemInterface, public INexusEquipmentInterface, public IEMSActorSaveInterface
 {
 	GENERATED_BODY()
 
@@ -38,8 +41,14 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character")
 	TObjectPtr<UNexusEquipmentComponent> NexusEquipmentComponent;
 
+	//~Start equipment host interface (INexusEquipmentInterface)
+	// The body mesh is the default attach target and the mesh equipment montages play
+	// on. A view-space pawn overrides GetEquipmentAttachMesh to point the held item at
+	// its viewmodel mesh; montages still play on the body mesh resolved here.
 	UFUNCTION(BlueprintPure, Category = "Character")
-	virtual USkeletalMeshComponent* GetEquipmentAttachMesh() const { return GetMesh(); }
+	virtual USkeletalMeshComponent* GetEquipmentAttachMesh() const override { return GetMesh(); }
+	virtual UAnimInstance* GetAnimInstance() const override { return GetMesh() ? GetMesh()->GetAnimInstance() : nullptr; };
+	//~End equipment host interface
 
 public:
 	//Movement

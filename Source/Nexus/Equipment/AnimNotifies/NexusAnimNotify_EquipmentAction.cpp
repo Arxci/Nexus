@@ -37,6 +37,10 @@ void UNexusAnimNotify_EquipmentAction::Notify(USkeletalMeshComponent* MeshComp,
 	const UNexusEquipmentComponent* Equipment = Owner->FindComponentByClass<UNexusEquipmentComponent>();
 	if (!Equipment) return;
 
+	// Animate the item mesh in lockstep with the host montage (the gun's slide / bolt /
+	// mag at this frame) on whichever actor is currently active. This notify does NOT
+	// advance the slot lifecycle — that is driven by the montage ending, so a draw or
+	// holster always plays to completion and can't be interrupted mid-animation.
 	if (ANexusEquippedActor* Active = Equipment->GetActiveActor())
 	{
 		Active->PlayItemActionMontage(ActionTag);

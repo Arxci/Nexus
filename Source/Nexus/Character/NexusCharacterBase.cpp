@@ -1,5 +1,9 @@
 ﻿#include "NexusCharacterBase.h"
 
+#include "Components/SkeletalMeshComponent.h"
+
+#include "Animation/AnimInstance.h"
+
 #include "Nexus/Nexus.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 #include "Nexus/Character/NexusCharacterMovementComponent.h"

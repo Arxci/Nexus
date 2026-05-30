@@ -40,7 +40,7 @@ struct NEXUS_API FNexusAcquireResult
 	 * Named *Assigned* rather than *Equipped* because the library returns
 	 * before the (async) Equipped-bundle load + draw phase complete; the
 	 * actor is in the slot but may not be visible yet. Listen on
-	 * UNexusEquipmentComponent::OnActiveSlotChanged for the visual transition.
+	 * UNexusEquipmentComponent::OnSlotActivated for the visual transition.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Inventory")
 	FGameplayTag AssignedSlot;

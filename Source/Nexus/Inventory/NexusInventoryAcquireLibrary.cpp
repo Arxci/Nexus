@@ -67,14 +67,12 @@ FNexusAcquireResult UNexusInventoryAcquireLibrary::AcquireItem(
 	UNexusEquipmentComponent* Equipment = Recipient->FindComponentByClass<UNexusEquipmentComponent>();
 	if (!Equipment) return Result;
 
-	// Pick the action tag for the draw phase. First-acquire uses Ceremony unless
-	// the caller explicitly suppressed it; the equipment component falls back to
-	// Action.Equipment.Unholster automatically if the def doesn't author a
-	// ceremony, so it's safe to always pass Ceremony when first-acquire is true.
+	// Pick the draw style. First-acquire uses Ceremony unless the caller suppressed
+	// it; the equipment component falls back to the normal unholster automatically
+	// if the def doesn't author a ceremony, so it's safe to always pass Ceremony
+	// when first-acquire is true.
 	const bool bUseCeremony = Result.bWasFirstAcquire && !Params.bSkipCeremony;
-	const FGameplayTag UnholsterAction = bUseCeremony
-		? NexusGameplayTags::Action_Equipment_Ceremony
-		: FGameplayTag();
+	const EUnholsterStyle DrawStyle = bUseCeremony ? EUnholsterStyle::Ceremony : EUnholsterStyle::Normal;
 
 	// Auto-equip the first new instance that has both an equippable fragment
 	// and a free compatible slot. Multiple-pickup cases (loot crate yielding
@@ -90,7 +88,7 @@ FNexusAcquireResult UNexusInventoryAcquireLibrary::AcquireItem(
 		const FGameplayTag Slot = Equipment->PickAutoAssignSlot(New);
 		if (!Slot.IsValid()) continue;
 
-		if (Equipment->AssignAndActivate(New, Slot, UnholsterAction))
+		if (Equipment->AssignAndActivate(Slot, New, DrawStyle))
 		{
 			Result.AssignedSlot = Slot;
 			break;

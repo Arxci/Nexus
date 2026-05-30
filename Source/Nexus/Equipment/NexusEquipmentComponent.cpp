@@ -1,20 +1,19 @@
 ﻿#include "NexusEquipmentComponent.h"
 
 #include "Engine/AssetManager.h"
-
-#include "GameFramework/Character.h"
-
-#include "Components/SkeletalMeshComponent.h"
-
 #include "Engine/World.h"
 #include "TimerManager.h"
 
+#include "Components/SkeletalMeshComponent.h"
+
+#include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
-#include "Animation/AnimSequence.h"
 
 #include "NexusEquippedActor.h"
+#include "NexusEquipmentInterface.h"
+#include "NexusEquipmentLoadout.h"
+#include "Nexus/Nexus.h"
 #include "Nexus/NexusAssetManager.h"
-#include "Nexus/Character/NexusCharacterBase.h"
 #include "Nexus/NexusGameplayTags.h"
 #include "Nexus/AbilitySystem/NexusAbility.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
@@ -23,6 +22,7 @@
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
 #include "Nexus/Inventory/Fragments/Equippable/NexusFragment_Equippable.h"
+#include "Nexus/Inventory/Fragments/PassiveEquipment/NexusFragment_PassiveEquipment.h"
 
 UNexusEquipmentComponent::UNexusEquipmentComponent()
 {
@@ -37,6 +37,17 @@ void UNexusEquipmentComponent::BeginPlay()
 	{
 		Inventory->OnItemRemoved.AddDynamic(this, &UNexusEquipmentComponent::HandleInventoryItemRemoved);
 	}
+
+	// Apply starter gear on the next tick so the inventory (and any EMS restore) has
+	// settled first. ComponentLoaded sets bStarterApplied on a save-restore, which
+	// suppresses this so a loaded game doesn't double up its starting loadout.
+	if (StarterEquipment.Num() > 0)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().SetTimerForNextTick(this, &UNexusEquipmentComponent::ApplyStarterEquipment);
+		}
+	}
 }
 
 void UNexusEquipmentComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -46,25 +57,29 @@ void UNexusEquipmentComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		Inventory->OnItemRemoved.RemoveDynamic(this, &UNexusEquipmentComponent::HandleInventoryItemRemoved);
 	}
 
-	if (const UWorld* World = GetWorld())
-	{
-		World->GetTimerManager().ClearTimer(PhaseTimer);
-	}
-
-	OutgoingPendingHide = FGameplayTag();
-	PendingActivation.Reset();
 	PendingActivationsAfterAssignment.Empty();
-	PendingUnholsterActionTag = FGameplayTag();
 	SlotPendingClear = FGameplayTag();
-	SwapPhase = ENexusEquipSwapPhase::Idle;
-	SwapOutgoingSlot = FGameplayTag();
-	SwapIncomingSlot = FGameplayTag();
-	LastActiveSlot = FGameplayTag();
+	HolsteringSlot   = FGameplayTag();
+	PendingDrawSlot  = FGameplayTag();
+	LastActiveSlot   = FGameplayTag();
 
 	ClearAll();
 	EquippableLoadHandles.Empty();
 
 	Super::EndPlay(EndPlayReason);
+}
+
+
+// Host access — strictly through the interfaces, never a concrete character class.
+INexusEquipmentInterface* UNexusEquipmentComponent::GetHost() const
+{
+	return Cast<INexusEquipmentInterface>(GetOwner());
+}
+
+UAnimInstance* UNexusEquipmentComponent::GetHostAnimInstance() const
+{
+	const INexusEquipmentInterface* Host = GetHost();
+	return Host ? Host->GetAnimInstance() : nullptr;
 }
 
 UNexusAbilitySystemComponent* UNexusEquipmentComponent::GetASC() const
@@ -82,26 +97,53 @@ UNexusInventoryComponent* UNexusEquipmentComponent::GetInventory() const
 }
 
 
-// Loadout (UI-driven assignment)
+// Loadout / slot queries
+bool UNexusEquipmentComponent::IsValidSlot(FGameplayTag SlotTag) const
+{
+	return Loadout && Loadout->HasSlot(SlotTag);
+}
+
+bool UNexusEquipmentComponent::IsSlotPassive(FGameplayTag SlotTag) const
+{
+	const FNexusEquipmentSlotDef* SlotDef = Loadout ? Loadout->FindSlot(SlotTag) : nullptr;
+	return SlotDef && SlotDef->bIsPassive;
+}
+
+TArray<FGameplayTag> UNexusEquipmentComponent::GetSlots() const
+{
+	TArray<FGameplayTag> Out;
+	if (Loadout)
+	{
+		Loadout->GetSlotTagsSorted(Out);
+	}
+	return Out;
+}
+
 bool UNexusEquipmentComponent::CanAssignToSlot(const UNexusItemInstance* Instance, FGameplayTag SlotTag) const
 {
-	if (!Instance || !SlotTag.IsValid()) return false;
-	if (!IsValidSlot(SlotTag)) return false;
+	if (!Instance) return false;
+
+	const FNexusEquipmentSlotDef* SlotDef = Loadout ? Loadout->FindSlot(SlotTag) : nullptr;
+	if (!SlotDef) return false;
 
 	const UNexusItemDefinition* Definition = Instance->GetDefinition();
 	if (!Definition) return false;
 
-	const FNexusFragment_Equippable* Eq = Definition->FindFragment<FNexusFragment_Equippable>();
-	if (!Eq) return false;
+	// Category filter: the item's category tags must intersect the slot's
+	// AcceptedItemTags. An empty AcceptedItemTags is "no category restriction" —
+	// accept any item of the slot's mode.
+	if (!SlotDef->AcceptedItemTags.IsEmpty()
+		&& !Definition->CategoryTags.HasAny(SlotDef->AcceptedItemTags))
+	{
+		return false;
+	}
 
-	return Eq->CanFitInSlot(SlotTag);
-}
-
-bool UNexusEquipmentComponent::IsValidSlot(FGameplayTag SlotTag) const
-{
-	if (!SlotTag.IsValid()) return false;
-	if (AvailableSlots.Num() == 0) return true;
-	return AvailableSlots.Contains(SlotTag);
+	// Mode routing: the fragment decides which slot mode an item belongs to.
+	if (SlotDef->bIsPassive)
+	{
+		return Definition->HasFragment<FNexusFragment_PassiveEquipment>();
+	}
+	return Definition->HasFragment<FNexusFragment_Equippable>();
 }
 
 TArray<FGameplayTag> UNexusEquipmentComponent::GetCompatibleSlotsForInstance(const UNexusItemInstance* Instance) const
@@ -109,20 +151,9 @@ TArray<FGameplayTag> UNexusEquipmentComponent::GetCompatibleSlotsForInstance(con
 	TArray<FGameplayTag> Out;
 	if (!Instance) return Out;
 
-	const UNexusItemDefinition* Definition = Instance->GetDefinition();
-	if (!Definition) return Out;
-
-	const FNexusFragment_Equippable* Eq = Definition->FindFragment<FNexusFragment_Equippable>();
-	if (!Eq) return Out;
-	
-	const TArray<FGameplayTag>& Slots = AvailableSlots.Num() > 0
-		? AvailableSlots
-		: Eq->AllowedSlots.GetGameplayTagArray();
-
-	Out.Reserve(Slots.Num());
-	for (const FGameplayTag& Slot : Slots)
+	for (const FGameplayTag& Slot : GetSlots())
 	{
-		if (Eq->CanFitInSlot(Slot))
+		if (CanAssignToSlot(Instance, Slot))
 		{
 			Out.Add(Slot);
 		}
@@ -130,42 +161,97 @@ TArray<FGameplayTag> UNexusEquipmentComponent::GetCompatibleSlotsForInstance(con
 	return Out;
 }
 
-bool UNexusEquipmentComponent::AssignToSlot(UNexusItemInstance* Instance, FGameplayTag SlotTag)
+FGameplayTag UNexusEquipmentComponent::PickAutoAssignSlot(const UNexusItemInstance* Instance) const
 {
-	if (!CanAssignToSlot(Instance, SlotTag)) return false;
+	if (!Instance) return FGameplayTag();
 
-	UNexusItemInstance* Existing = EquippedSlots.FindRef(SlotTag);
-	if (Existing == Instance) return true; 
-	
-	if (Existing)
+	const UNexusItemDefinition* Definition = Instance->GetDefinition();
+	const FNexusFragment_Equippable* Eq = Definition
+		? Definition->FindFragment<FNexusFragment_Equippable>() : nullptr;
+	if (!Eq) return FGameplayTag();          // auto-equip is an in-hand concern
+
+	// Definition-level veto: items flagged bAllowAutoAssign=false refuse silent slotting.
+	if (!Eq->bAllowAutoAssign) return FGameplayTag();
+
+	// Prefer the authored slot when it's free; never evict an existing occupant.
+	if (Eq->PreferredSlot.IsValid()
+		&& CanAssignToSlot(Instance, Eq->PreferredSlot)
+		&& !IsSlotOccupied(Eq->PreferredSlot))
 	{
+		return Eq->PreferredSlot;
+	}
+
+	for (const FGameplayTag& Slot : GetCompatibleSlotsForInstance(Instance))
+	{
+		if (!IsSlotOccupied(Slot))
+		{
+			return Slot;
+		}
+	}
+	return FGameplayTag();
+}
+
+
+// Assignment
+bool UNexusEquipmentComponent::AssignItemToSlot(FGameplayTag SlotTag, UNexusItemInstance* Instance)
+{
+	if (!CanAssignToSlot(Instance, SlotTag))
+	{
+		UE_LOG(LogNexusEquipment, Warning,
+			TEXT("[Equipment] Rejected %s -> slot %s: incompatible (item category doesn't intersect "
+				 "the slot's AcceptedItemTags, the slot mode doesn't match the item's fragment, or the "
+				 "slot isn't in this loadout)."),
+			*GetNameSafe(Instance ? Instance->GetDefinition() : nullptr),
+			*SlotTag.ToString());
+		return false;
+	}
+
+	if (const FNexusEquipmentSlotState* Existing = SlotStates.Find(SlotTag))
+	{
+		if (Existing->Assigned == Instance) return true; // already here — no-op
 		ClearSlotImmediate(SlotTag);
 	}
-	
+
+	// An instance lives in at most one slot — pull it out of any other slot first.
 	{
-		TArray<FGameplayTag> ExistingAssignments;
-		for (const TPair<FGameplayTag, TObjectPtr<UNexusItemInstance>>& Pair : EquippedSlots)
+		TArray<FGameplayTag> PriorSlots;
+		for (const TPair<FGameplayTag, FNexusEquipmentSlotState>& Pair : SlotStates)
 		{
-			if (Pair.Value == Instance) ExistingAssignments.Add(Pair.Key);
+			if (Pair.Value.Assigned == Instance) PriorSlots.Add(Pair.Key);
 		}
-		for (const FGameplayTag& Slot : ExistingAssignments)
-		{
-			ClearSlotImmediate(Slot);
-		}
+		for (const FGameplayTag& Prior : PriorSlots) ClearSlotImmediate(Prior);
 	}
 
-	EquippedSlots.Add(SlotTag, Instance);
-	
-	TWeakObjectPtr WeakSelf(this);
-	TWeakObjectPtr WeakInstance(Instance);
+	const bool bPassive = IsSlotPassive(SlotTag);
+
+	FNexusEquipmentSlotState& State = SlotStates.Add(SlotTag);
+	State.Assigned = Instance;
+	State.bPassive = bPassive;
+	State.Phase    = EEquipmentSlotPhase::Idle;
+
+	if (bPassive)
+	{
+		// Passive short-circuit: apply effects and announce immediately. No actor
+		// spawn, no Equipped-bundle load, no montage — this is how armor / charm items work.
+		ApplySlotEffects(SlotTag, State);
+		OnSlotAssigned.Broadcast(SlotTag, Instance);
+		return true;
+	}
+
+	// In-hand: load the Equipped bundle, then FinalizeInHandAssignment spawns the
+	// actor and grants effects. The slot is "occupied" the moment it's in SlotStates,
+	// even before the async actor exists.
+	TWeakObjectPtr<UNexusEquipmentComponent> WeakSelf(this);
+	TWeakObjectPtr<UNexusItemInstance> WeakInstance(Instance);
 	const FStreamableDelegate OnReady = FStreamableDelegate::CreateLambda(
 		[WeakSelf, WeakInstance, SlotTag]()
 		{
 			UNexusEquipmentComponent* Self = WeakSelf.Get();
 			UNexusItemInstance* Inst = WeakInstance.Get();
 			if (!Self || !Inst) return;
-			if (Self->EquippedSlots.FindRef(SlotTag) != Inst) return;
-			Self->FinalizeAssignment(SlotTag, Inst);
+			const FNexusEquipmentSlotState* S = Self->SlotStates.Find(SlotTag);
+			if (!S || S->Assigned != Inst) return; // slot changed under us while loading
+			Self->FinalizeInHandAssignment(SlotTag, Inst);
 		});
 
 	const UNexusItemDefinition* Definition = Instance->GetDefinition();
@@ -187,190 +273,207 @@ bool UNexusEquipmentComponent::AssignToSlot(UNexusItemInstance* Instance, FGamep
 	{
 		OnReady.ExecuteIfBound();
 	}
-
 	return true;
 }
 
-void UNexusEquipmentComponent::FinalizeAssignment(FGameplayTag SlotTag, UNexusItemInstance* Instance)
+void UNexusEquipmentComponent::FinalizeInHandAssignment(FGameplayTag SlotTag, UNexusItemInstance* Instance)
 {
-	ApplyEquipEffects(SlotTag, Instance);
+	FNexusEquipmentSlotState* State = SlotStates.Find(SlotTag);
+	if (!State || State->Assigned != Instance) return;
 
-	AttachActorForSlotState(SlotTag, false);
+	// Already finalized (a duplicate streamable callback, or a re-entrant finalize):
+	// the actor exists, so don't spawn/grant a second time — just drain any waiting
+	// activation. This is the guard that stops "holster + unholster spawns two".
+	if (State->InWorld)
+	{
+		DrainPendingActivationsAfterAssignment(SlotTag);
+		return;
+	}
+
+	ApplySlotEffects(SlotTag, *State);       // spawns the actor + grants abilities/tags
+	AttachActorForSlotState(SlotTag, false); // mounted but hidden until drawn
 
 	OnSlotAssigned.Broadcast(SlotTag, Instance);
 
-	// Drain any AssignAndActivate calls that were waiting on this slot's actor
-	// to spawn. Runs after the broadcast so external listeners see the assigned
-	// state first; the activation that follows is purely the caller's queued intent.
+	// Drain any AssignAndActivate that was waiting on this slot's actor to spawn.
 	DrainPendingActivationsAfterAssignment(SlotTag);
 }
 
-bool UNexusEquipmentComponent::AssignAndActivate(UNexusItemInstance* Instance, FGameplayTag SlotTag,
-	FGameplayTag UnholsterActionTag)
+void UNexusEquipmentComponent::ApplySlotEffects(FGameplayTag SlotTag, FNexusEquipmentSlotState& State)
 {
-	if (!Instance || !SlotTag.IsValid()) return false;
+	UNexusItemInstance* Instance = State.Assigned;
+	const UNexusItemDefinition* Definition = Instance ? Instance->GetDefinition() : nullptr;
+	if (!Definition) return;
 
-	// AssignToSlot can trigger ClearSlotImmediate on the previous occupant, which
-	// scrubs pending activations for this slot — so we add our queue entry AFTER
-	// AssignToSlot returns. The downside: if the streamable callback fired inline
-	// (synchronously-resident asset), FinalizeAssignment already drained an empty
-	// queue. The DrainPendingActivationsAfterAssignment(SlotTag) call at the end
-	// picks up our just-added entry in that case.
-	if (!AssignToSlot(Instance, SlotTag)) return false;
+	TArray<TSubclassOf<UNexusAbility>> AbilitiesToGrant;
+	FGameplayTagContainer TagsToApply;
+	TagsToApply.AddTag(SlotTag); // a loose tag marking the slot occupied
 
-	// Latest call wins — if a previous AssignAndActivate for this slot was still
-	// queued, drop it so we don't double-activate when the load finishes.
-	PendingActivationsAfterAssignment.RemoveAll([SlotTag](const FPendingActivation& P)
+	if (State.bPassive)
 	{
-		return P.SlotTag.MatchesTagExact(SlotTag);
-	});
-	PendingActivationsAfterAssignment.Add({ SlotTag, UnholsterActionTag });
-
-	DrainPendingActivationsAfterAssignment(SlotTag);
-	return true;
-}
-
-void UNexusEquipmentComponent::DrainPendingActivationsAfterAssignment(FGameplayTag SlotTag)
-{
-	if (!SpawnedActors.Contains(SlotTag)) return;
-
-	// Reverse iteration so RemoveAt indices stay valid; activations within the
-	// queue for this slot are deduped by AssignAndActivate, so there's at most
-	// one in practice — the loop is defensive.
-	for (int32 i = PendingActivationsAfterAssignment.Num() - 1; i >= 0; --i)
-	{
-		if (!PendingActivationsAfterAssignment[i].SlotTag.MatchesTagExact(SlotTag)) continue;
-
-		const FGameplayTag Action = PendingActivationsAfterAssignment[i].UnholsterActionTag;
-		PendingActivationsAfterAssignment.RemoveAt(i);
-		RequestActivateSlot(SlotTag, Action);
-	}
-}
-
-FGameplayTag UNexusEquipmentComponent::PickAutoAssignSlot(const UNexusItemInstance* Instance) const
-{
-	if (!Instance) return FGameplayTag();
-
-	const UNexusItemDefinition* Definition = Instance->GetDefinition();
-	const FNexusFragment_Equippable* Eq = Definition
-		? Definition->FindFragment<FNexusFragment_Equippable>() : nullptr;
-	if (!Eq) return FGameplayTag();
-
-	// Definition-level veto: items flagged bAllowAutoAssign=false refuse to be
-	// silently slotted by *any* caller (pickup, library, debug). Manual UI-
-	// driven AssignToSlot still works — this only gates the auto-equip flow.
-	if (!Eq->bAllowAutoAssign) return FGameplayTag();
-
-	// Prefer the authored slot when it's currently free. Don't kick out an
-	// existing occupant — silent replacement on every pickup would destroy
-	// player loadout choices.
-	if (Eq->PreferredSlot.IsValid()
-		&& CanAssignToSlot(Instance, Eq->PreferredSlot)
-		&& !IsSlotOccupied(Eq->PreferredSlot))
-	{
-		return Eq->PreferredSlot;
-	}
-
-	// Fall back to the first compatible free slot. If none is free, the caller
-	// gets an invalid tag — the item stays in inventory and the player can
-	// swap it in manually.
-	for (const FGameplayTag& Slot : GetCompatibleSlotsForInstance(Instance))
-	{
-		if (!IsSlotOccupied(Slot))
+		if (const FNexusFragment_PassiveEquipment* Passive = Definition->FindFragment<FNexusFragment_PassiveEquipment>())
 		{
-			return Slot;
+			AbilitiesToGrant = Passive->GrantedAbilities;
+			TagsToApply.AppendTags(Passive->GrantedTags);
 		}
 	}
-	return FGameplayTag();
+	else
+	{
+		const FNexusFragment_Equippable* Eq = Definition->FindFragment<FNexusFragment_Equippable>();
+		if (!Eq) return;
+
+		UClass* ActorClass = Eq->EquippedActorClass.Get();
+		if (!ActorClass)
+		{
+			ensureMsgf(Eq->EquippedActorClass.IsNull(),
+				TEXT("EquippedActorClass not resident for %s — Equipped bundle was not awaited"),
+				*Definition->GetName());
+			ActorClass = ANexusEquippedActor::StaticClass();
+		}
+
+		// Never spawn a second actor for a slot that already has one.
+		if (!State.InWorld)
+		{
+			if (UWorld* World = GetWorld())
+			{
+				ANexusEquippedActor* Spawned = World->SpawnActorDeferred<ANexusEquippedActor>(
+					ActorClass, FTransform::Identity, GetOwner(), nullptr,
+					ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+				if (Spawned)
+				{
+					Spawned->InitializeFromInstance(Instance);
+					Spawned->ApplyOwnerViewpointRendering();
+					Spawned->FinishSpawning(FTransform::Identity, true);
+					State.InWorld = Spawned;
+				}
+			}
+		}
+
+		AbilitiesToGrant = Eq->GrantedAbilities;
+		TagsToApply.AppendTags(Eq->OwnedTagsWhileEquipped);
+	}
+
+	if (UNexusAbilitySystemComponent* ASC = GetASC())
+	{
+		for (const TSubclassOf<UNexusAbility>& AbilityClass : AbilitiesToGrant)
+		{
+			if (AbilityClass && ASC->GiveAbility(AbilityClass))
+			{
+				State.GrantedAbilities.Add(AbilityClass);
+			}
+		}
+		for (const FGameplayTag& Tag : TagsToApply)
+		{
+			ASC->AddLooseGameplayTag(Tag);
+		}
+		State.GrantedTags = TagsToApply;
+	}
 }
 
+void UNexusEquipmentComponent::RemoveSlotEffects(FNexusEquipmentSlotState& State)
+{
+	if (UNexusAbilitySystemComponent* ASC = GetASC())
+	{
+		for (const TSubclassOf<UNexusAbility>& AbilityClass : State.GrantedAbilities)
+		{
+			if (AbilityClass) ASC->RemoveAbility(AbilityClass);
+		}
+		for (const FGameplayTag& Tag : State.GrantedTags)
+		{
+			ASC->RemoveLooseGameplayTag(Tag);
+		}
+	}
+	State.GrantedAbilities.Reset();
+	State.GrantedTags.Reset();
+
+	if (State.InWorld)
+	{
+		State.InWorld->Destroy();
+		State.InWorld = nullptr;
+	}
+}
+
+void UNexusEquipmentComponent::AttachActorForSlotState(FGameplayTag SlotTag, bool bActive) const
+{
+	const FNexusEquipmentSlotState* State = SlotStates.Find(SlotTag);
+	ANexusEquippedActor* Actor = State ? State->InWorld : nullptr;
+	if (!Actor) return;
+
+	if (!bActive)
+	{
+		Actor->SetEquippedVisibility(false);
+		return;
+	}
+
+	const UNexusItemInstance* Instance = State->Assigned;
+	const UNexusItemDefinition* Definition = Instance ? Instance->GetDefinition() : nullptr;
+	const FNexusFragment_Equippable* Eq = Definition
+		? Definition->FindFragment<FNexusFragment_Equippable>() : nullptr;
+	if (!Eq) return;
+
+	const INexusEquipmentInterface* Host = GetHost();
+	USkeletalMeshComponent* AttachMesh = Host ? Host->GetEquipmentAttachMesh() : nullptr;
+	if (!AttachMesh) return;
+
+	Actor->AttachToComponent(AttachMesh,
+		FAttachmentTransformRules::SnapToTargetNotIncludingScale, Eq->AttachSocket);
+	Actor->SetEquippedVisibility(true);
+}
+
+
+// Clearing
 bool UNexusEquipmentComponent::ClearSlot(FGameplayTag SlotTag)
 {
-	UNexusItemInstance* Instance = EquippedSlots.FindRef(SlotTag);
-	if (!Instance) return false;
+	const FNexusEquipmentSlotState* State = SlotStates.Find(SlotTag);
+	if (!State || !State->Assigned) return false;
 
-	// Non-active slot: nothing on the player's mesh to animate — snap.
-	if (!ActiveSlot.MatchesTagExact(SlotTag))
+	// Passive or non-active slots have nothing on the host to animate — snap clear.
+	if (State->bPassive || !ActiveSlot.MatchesTagExact(SlotTag))
 	{
 		return ClearSlotImmediate(SlotTag);
 	}
 
-	// Active slot: defer the actual removal until the holster montage finishes
-	// so the player sees the gun being stowed. SlotPendingClear is the marker
-	// HandleHolsterPhaseFinished consults to convert the holster into a clear
-	// instead of an idle-empty state.
+	// Active in-hand slot: defer the removal until the holster montage finishes so
+	// the wielder sees the weapon stowed. FinishHolsterPhase consults SlotPendingClear.
 	SlotPendingClear = SlotTag;
 
-	// A queued activation for this very slot would otherwise win after the
-	// holster runs and immediately re-spawn what we just told to leave —
-	// drop it. Other queued activations (a slot the player WANTS to draw to
-	// after this clear) remain.
-	if (PendingActivation.IsSet() && PendingActivation->SlotTag.MatchesTagExact(SlotTag))
+	if (!HolsteringSlot.MatchesTagExact(SlotTag))
 	{
-		PendingActivation.Reset();
-	}
-
-	// If a holster of this same slot is already in flight (e.g. the player
-	// previously called RequestHolster), the existing PhaseTimer will deliver
-	// HandleHolsterPhaseFinished and we'll be picked up there. Otherwise, kick
-	// off the transition now. BeginSlotTransition (via BeginHolsterPhase) calls
-	// SetTimer with our shared PhaseTimer, which replaces any earlier draw-side
-	// timer cleanly.
-	if (SwapPhase != ENexusEquipSwapPhase::Holstering || !SwapOutgoingSlot.MatchesTagExact(SlotTag))
-	{
-		BeginSlotTransition(SlotTag, FGameplayTag());
+		BeginHolsterPhase(SlotTag, FGameplayTag(), EUnholsterStyle::Normal);
 	}
 	return true;
 }
 
 bool UNexusEquipmentComponent::ClearSlotImmediate(FGameplayTag SlotTag)
 {
-	UNexusItemInstance* Instance = EquippedSlots.FindRef(SlotTag);
-	if (!Instance) return false;
+	FNexusEquipmentSlotState* State = SlotStates.Find(SlotTag);
+	if (!State || !State->Assigned) return false;
 
-	// If this slot had an animated-clear deferred via ClearSlot(), we're
-	// handling the actual removal now — drop the marker so a later, unrelated
-	// holster phase can't pick it up and clear an innocent slot.
-	if (SlotPendingClear.MatchesTagExact(SlotTag))
-	{
-		SlotPendingClear = FGameplayTag();
-	}
+	if (SlotPendingClear.MatchesTagExact(SlotTag)) SlotPendingClear = FGameplayTag();
+	if (LastActiveSlot.MatchesTagExact(SlotTag))   LastActiveSlot   = FGameplayTag();
 
-	// A cleared slot can no longer be the quick-swap-to-previous target.
-	if (LastActiveSlot.MatchesTagExact(SlotTag))
-	{
-		LastActiveSlot = FGameplayTag();
-	}
-
-	const bool bWasActive = ActiveSlot.MatchesTagExact(SlotTag);
-
-	// Drop any AssignAndActivate calls still waiting for this slot's actor —
-	// the instance is gone, the deferred activation would land on whatever
-	// (if anything) is assigned next.
 	PendingActivationsAfterAssignment.RemoveAll([SlotTag](const FPendingActivation& P)
 	{
 		return P.SlotTag.MatchesTagExact(SlotTag);
 	});
 
-	RemoveEquipEffects(SlotTag);
-	EquippedSlots.Remove(SlotTag);
+	UNexusItemInstance* Instance = State->Assigned;
+	const bool bWasActive = ActiveSlot.MatchesTagExact(SlotTag);
+
+	RemoveSlotEffects(*State); // removes abilities/tags, destroys the actor
 	EquippableLoadHandles.Remove(Instance);
+
+	// Unwind any in-flight transition that referenced this slot.
+	if (HolsteringSlot.MatchesTagExact(SlotTag))  HolsteringSlot  = FGameplayTag();
+	if (PendingDrawSlot.MatchesTagExact(SlotTag)) PendingDrawSlot = FGameplayTag();
+
+	SlotStates.Remove(SlotTag); // State dangles past this point
 
 	if (bWasActive)
 	{
 		ActiveSlot = FGameplayTag();
-		if (SwapOutgoingSlot.MatchesTagExact(SlotTag) || SwapIncomingSlot.MatchesTagExact(SlotTag))
-		{
-			if (const UWorld* World = GetWorld())
-			{
-				World->GetTimerManager().ClearTimer(PhaseTimer);
-			}
-			SwapPhase = ENexusEquipSwapPhase::Idle;
-			SwapOutgoingSlot = FGameplayTag();
-			SwapIncomingSlot = FGameplayTag();
-			SetSwapTag(false);
-		}
-		OnActiveSlotChanged.Broadcast(ActiveSlot, nullptr);
+		SetSwapTag(false);
+		OnSlotDeactivated.Broadcast(SlotTag, Instance);
 	}
 
 	OnSlotCleared.Broadcast(SlotTag, Instance);
@@ -379,9 +482,9 @@ bool UNexusEquipmentComponent::ClearSlotImmediate(FGameplayTag SlotTag)
 
 void UNexusEquipmentComponent::ClearAll()
 {
-	TArray<FGameplayTag> Slots;
-	EquippedSlots.GetKeys(Slots);
-	for (const FGameplayTag& Slot : Slots)
+	TArray<FGameplayTag> Keys;
+	SlotStates.GetKeys(Keys);
+	for (const FGameplayTag& Slot : Keys)
 	{
 		ClearSlotImmediate(Slot);
 	}
@@ -391,101 +494,100 @@ bool UNexusEquipmentComponent::MoveItemBetweenSlots(FGameplayTag FromSlot, FGame
 {
 	if (FromSlot.MatchesTagExact(ToSlot)) return false;
 
-	UNexusItemInstance* FromInst = EquippedSlots.FindRef(FromSlot);
+	UNexusItemInstance* FromInst = GetAssigned(FromSlot);
 	if (!FromInst) return false;
+	UNexusItemInstance* ToInst = GetAssigned(ToSlot);
 
-	UNexusItemInstance* ToInst = EquippedSlots.FindRef(ToSlot);
-	
 	if (!CanAssignToSlot(FromInst, ToSlot)) return false;
 	if (ToInst && !CanAssignToSlot(ToInst, FromSlot)) return false;
-	
-	ClearSlotImmediate(FromSlot);
-	if (ToInst)
-	{
-		ClearSlotImmediate(ToSlot);
-	}
 
-	const bool bMovedFrom = AssignToSlot(FromInst, ToSlot);
-	const bool bMovedTo   = !ToInst || AssignToSlot(ToInst, FromSlot);
+	ClearSlotImmediate(FromSlot);
+	if (ToInst) ClearSlotImmediate(ToSlot);
+
+	const bool bMovedFrom = AssignItemToSlot(ToSlot, FromInst);
+	const bool bMovedTo   = !ToInst || AssignItemToSlot(FromSlot, ToInst);
 	return bMovedFrom && bMovedTo;
 }
 
-
-// Activation (input-driven)
-bool UNexusEquipmentComponent::RequestActivateSlot(const FGameplayTag SlotTag,
-	const FGameplayTag UnholsterActionTag)
+bool UNexusEquipmentComponent::AssignAndActivate(FGameplayTag SlotTag, UNexusItemInstance* Instance, EUnholsterStyle Style)
 {
-	if (!SlotTag.IsValid())
-	{
-		return RequestHolster();
-	}
+	if (!Instance || !SlotTag.IsValid()) return false;
+	if (!AssignItemToSlot(SlotTag, Instance)) return false;
 
+	// Passive slots have no draw — the effect is already applied.
+	if (IsSlotPassive(SlotTag)) return true;
+
+	// Latest queued activation for this slot wins.
+	PendingActivationsAfterAssignment.RemoveAll([SlotTag](const FPendingActivation& P)
+	{
+		return P.SlotTag.MatchesTagExact(SlotTag);
+	});
+	PendingActivationsAfterAssignment.Add({ SlotTag, Style });
+
+	// If the actor was already resident (synchronous load), drain now.
+	DrainPendingActivationsAfterAssignment(SlotTag);
+	return true;
+}
+
+void UNexusEquipmentComponent::DrainPendingActivationsAfterAssignment(FGameplayTag SlotTag)
+{
+	const FNexusEquipmentSlotState* State = SlotStates.Find(SlotTag);
+	if (!State || !State->InWorld) return; // actor not spawned yet — wait for finalize
+
+	for (int32 i = PendingActivationsAfterAssignment.Num() - 1; i >= 0; --i)
+	{
+		if (!PendingActivationsAfterAssignment[i].SlotTag.MatchesTagExact(SlotTag)) continue;
+		const EUnholsterStyle Style = PendingActivationsAfterAssignment[i].Style;
+		PendingActivationsAfterAssignment.RemoveAt(i);
+		RequestActivateSlot(SlotTag, Style);
+	}
+}
+
+
+// Activation
+bool UNexusEquipmentComponent::RequestActivateSlot(FGameplayTag SlotTag, EUnholsterStyle Style)
+{
+	if (!SlotTag.IsValid()) return RequestDeactivateActiveSlot();
 	if (!IsValidSlot(SlotTag)) return false;
+	if (IsSlotPassive(SlotTag)) return false; // passive items are always on, never drawn
 
-	if (SwapPhase != ENexusEquipSwapPhase::Idle)
-	{
-		PendingActivation = FPendingActivation{ SlotTag, UnholsterActionTag };
-		return true;
-	}
+	// Non-interruptible: a holster/draw always plays to completion. Presses during a
+	// transition are dropped (not queued), so spamming an input can't stack actions or
+	// cut an animation short.
+	if (IsSwapping()) return false;
 
-	if (ActiveSlot.MatchesTagExact(SlotTag))
+	if (ActiveSlot.MatchesTagExact(SlotTag) && IsSlotActive(SlotTag))
 	{
-		return RequestHolster();
+		return RequestDeactivateActiveSlot(); // pressing the active slot toggles to empty
 	}
 
 	if (!IsSlotOccupied(SlotTag)) return false;
 
-	PendingUnholsterActionTag = UnholsterActionTag;
-	BeginSlotTransition(ActiveSlot, SlotTag);
+	BeginActivate(SlotTag, Style);
 	return true;
 }
 
-bool UNexusEquipmentComponent::RequestHolster()
+bool UNexusEquipmentComponent::RequestDeactivateActiveSlot()
 {
-	if (SwapPhase != ENexusEquipSwapPhase::Idle)
-	{
-		PendingActivation = FPendingActivation{ FGameplayTag(), FGameplayTag() };
-		return true;
-	}
-
+	// Non-interruptible: ignore a holster request while a transition is in flight.
+	if (IsSwapping()) return false;
 	if (!ActiveSlot.IsValid()) return false;
 
-	BeginSlotTransition(ActiveSlot, FGameplayTag());
+	BeginHolsterPhase(ActiveSlot, FGameplayTag(), EUnholsterStyle::Normal);
 	return true;
 }
 
-bool UNexusEquipmentComponent::RequestActivateLastSlot()
-{
-	if (!LastActiveSlot.IsValid()) return false;
-	if (LastActiveSlot.MatchesTagExact(ActiveSlot)) return false;
-	if (!IsSlotOccupied(LastActiveSlot)) return false;
-
-	// Defer to the normal activation path — it owns the swap-lock queueing and the
-	// draw montage. LastActiveSlot is re-captured by BeginHolsterPhase as this swap
-	// stows the current weapon, so a second press toggles straight back.
-	return RequestActivateSlot(LastActiveSlot);
-}
-
-bool UNexusEquipmentComponent::RequestActivateNextSlot()
-{
-	return CycleActiveSlot(+1);
-}
-
-bool UNexusEquipmentComponent::RequestActivatePrevSlot()
-{
-	return CycleActiveSlot(-1);
-}
+bool UNexusEquipmentComponent::RequestActivateNextSlot() { return CycleActiveSlot(+1); }
+bool UNexusEquipmentComponent::RequestActivatePrevSlot() { return CycleActiveSlot(-1); }
 
 bool UNexusEquipmentComponent::CycleActiveSlot(int32 Direction)
 {
-	const int32 Count = AvailableSlots.Num();
+	TArray<FGameplayTag> Slots = GetSlots();
+	Slots.RemoveAll([this](const FGameplayTag& S) { return IsSlotPassive(S); });
+	const int32 Count = Slots.Num();
 	if (Count == 0 || Direction == 0) return false;
 
-	// Step through AvailableSlots in the requested direction, wrapping, and land on
-	// the first occupied slot that isn't the active one. When nothing is active yet,
-	// start from the front (next) or back (prev) of the list.
-	const int32 ActiveIdx = AvailableSlots.IndexOfByKey(ActiveSlot); // INDEX_NONE if none/invalid
-
+	const int32 ActiveIdx = Slots.IndexOfByKey(ActiveSlot); // INDEX_NONE when none/invalid
 	for (int32 Step = 1; Step <= Count; ++Step)
 	{
 		int32 Idx;
@@ -498,7 +600,7 @@ bool UNexusEquipmentComponent::CycleActiveSlot(int32 Direction)
 			Idx = ((ActiveIdx + Direction * Step) % Count + Count) % Count;
 		}
 
-		const FGameplayTag& Candidate = AvailableSlots[Idx];
+		const FGameplayTag& Candidate = Slots[Idx];
 		if (IsSlotOccupied(Candidate) && !Candidate.MatchesTagExact(ActiveSlot))
 		{
 			return RequestActivateSlot(Candidate);
@@ -507,209 +609,178 @@ bool UNexusEquipmentComponent::CycleActiveSlot(int32 Direction)
 	return false;
 }
 
-
-// Transition state machine
-void UNexusEquipmentComponent::BeginSlotTransition(const FGameplayTag OutgoingSlot, const FGameplayTag IncomingSlot)
+bool UNexusEquipmentComponent::RequestActivateLastSlot()
 {
-	if (OutgoingSlot.IsValid() && SpawnedActors.Contains(OutgoingSlot))
-	{
-		BeginHolsterPhase(OutgoingSlot, IncomingSlot);
-		return;
-	}
-	
-	if (IncomingSlot.IsValid())
-	{
-		BeginDrawPhase(IncomingSlot);
-		return;
-	}
-	
-	CompleteSwap();
+	if (!LastActiveSlot.IsValid()) return false;
+	if (LastActiveSlot.MatchesTagExact(ActiveSlot)) return false;
+	if (!IsSlotOccupied(LastActiveSlot)) return false;
+	return RequestActivateSlot(LastActiveSlot);
 }
 
-void UNexusEquipmentComponent::BeginHolsterPhase(const FGameplayTag OutgoingSlot, const  FGameplayTag IncomingSlot)
+
+// Lifecycle state machine (single active in-hand slot; advances on anim notifies)
+void UNexusEquipmentComponent::BeginActivate(FGameplayTag SlotTag, EUnholsterStyle Style)
 {
-	SwapPhase        = ENexusEquipSwapPhase::Holstering;
-	SwapOutgoingSlot = OutgoingSlot;
-	SwapIncomingSlot = IncomingSlot;
-	SetSwapTag(true);
-
-	// The weapon being stowed becomes the quick-swap-to-previous target.
-	if (OutgoingSlot.IsValid())
+	if (ActiveSlot.IsValid())
 	{
-		LastActiveSlot = OutgoingSlot;
-	}
-
-	UAnimMontage* Unequip = nullptr;
-	if (const ANexusEquippedActor* OutActor = SpawnedActors.FindRef(OutgoingSlot))
-	{
-		Unequip = OutActor->GetEffectiveArmsMontage(NexusGameplayTags::Action_Equipment_Holster);
-	}
-	const float Duration = PlayMontageOnOwner(Unequip);
-
-	UWorld* World = GetWorld();
-	if (Duration > 0.0f && World)
-	{
-		OutgoingPendingHide = OutgoingSlot;
-		World->GetTimerManager().SetTimer(
-			PhaseTimer, this,
-			&UNexusEquipmentComponent::HandleHolsterPhaseFinished,
-			Duration, false);
-		return;
-	}
-
-	// No montage, or no world to schedule the fallback timer: hide and finish now
-	// rather than latch in Holstering with the Swapping tag (and Fire/Reload
-	// lockout) stuck on.
-	AttachActorForSlotState(OutgoingSlot, false);
-	HandleHolsterPhaseFinished();
-}
-
-void UNexusEquipmentComponent::HandleHolsterPhaseFinished()
-{
-	if (OutgoingPendingHide.IsValid())
-	{
-		AttachActorForSlotState(OutgoingPendingHide, false);
-		OutgoingPendingHide = FGameplayTag();
-	}
-
-	// Honor a deferred clear from ClearSlot(active): drop the slot entirely now
-	// that the player has seen the holster montage play. ClearSlotImmediate
-	// handles ActiveSlot reset, swap-state cleanup, and the OnActiveSlotChanged
-	// + OnSlotCleared broadcasts in one pass — must run BEFORE we decide on the
-	// next draw, or a queued activation could re-occupy the slot we just told
-	// to clear.
-	if (SlotPendingClear.IsValid())
-	{
-		const FGameplayTag SlotToClear = SlotPendingClear;
-		SlotPendingClear = FGameplayTag();
-		ClearSlotImmediate(SlotToClear);
+		// Swap: stow the current weapon, then draw the requested one.
+		BeginHolsterPhase(ActiveSlot, SlotTag, Style);
 	}
 	else
 	{
-		const FGameplayTag OldActive = ActiveSlot;
-		ActiveSlot = FGameplayTag();
-		if (OldActive.IsValid())
-		{
-			OnActiveSlotChanged.Broadcast(ActiveSlot, nullptr);
-		}
+		BeginDrawPhase(SlotTag, Style);
 	}
-
-	FGameplayTag NextDraw = SwapIncomingSlot;
-	if (PendingActivation.IsSet())
-	{
-		// Queued activation supersedes the swap's original incoming slot AND its
-		// authored action tag. With nothing queued, PendingUnholsterActionTag
-		// stays as the original RequestActivateSlot caller's value — don't
-		// overwrite it with default-constructed-invalid.
-		NextDraw = PendingActivation->SlotTag;
-		PendingUnholsterActionTag = PendingActivation->UnholsterActionTag;
-		PendingActivation.Reset();
-	}
-
-	SwapOutgoingSlot = FGameplayTag();
-
-	if (NextDraw.IsValid() && IsSlotOccupied(NextDraw))
-	{
-		BeginDrawPhase(NextDraw);
-		return;
-	}
-
-	SwapIncomingSlot = FGameplayTag();
-	CompleteSwap();
 }
 
-void UNexusEquipmentComponent::BeginDrawPhase(const  FGameplayTag IncomingSlot)
+void UNexusEquipmentComponent::BeginHolsterPhase(FGameplayTag OutgoingSlot, FGameplayTag IncomingSlot, EUnholsterStyle IncomingStyle)
 {
-	SwapPhase        = ENexusEquipSwapPhase::Drawing;
-	SwapIncomingSlot = IncomingSlot;
-	SwapOutgoingSlot = FGameplayTag();
+	HolsteringSlot   = OutgoingSlot;
+	PendingDrawSlot  = IncomingSlot;
+	PendingDrawStyle = IncomingStyle;
+
+	if (FNexusEquipmentSlotState* State = SlotStates.Find(OutgoingSlot))
+	{
+		State->Phase = EEquipmentSlotPhase::Holstering;
+	}
+
+	// The stowed weapon becomes the quick-swap-to-previous target.
+	LastActiveSlot = OutgoingSlot;
+
 	SetSwapTag(true);
 
-	ActiveSlot = IncomingSlot;
-	AttachActorForSlotState(IncomingSlot, true);
-
-	OnActiveSlotChanged.Broadcast(ActiveSlot, GetEquippedInSlot(ActiveSlot));
-
-	// Consume the action-tag override; it's a one-shot. Invalid → standard unholster.
-	const FGameplayTag RequestedAction = PendingUnholsterActionTag;
-	PendingUnholsterActionTag = FGameplayTag();
-
-	UAnimMontage* Equip = nullptr;
-	if (const ANexusEquippedActor* InActor = SpawnedActors.FindRef(IncomingSlot))
+	UAnimMontage* Montage = ResolveTransitionMontage(OutgoingSlot, NexusGameplayTags::Action_Equipment_Holster);
+	if (UAnimInstance* AnimInstance = GetHostAnimInstance())
 	{
-		const FGameplayTag PrimaryTag = RequestedAction.IsValid()
-			? RequestedAction
-			: NexusGameplayTags::Action_Equipment_Unholster;
-
-		Equip = InActor->GetEffectiveArmsMontage(PrimaryTag);
-
-		// Caller-requested overrides fall back to the standard unholster so an
-		// item that doesn't author (e.g.) a Ceremony anim still draws normally
-		// instead of silently producing no animation. Action.Equipment.Unholster
-		// has no fallback — if it's missing, the draw phase finishes without anim.
-		if (!Equip && RequestedAction.IsValid()
-			&& !RequestedAction.MatchesTagExact(NexusGameplayTags::Action_Equipment_Unholster))
+		if (Montage && AnimInstance->Montage_Play(Montage) > 0.0f)
 		{
-			Equip = InActor->GetEffectiveArmsMontage(NexusGameplayTags::Action_Equipment_Unholster);
+			// Advance when the montage starts BLENDING OUT, not when it fully ends: the
+			// next montage cross-fades in over the blend-out and the hide lands before the
+			// pose resolves to idle, so there's no one-frame idle pop.
+			FOnMontageBlendingOutStarted BlendOutDelegate;
+			BlendOutDelegate.BindUObject(this, &UNexusEquipmentComponent::HandleHolsterMontageBlendingOut);
+			AnimInstance->Montage_SetBlendingOutDelegate(BlendOutDelegate, Montage);
+			return;
 		}
 	}
-	const float Duration = PlayMontageOnOwner(Equip);
 
-	UWorld* World = GetWorld();
-	if (Duration > 0.0f && World)
+	// No montage authored (or no anim instance): instant transition.
+	FinishHolsterPhase();
+}
+
+void UNexusEquipmentComponent::FinishHolsterPhase()
+{
+	if (!HolsteringSlot.IsValid()) return;
+
+	const FGameplayTag OutgoingSlot = HolsteringSlot;
+	FNexusEquipmentSlotState* State = SlotStates.Find(OutgoingSlot);
+	if (!State || State->Phase != EEquipmentSlotPhase::Holstering)
 	{
-		World->GetTimerManager().SetTimer(
-			PhaseTimer, this,
-			&UNexusEquipmentComponent::HandleDrawPhaseFinished,
-			Duration, false);
+		// Already advanced (notify and montage-end both fired) — ignore the late call.
 		return;
 	}
 
-	// No montage, or no world for the fallback timer: complete now rather than
-	// latch in Drawing with the Swapping tag (and Fire/Reload lockout) stuck on.
-	HandleDrawPhaseFinished();
-}
+	AttachActorForSlotState(OutgoingSlot, false); // out of view
+	State->Phase = EEquipmentSlotPhase::Idle;
 
-void UNexusEquipmentComponent::HandleDrawPhaseFinished()
-{
-	SwapIncomingSlot = FGameplayTag();
-	CompleteSwap();
-	ProcessPendingActivation();
-}
+	UNexusItemInstance* OutgoingInstance = State->Assigned;
 
-void UNexusEquipmentComponent::CompleteSwap()
-{
-	SwapPhase        = ENexusEquipSwapPhase::Idle;
-	SwapOutgoingSlot = FGameplayTag();
-	SwapIncomingSlot = FGameplayTag();
-	SetSwapTag(false);
+	HolsteringSlot = FGameplayTag();
+	ActiveSlot     = FGameplayTag();
+	OnSlotDeactivated.Broadcast(OutgoingSlot, OutgoingInstance);
 
-	if (const UWorld* World = GetWorld())
+	// Honor a deferred clear requested via ClearSlot() on the active slot.
+	if (SlotPendingClear.MatchesTagExact(OutgoingSlot))
 	{
-		World->GetTimerManager().ClearTimer(PhaseTimer);
+		SlotPendingClear = FGameplayTag();
+		ClearSlotImmediate(OutgoingSlot);
 	}
+
+	// Continue the swap into the incoming draw, if there is one.
+	const FGameplayTag   NextSlot  = PendingDrawSlot;
+	const EUnholsterStyle NextStyle = PendingDrawStyle;
+	PendingDrawSlot = FGameplayTag();
+
+	if (NextSlot.IsValid() && IsSlotOccupied(NextSlot) && !IsSlotPassive(NextSlot))
+	{
+		BeginDrawPhase(NextSlot, NextStyle);
+		return;
+	}
+
+	// Settled to empty hands.
+	SetSwapTag(false);
 }
 
-void UNexusEquipmentComponent::ProcessPendingActivation()
+void UNexusEquipmentComponent::BeginDrawPhase(FGameplayTag IncomingSlot, EUnholsterStyle Style)
 {
-	if (!PendingActivation.IsSet()) return;
+	ActiveSlot = IncomingSlot;
+	if (FNexusEquipmentSlotState* State = SlotStates.Find(IncomingSlot))
+	{
+		State->Phase = EEquipmentSlotPhase::Unholstering;
+	}
 
-	const FPendingActivation Next = PendingActivation.GetValue();
-	PendingActivation.Reset();
+	AttachActorForSlotState(IncomingSlot, true); // mount + show
+	OnSlotActivated.Broadcast(IncomingSlot, GetAssigned(IncomingSlot));
 
-	RequestActivateSlot(Next.SlotTag, Next.UnholsterActionTag);
+	SetSwapTag(true); // still locked (no fire / reload) until the draw completes
+
+	const FGameplayTag PrimaryAction = (Style == EUnholsterStyle::Ceremony)
+		? NexusGameplayTags::Action_Equipment_Ceremony
+		: NexusGameplayTags::Action_Equipment_Unholster;
+
+	UAnimMontage* Montage = ResolveTransitionMontage(IncomingSlot, PrimaryAction);
+	// Ceremony falls back to the normal unholster, so an item without a ceremony
+	// animation still draws instead of silently producing nothing.
+	if (!Montage && Style == EUnholsterStyle::Ceremony)
+	{
+		Montage = ResolveTransitionMontage(IncomingSlot, NexusGameplayTags::Action_Equipment_Unholster);
+	}
+
+	if (UAnimInstance* AnimInstance = GetHostAnimInstance())
+	{
+		if (Montage && AnimInstance->Montage_Play(Montage) > 0.0f)
+		{
+			// Blend-out (not end) drives completion — avoids the one-frame idle pop and
+			// lets the next transition cross-fade in.
+			FOnMontageBlendingOutStarted BlendOutDelegate;
+			BlendOutDelegate.BindUObject(this, &UNexusEquipmentComponent::HandleDrawMontageBlendingOut);
+			AnimInstance->Montage_SetBlendingOutDelegate(BlendOutDelegate, Montage);
+			return;
+		}
+	}
+
+	FinishDrawPhase();
 }
 
-void UNexusEquipmentComponent::NotifyHideOutgoingSlot()
+void UNexusEquipmentComponent::FinishDrawPhase()
 {
-	if (!OutgoingPendingHide.IsValid()) return;
+	FNexusEquipmentSlotState* State = SlotStates.Find(ActiveSlot);
+	if (!State || State->Phase != EEquipmentSlotPhase::Unholstering)
+	{
+		return; // already advanced — ignore the late call
+	}
 
-	const FGameplayTag SlotToHide = OutgoingPendingHide;
-	OutgoingPendingHide = FGameplayTag();
-	AttachActorForSlotState(SlotToHide, false);
+	State->Phase = EEquipmentSlotPhase::Active;
+	SetSwapTag(false); // fire / reload allowed now
 }
 
-void UNexusEquipmentComponent::SetSwapTag(const bool bOn) const
+UAnimMontage* UNexusEquipmentComponent::ResolveTransitionMontage(FGameplayTag SlotTag, FGameplayTag ActionTag) const
+{
+	const FNexusEquipmentSlotState* State = SlotStates.Find(SlotTag);
+	const ANexusEquippedActor* Actor = State ? State->InWorld : nullptr;
+	return Actor ? Actor->GetEffectiveHostMontage(ActionTag) : nullptr;
+}
+
+void UNexusEquipmentComponent::HandleHolsterMontageBlendingOut(UAnimMontage* /*Montage*/, bool /*bInterrupted*/)
+{
+	FinishHolsterPhase(); // guarded internally (phase check)
+}
+
+void UNexusEquipmentComponent::HandleDrawMontageBlendingOut(UAnimMontage* /*Montage*/, bool /*bInterrupted*/)
+{
+	FinishDrawPhase(); // guarded internally (phase check)
+}
+
+void UNexusEquipmentComponent::SetSwapTag(bool bOn) const
 {
 	UNexusAbilitySystemComponent* ASC = GetASC();
 	if (!ASC) return;
@@ -718,11 +789,8 @@ void UNexusEquipmentComponent::SetSwapTag(const bool bOn) const
 	if (bOn && !bAlreadyOn)
 	{
 		ASC->AddLooseGameplayTag(NexusGameplayTags::Character_State_Weapon_Swapping);
-
-		// A swap interrupts an in-flight reload. Otherwise the reload's timer keeps
-		// running and transfers ammo after the weapon has already left the player's
-		// hands (the swap-cancel-keeps-the-ammo desync). Fire is single-shot, so the
-		// reload is the only ability that needs cancelling here.
+		// A swap interrupts an in-flight reload so its timer can't transfer ammo after
+		// the weapon has left the hands.
 		ASC->ForceEndAbilityByTag(NexusGameplayTags::Ability_Weapon_Reload);
 	}
 	else if (!bOn && bAlreadyOn)
@@ -732,208 +800,148 @@ void UNexusEquipmentComponent::SetSwapTag(const bool bOn) const
 }
 
 
-// Mounting (effects + spawned actor)
-void UNexusEquipmentComponent::ApplyEquipEffects(FGameplayTag SlotTag, UNexusItemInstance* Instance)
+// Anim-notify hooks
+void UNexusEquipmentComponent::NotifyHideOutgoingSlot()
 {
-	const UNexusItemDefinition* Definition = Instance ? Instance->GetDefinition() : nullptr;
-	if (!Definition) return;
-
-	const FNexusFragment_Equippable* Eq = Definition->FindFragment<FNexusFragment_Equippable>();
-	if (!Eq) return;
-
-	UClass* ActorClass = Eq->EquippedActorClass.Get();
-	if (!ActorClass)
+	// Visual hand-off only: hide the outgoing actor at the authored frame. The phase
+	// itself advances when the holster montage blends out (HandleHolsterMontageBlendingOut), so a
+	// transition always runs to completion and can't be interrupted mid-montage.
+	if (HolsteringSlot.IsValid())
 	{
-		ensureMsgf(Eq->EquippedActorClass.IsNull(),
-			TEXT("EquippedActorClass not resident for %s — Equipped bundle was not awaited"),
-			*Definition->GetName());
-		ActorClass = ANexusEquippedActor::StaticClass();
-	}
-
-	if (UWorld* World = GetWorld())
-	{
-		ANexusEquippedActor* Spawned = World->SpawnActorDeferred<ANexusEquippedActor>(
-			ActorClass, FTransform::Identity, GetOwner(), nullptr,
-			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
-		if (Spawned)
-		{
-			Spawned->InitializeFromInstance(Instance);
-			Spawned->ApplyOwnerViewpointRendering();
-			Spawned->FinishSpawning(FTransform::Identity, true);
-			SpawnedActors.Add(SlotTag, Spawned);
-		}
-	}
-
-	if (UNexusAbilitySystemComponent* ASC = GetASC())
-	{
-		TArray<TSubclassOf<UNexusAbility>>& Granted = AppliedAbilitiesBySlot.FindOrAdd(SlotTag);
-		for (const TSubclassOf<UNexusAbility>& AbilityClass : Eq->GrantedAbilities)
-		{
-			if (AbilityClass && ASC->GiveAbility(AbilityClass))
-			{
-				Granted.Add(AbilityClass);
-			}
-		}
-
-		FGameplayTagContainer Pushed;
-		Pushed.AddTag(SlotTag);
-		Pushed.AppendTags(Eq->OwnedTagsWhileEquipped);
-		for (const FGameplayTag& Tag : Pushed)
-		{
-			ASC->AddLooseGameplayTag(Tag);
-		}
-		AppliedTagsBySlot.Add(SlotTag, Pushed);
+		AttachActorForSlotState(HolsteringSlot, false);
 	}
 }
 
-void UNexusEquipmentComponent::RemoveEquipEffects(FGameplayTag SlotTag)
+void UNexusEquipmentComponent::HandleEquipmentActionNotify(FGameplayTag /*ActionTag*/)
 {
-	if (UNexusAbilitySystemComponent* ASC = GetASC())
-	{
-		if (TArray<TSubclassOf<UNexusAbility>>* Granted = AppliedAbilitiesBySlot.Find(SlotTag))
-		{
-			for (const TSubclassOf<UNexusAbility>& AbilityClass : *Granted)
-			{
-				ASC->RemoveAbility(AbilityClass);
-			}
-		}
-		AppliedAbilitiesBySlot.Remove(SlotTag);
-
-		if (FGameplayTagContainer* Tags = AppliedTagsBySlot.Find(SlotTag))
-		{
-			for (const FGameplayTag& Tag : *Tags)
-			{
-				ASC->RemoveLooseGameplayTag(Tag);
-			}
-		}
-		AppliedTagsBySlot.Remove(SlotTag);
-	}
-
-	if (const TObjectPtr<ANexusEquippedActor> Actor = SpawnedActors.FindRef(SlotTag))
-	{
-		Actor->Destroy();
-	}
-	SpawnedActors.Remove(SlotTag);
-
-	if (OutgoingPendingHide.MatchesTagExact(SlotTag))
-	{
-		OutgoingPendingHide = FGameplayTag();
-	}
-}
-
-void UNexusEquipmentComponent::AttachActorForSlotState(const FGameplayTag SlotTag, const bool bActive) const
-{
-	ANexusEquippedActor* Actor = SpawnedActors.FindRef(SlotTag);
-	if (!Actor) return;
-
-	if (!bActive)
-	{
-		Actor->SetEquippedVisibility(false);
-		return;
-	}
-
-	const UNexusItemInstance* Instance = EquippedSlots.FindRef(SlotTag);
-	const UNexusItemDefinition* Definition = Instance ? Instance->GetDefinition() : nullptr;
-	const FNexusFragment_Equippable* Eq = Definition
-		? Definition->FindFragment<FNexusFragment_Equippable>() : nullptr;
-	if (!Eq) return;
-
-	const ANexusCharacterBase* Character = Cast<ANexusCharacterBase>(GetOwner());
-	if (!Character) return;
-	USkeletalMeshComponent* CharacterMesh = Character->GetEquipmentAttachMesh();
-	if (!CharacterMesh) return;
-
-	Actor->AttachToComponent(CharacterMesh,
-		FAttachmentTransformRules::SnapToTargetNotIncludingScale, Eq->AttachSocket);
-	Actor->SetEquippedVisibility(true);
-}
-
-float UNexusEquipmentComponent::PlayMontageOnOwner(UAnimMontage* Montage) const
-{
-	if (!Montage) return 0.0f;
-
-	const ACharacter* Character = Cast<ACharacter>(GetOwner());
-	if (!Character) return 0.0f;
-
-	const USkeletalMeshComponent* Mesh = Character->GetMesh();
-	if (!Mesh) return 0.0f;
-
-	UAnimInstance* AnimInstance = Mesh->GetAnimInstance();
-	if (!AnimInstance) return 0.0f;
-
-	return AnimInstance->Montage_Play(Montage);
+	// Deprecated: phase advancement is driven by the montage blend-out delegates, never by
+	// an anim notify, so a draw/holster always plays to completion. Kept as a no-op so
+	// existing anim-notify references still resolve.
 }
 
 
 // Inventory hookup
 void UNexusEquipmentComponent::HandleInventoryItemRemoved(UNexusItemInstance* RemovedInstance)
 {
-	if (!RemovedInstance) return;
-	if (EquippedSlots.Num() == 0) return;
-	
-	TArray<TPair<FGameplayTag, TObjectPtr<UNexusItemInstance>>, TInlineAllocator<4>> Snapshot;
-	Snapshot.Reserve(EquippedSlots.Num());
-	for (const TPair<FGameplayTag, TObjectPtr<UNexusItemInstance>>& Pair : EquippedSlots)
-	{
-		Snapshot.Add(Pair);
-	}
+	if (!RemovedInstance || SlotStates.Num() == 0) return;
 
-	for (const TPair<FGameplayTag, TObjectPtr<UNexusItemInstance>>& Pair : Snapshot)
+	TArray<FGameplayTag, TInlineAllocator<4>> ToClear;
+	for (const TPair<FGameplayTag, FNexusEquipmentSlotState>& Pair : SlotStates)
 	{
-		if (Pair.Value == RemovedInstance)
-		{
-			ClearSlotImmediate(Pair.Key);
-		}
+		if (Pair.Value.Assigned == RemovedInstance) ToClear.Add(Pair.Key);
+	}
+	for (const FGameplayTag& Slot : ToClear)
+	{
+		ClearSlotImmediate(Slot); // also deactivates if it was the active slot
 	}
 }
 
 
-// Utility
-UNexusItemInstance* UNexusEquipmentComponent::GetEquippedInSlot(FGameplayTag SlotTag) const
+// Queries
+UNexusItemInstance* UNexusEquipmentComponent::GetAssigned(FGameplayTag SlotTag) const
 {
-	return EquippedSlots.FindRef(SlotTag);
+	const FNexusEquipmentSlotState* State = SlotStates.Find(SlotTag);
+	return State ? State->Assigned : nullptr;
 }
 
 ANexusEquippedActor* UNexusEquipmentComponent::GetEquippedActorInSlot(FGameplayTag SlotTag) const
 {
-	return SpawnedActors.FindRef(SlotTag);
+	const FNexusEquipmentSlotState* State = SlotStates.Find(SlotTag);
+	return State ? State->InWorld : nullptr;
 }
 
 bool UNexusEquipmentComponent::IsSlotOccupied(FGameplayTag SlotTag) const
 {
-	return EquippedSlots.Contains(SlotTag);
+	const FNexusEquipmentSlotState* State = SlotStates.Find(SlotTag);
+	return State && State->Assigned != nullptr;
+}
+
+bool UNexusEquipmentComponent::IsSlotActive(FGameplayTag SlotTag) const
+{
+	const FNexusEquipmentSlotState* State = SlotStates.Find(SlotTag);
+	return State && State->Phase == EEquipmentSlotPhase::Active;
+}
+
+EEquipmentSlotPhase UNexusEquipmentComponent::GetSlotPhase(FGameplayTag SlotTag) const
+{
+	const FNexusEquipmentSlotState* State = SlotStates.Find(SlotTag);
+	return State ? State->Phase : EEquipmentSlotPhase::Idle;
 }
 
 TArray<FGameplayTag> UNexusEquipmentComponent::GetOccupiedSlots() const
 {
 	TArray<FGameplayTag> Out;
-	EquippedSlots.GetKeys(Out);
+	SlotStates.GetKeys(Out);
 	return Out;
 }
 
 FGameplayTag UNexusEquipmentComponent::GetSlotForInstance(const UNexusItemInstance* Instance) const
 {
 	if (!Instance) return FGameplayTag();
-	for (const TPair<FGameplayTag, TObjectPtr<UNexusItemInstance>>& Pair : EquippedSlots)
+	for (const TPair<FGameplayTag, FNexusEquipmentSlotState>& Pair : SlotStates)
 	{
-		if (Pair.Value == Instance) return Pair.Key;
+		if (Pair.Value.Assigned == Instance) return Pair.Key;
 	}
 	return FGameplayTag();
 }
 
+bool UNexusEquipmentComponent::IsSwapping() const
+{
+	if (HolsteringSlot.IsValid()) return true;
+	if (const FNexusEquipmentSlotState* State = SlotStates.Find(ActiveSlot))
+	{
+		return State->Phase == EEquipmentSlotPhase::Unholstering;
+	}
+	return false;
+}
 
-// Save / Load
+
+// Starter loadout
+void UNexusEquipmentComponent::ApplyStarterEquipment()
+{
+	if (bStarterApplied) return;
+	bStarterApplied = true;
+
+	UNexusInventoryComponent* Inventory = GetInventory();
+	if (!Inventory) return;
+
+	for (const FNexusStarterEquipped& Entry : StarterEquipment)
+	{
+		if (!Entry.SlotTag.IsValid() || !IsValidSlot(Entry.SlotTag)) continue;
+		if (IsSlotOccupied(Entry.SlotTag)) continue;
+
+		UNexusItemDefinition* Definition = Entry.ItemDefinition.LoadSynchronous();
+		if (!Definition) continue;
+
+		const FNexusAddItemResult Add = Inventory->AddItem(Definition, 1);
+		UNexusItemInstance* Instance = Add.NewInstances.Num() > 0
+			? Add.NewInstances[0]
+			: (Add.AffectedInstances.Num() > 0 ? Add.AffectedInstances[0] : nullptr);
+		if (!Instance) continue;
+
+		if (Entry.bActivateOnSpawn && !IsSlotPassive(Entry.SlotTag))
+		{
+			AssignAndActivate(Entry.SlotTag, Instance, EUnholsterStyle::Normal);
+		}
+		else
+		{
+			AssignItemToSlot(Entry.SlotTag, Instance);
+		}
+	}
+}
+
+
+// Save / load
 void UNexusEquipmentComponent::ComponentPreSave_Implementation()
 {
-	// EquippedSlots holds runtime instance pointers that cannot round-trip through
-	// EMS. Persist the stable per-instance GUIDs instead; ResolveEquippedFromSave
-	// rebuilds the pointer map on load by looking each GUID up in the inventory.
+	// The runtime instance pointers can't round-trip through EMS; persist the stable
+	// per-instance GUIDs instead and re-resolve them on load against the inventory.
 	SavedSlotGuids.Reset();
-	for (const TPair<FGameplayTag, TObjectPtr<UNexusItemInstance>>& Pair : EquippedSlots)
+	for (const TPair<FGameplayTag, FNexusEquipmentSlotState>& Pair : SlotStates)
 	{
-		if (Pair.Value)
+		if (Pair.Value.Assigned)
 		{
-			SavedSlotGuids.Add(Pair.Key, Pair.Value->GetInstanceGuid());
+			SavedSlotGuids.Add(Pair.Key, Pair.Value.Assigned->GetInstanceGuid());
 		}
 	}
 }
@@ -945,13 +953,15 @@ void UNexusEquipmentComponent::ComponentPreLoad_Implementation()
 
 void UNexusEquipmentComponent::ComponentLoaded_Implementation()
 {
+	// A restored game brings its own slot state — don't also apply starter gear.
+	bStarterApplied = true;
+
 	// The equipped instances are owned by the inventory, which rebuilds them in its
-	// own ComponentLoaded. Defer resolution one tick so it runs after the inventory
-	// restore regardless of EMS component load order. ActiveSlot and SavedSlotGuids
-	// were just restored by EMS and persist until the deferred pass consumes them.
+	// own ComponentLoaded. Defer one tick so we resolve after the inventory restore
+	// regardless of EMS component load order.
 	PendingRestoreActiveSlot = ActiveSlot;
 	ActiveSlot = FGameplayTag();
-	EquippedSlots.Reset();
+	SlotStates.Reset();
 
 	if (UWorld* World = GetWorld())
 	{
@@ -968,37 +978,38 @@ void UNexusEquipmentComponent::ResolveEquippedFromSave()
 	const FGameplayTag SavedActiveSlot = PendingRestoreActiveSlot;
 	PendingRestoreActiveSlot = FGameplayTag();
 
+	// Rebuild slot → instance from the persisted GUIDs against the restored inventory.
 	if (const UNexusInventoryComponent* Inventory = GetInventory())
 	{
 		for (const TPair<FGameplayTag, FGuid>& Pair : SavedSlotGuids)
 		{
-			// A null result means the inventory dropped the item (e.g. its definition
-			// was removed from the build); skip the slot rather than restore an empty one.
-			if (UNexusItemInstance* Instance = Inventory->FindInstanceByGuid(Pair.Value))
-			{
-				EquippedSlots.Add(Pair.Key, Instance);
-			}
+			if (!IsValidSlot(Pair.Key)) continue; // loadout changed since the save
+			UNexusItemInstance* Instance = Inventory->FindInstanceByGuid(Pair.Value);
+			if (!Instance) continue;              // item no longer exists — skip the slot
+
+			FNexusEquipmentSlotState& State = SlotStates.Add(Pair.Key);
+			State.Assigned = Instance;
+			State.bPassive = IsSlotPassive(Pair.Key);
+			State.Phase    = EEquipmentSlotPhase::Idle;
 		}
 	}
 	SavedSlotGuids.Reset();
 
-	TArray<FGameplayTag, TInlineAllocator<4>> Slots;
-	EquippedSlots.GetKeys(Slots);
-
+	// Sync-load Equipped bundles for in-hand slots (restore runs behind a loading screen).
 	UAssetManager& AM = UAssetManager::Get();
-	for (const FGameplayTag& SlotTag : Slots)
+	TArray<FGameplayTag> Keys;
+	SlotStates.GetKeys(Keys);
+	for (const FGameplayTag& SlotTag : Keys)
 	{
-		UNexusItemInstance* Instance = EquippedSlots.FindRef(SlotTag);
-		if (!Instance) continue;
-		const UNexusItemDefinition* Def = Instance->GetDefinition();
-		if (!Def) continue;
-		const FPrimaryAssetId Id = Def->GetPrimaryAssetId();
+		const FNexusEquipmentSlotState* State = SlotStates.Find(SlotTag);
+		if (!State || State->bPassive || !State->Assigned) continue;
+		const UNexusItemDefinition* Def = State->Assigned->GetDefinition();
+		const FPrimaryAssetId Id = Def ? Def->GetPrimaryAssetId() : FPrimaryAssetId();
 		if (!Id.IsValid()) continue;
-
 		if (TSharedPtr<FStreamableHandle> Handle = AM.LoadPrimaryAsset(
 			Id, TArray<FName>{ UNexusAssetManager::BundleEquipped }))
 		{
-			EquippableLoadHandles.Add(Instance, Handle);
+			EquippableLoadHandles.Add(State->Assigned, Handle);
 		}
 	}
 	for (const TPair<TObjectPtr<UNexusItemInstance>, TSharedPtr<FStreamableHandle>>& Pair : EquippableLoadHandles)
@@ -1009,21 +1020,29 @@ void UNexusEquipmentComponent::ResolveEquippedFromSave()
 		}
 	}
 
-	for (const FGameplayTag& SlotTag : Slots)
+	// Apply effects (passive grants / in-hand spawn) and announce each restored slot.
+	for (const FGameplayTag& SlotTag : Keys)
 	{
-		if (UNexusItemInstance* Instance = EquippedSlots.FindRef(SlotTag))
+		FNexusEquipmentSlotState* State = SlotStates.Find(SlotTag);
+		if (!State || !State->Assigned) continue;
+		ApplySlotEffects(SlotTag, *State);
+		if (!State->bPassive)
 		{
-			ApplyEquipEffects(SlotTag, Instance);
 			AttachActorForSlotState(SlotTag, false);
-			OnSlotAssigned.Broadcast(SlotTag, Instance);
 		}
+		OnSlotAssigned.Broadcast(SlotTag, State->Assigned);
 	}
 
-	if (SavedActiveSlot.IsValid() && EquippedSlots.Contains(SavedActiveSlot))
+	// Re-draw the previously-active slot silently (no montage), to avoid playing a
+	// draw on level load.
+	if (SavedActiveSlot.IsValid() && IsSlotOccupied(SavedActiveSlot) && !IsSlotPassive(SavedActiveSlot))
 	{
 		ActiveSlot = SavedActiveSlot;
+		if (FNexusEquipmentSlotState* State = SlotStates.Find(SavedActiveSlot))
+		{
+			State->Phase = EEquipmentSlotPhase::Active;
+		}
 		AttachActorForSlotState(SavedActiveSlot, true);
+		OnSlotActivated.Broadcast(SavedActiveSlot, GetAssigned(SavedActiveSlot));
 	}
-
-	OnActiveSlotChanged.Broadcast(ActiveSlot, GetEquippedInSlot(ActiveSlot));
 }

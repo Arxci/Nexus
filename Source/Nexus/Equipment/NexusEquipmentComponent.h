@@ -12,30 +12,108 @@
 
 #include "NexusEquipmentComponent.generated.h"
 
-class USceneComponent;
 class UAnimMontage;
-class UAnimSequence;
+class UAnimInstance;
 
 class ANexusEquippedActor;
 class UNexusAbility;
 class UNexusAbilitySystemComponent;
 class UNexusInventoryComponent;
+class UNexusItemDefinition;
 class UNexusItemInstance;
+class UNexusEquipmentLoadout;
+class INexusEquipmentInterface;
 
 
+/** Which unholster animation a draw plays. Tap → Normal, hold → Ceremony (weapon inspect / flourish). */
 UENUM(BlueprintType)
-enum class ENexusEquipSwapPhase : uint8
+enum class EUnholsterStyle : uint8
 {
-	Idle       UMETA(DisplayName = "Idle"),
-	Holstering UMETA(DisplayName = "Holstering"),
-	Drawing    UMETA(DisplayName = "Drawing"),
+	Normal   UMETA(DisplayName = "Normal"),
+	Ceremony UMETA(DisplayName = "Ceremony"),
 };
 
-// One slot-event shape for all three equipment dispatchers: (SlotTag, Instance).
-// OnSlotAssigned / OnSlotCleared report loadout edits; OnActiveSlotChanged reports
-// the drawn weapon (Instance is null when holstered to empty hands).
+
+/** Per-slot lifecycle phase for an in-hand slot. Passive slots stay Idle. */
+UENUM(BlueprintType)
+enum class EEquipmentSlotPhase : uint8
+{
+	Idle         UMETA(DisplayName = "Idle"),         // assigned but not in hand (or empty)
+	Unholstering UMETA(DisplayName = "Unholstering"), // being drawn
+	Active       UMETA(DisplayName = "Active"),       // in hand, ready (fire/reload allowed)
+	Holstering   UMETA(DisplayName = "Holstering"),   // being stowed
+};
+
+
+// One slot-event shape for every dispatcher: (SlotTag, Instance). Instance is the
+// assigned item, or null where a slot has emptied.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnEquipmentSlotChanged, FGameplayTag, SlotTag, UNexusItemInstance*, Instance);
 
+
+/**
+ * Runtime state for one occupied slot, keyed by SlotTag. The component owns one
+ * of these per assigned slot. The plan's "FActiveGameplayEffectHandle PassiveFx[]"
+ * maps onto this project's ability-driven ASC as the granted abilities + owned
+ * tags recorded here, so clearing a slot removes exactly what assigning it added.
+ */
+USTRUCT()
+struct FNexusEquipmentSlotState
+{
+	GENERATED_BODY()
+
+	/** The assigned inventory item. Never owned here — a pointer into the inventory. */
+	UPROPERTY()
+	TObjectPtr<UNexusItemInstance> Assigned = nullptr;
+
+	/** Spawned in-world actor for an in-hand item. Always null for a passive slot. */
+	UPROPERTY(Transient)
+	TObjectPtr<ANexusEquippedActor> InWorld = nullptr;
+
+	/** Abilities granted to the host ASC on assign, removed on clear. */
+	UPROPERTY(Transient)
+	TArray<TSubclassOf<UNexusAbility>> GrantedAbilities;
+
+	/** Loose tags pushed to the host ASC on assign, removed on clear. */
+	FGameplayTagContainer GrantedTags;
+
+	EEquipmentSlotPhase Phase = EEquipmentSlotPhase::Idle;
+	bool bPassive = false;
+};
+
+
+/**
+ * A starter item a character spawns already holding — the NPC equivalent of the
+ * controlled character picking a weapon up. Configured per character class on the
+ * equipment component; applied once at BeginPlay (skipped on a save-restore, which
+ * restores the real slot state instead).
+ */
+USTRUCT(BlueprintType, DisplayName = "Starter Equipped")
+struct NEXUS_API FNexusStarterEquipped
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Starter",
+		meta = (Categories = "Equipment.Slot"))
+	FGameplayTag SlotTag;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Starter")
+	TSoftObjectPtr<UNexusItemDefinition> ItemDefinition;
+
+	/** Draw the item into hands on spawn (in-hand slots only). Passive slots ignore this. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Starter")
+	bool bActivateOnSpawn = false;
+};
+
+
+/**
+ * Data-driven equipment host. Owns per-slot runtime state keyed by SlotTag, with
+ * the slot list read from a designer-authored UNexusEquipmentLoadout (never
+ * hardcoded). Hosts both in-hand items (guns / melee / throwables, with a full
+ * holster/unholster lifecycle) and passive items (armor / charm, stat-only) on
+ * any actor that implements INexusEquipmentInterface — controlled character or NPC
+ * alike. A single in-hand slot is active at a time; the lifecycle advances on anim
+ * notifies, not on montage length.
+ */
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class NEXUS_API UNexusEquipmentComponent : public UActorComponent, public IEMSCompSaveInterface
 {
@@ -45,128 +123,138 @@ public:
 	UNexusEquipmentComponent();
 
 public:
-	// Loadout (UI-driven)
-	/**
-	 * Place Instance into SlotTag.
-	 *
-	 * Validates SlotTag against the instance's FNexusFragment_Equippable::AllowedSlots
-	 * AND against this component's AvailableSlots list. If the slot is already
-	 * occupied by a different instance, the prior occupant is cleared first.
-	 *
-	 * Returns false if Instance is null, lacks an Equippable fragment, or the
-	 * slot is invalid for either Instance or this component.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Equipment|Loadout")
-	bool AssignToSlot(UNexusItemInstance* Instance, FGameplayTag SlotTag);
+	// Loadout / slot queries
+	UFUNCTION(BlueprintPure, Category = "Equipment|Loadout")
+	const UNexusEquipmentLoadout* GetLoadout() const { return Loadout; }
+
+	/** True if SlotTag is a slot this character's loadout exposes. */
+	UFUNCTION(BlueprintPure, Category = "Equipment|Loadout")
+	bool IsValidSlot(FGameplayTag SlotTag) const;
+
+	/** True if SlotTag is a passive (armor / charm) slot. */
+	UFUNCTION(BlueprintPure, Category = "Equipment|Loadout")
+	bool IsSlotPassive(FGameplayTag SlotTag) const;
+
+	/** Every slot tag the loadout exposes, in SortOrder order. */
+	UFUNCTION(BlueprintPure, Category = "Equipment|Loadout")
+	TArray<FGameplayTag> GetSlots() const;
 
 	/**
-	 * Remove the instance currently assigned to SlotTag. If the slot is the
-	 * active slot, plays the holster montage and clears once finished;
-	 * otherwise clears immediately. Use ClearSlotImmediate for a non-anim path
-	 * (death/teardown/save-load).
+	 * True if Instance may be placed in SlotTag: the slot exists, its mode matches
+	 * the item's fragment (in-hand ↔ Equippable, passive ↔ PassiveEquipment), and
+	 * the item's category tags intersect the slot's AcceptedItemTags (an empty
+	 * AcceptedItemTags accepts any item of the right mode).
+	 */
+	UFUNCTION(BlueprintPure, Category = "Equipment|Loadout")
+	bool CanAssignToSlot(const UNexusItemInstance* Instance, FGameplayTag SlotTag) const;
+
+	/** UI helper: every exposed slot Instance is compatible with, in loadout order. */
+	UFUNCTION(BlueprintPure, Category = "Equipment|Loadout")
+	TArray<FGameplayTag> GetCompatibleSlotsForInstance(const UNexusItemInstance* Instance) const;
+
+	/**
+	 * Slot the component would auto-equip Instance into: the equippable fragment's
+	 * PreferredSlot when free, else the first compatible free slot, else invalid.
+	 * Shared with UNexusInventoryAcquireLibrary so pickup auto-equip and direct
+	 * callers agree.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Equipment|Loadout")
+	FGameplayTag PickAutoAssignSlot(const UNexusItemInstance* Instance) const;
+
+public:
+	// Assignment (UI-driven)
+	/**
+	 * Place Instance into SlotTag. Rejected (with a warning) when Instance is
+	 * incompatible per CanAssignToSlot. A passive slot applies the item's effects
+	 * immediately; an in-hand slot async-loads the Equipped bundle and spawns the
+	 * equipped actor. If the slot already holds a different item it is cleared first.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Equipment|Loadout")
+	bool AssignItemToSlot(FGameplayTag SlotTag, UNexusItemInstance* Instance);
+
+	/**
+	 * Remove the item in SlotTag. The active in-hand slot plays its holster montage
+	 * and clears when it finishes; every other case (non-active, passive, teardown)
+	 * clears immediately.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Loadout")
 	bool ClearSlot(FGameplayTag SlotTag);
 
-	/** Same as ClearSlot but never plays a holster montage; intended for teardown. */
+	/** Clear SlotTag now with no holster montage. For teardown / inventory removal / save-load. */
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Loadout")
 	bool ClearSlotImmediate(FGameplayTag SlotTag);
 
-	/** Clear every assigned slot immediately (no anim). */
+	/** Clear every assigned slot immediately. */
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Loadout")
 	void ClearAll();
 
 	/**
-	 * Move the instance from FromSlot to ToSlot. If ToSlot already holds an
-	 * instance, the two slots swap their occupants (provided each instance
-	 * remains valid for its destination). Returns false on invalid slot pairs
-	 * or incompatibility.
+	 * Move the item from FromSlot to ToSlot, swapping occupants when both are
+	 * filled (each must remain compatible with its destination).
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Loadout")
 	bool MoveItemBetweenSlots(FGameplayTag FromSlot, FGameplayTag ToSlot);
 
-	/** True if Instance can be placed in SlotTag (compatibility + slot exposed). */
-	UFUNCTION(BlueprintPure, Category = "Equipment|Loadout")
-	bool CanAssignToSlot(const UNexusItemInstance* Instance, FGameplayTag SlotTag) const;
-
-	/** True if SlotTag is in this component's AvailableSlots. */
-	UFUNCTION(BlueprintPure, Category = "Equipment|Loadout")
-	bool IsValidSlot(FGameplayTag SlotTag) const;
-
 	/**
-	 * UI helper: every slot Instance is allowed in AND that this component
-	 * exposes. Returned in AvailableSlots order so the UI can render them in a
-	 * stable, designer-controlled sequence.
+	 * Assign Instance to SlotTag and activate it once the (async) Equipped bundle
+	 * resolves and the actor is spawned. Closes the race in a bare
+	 * "AssignItemToSlot + RequestActivateSlot" pair where activation could run
+	 * before the actor existed. UNexusInventoryAcquireLibrary is the canonical caller.
 	 */
-	UFUNCTION(BlueprintPure, Category = "Equipment|Loadout")
-	TArray<FGameplayTag> GetCompatibleSlotsForInstance(const UNexusItemInstance* Instance) const;
-
-	/** Configurable slots this owner exposes (e.g., player has Primary/Secondary/Utility/Body). */
-	UFUNCTION(BlueprintPure, Category = "Equipment|Loadout")
-	const TArray<FGameplayTag>& GetAvailableSlots() const { return AvailableSlots; } 
+	UFUNCTION(BlueprintCallable, Category = "Equipment|Loadout")
+	bool AssignAndActivate(FGameplayTag SlotTag, UNexusItemInstance* Instance,
+		EUnholsterStyle Style = EUnholsterStyle::Normal);
 
 public:
-	// Activation (input-driven)
+	// Activation (input / AI-driven)
 	/**
-	 * Activate SlotTag, playing the draw-phase arms montage that the active item
-	 * resolves for UnholsterActionTag (default = Action.Equipment.Unholster). Callers
-	 * pass an alternate action tag (e.g. Action.Equipment.Ceremony) when they
-	 * want the same draw to play a different authored animation; if the chosen
-	 * action has no authored arms montage, the draw phase silently falls back to
-	 * Action.Equipment.Unholster so the player still gets *a* draw — overrides are
-	 * additive, never subtractive.
+	 * Draw SlotTag. Normal plays the standard unholster; Ceremony plays the
+	 * inspect/flourish variant (falling back to Normal if the item doesn't author
+	 * one). Pressing the already-active slot deactivates it (toggle to empty
+	 * hands). Activating a different slot while one is active chains holster →
+	 * unholster. Calls during a transition are queued and run when it settles.
+	 * Passive slots are never activatable (they're always on while assigned).
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Activation")
-	bool RequestActivateSlot(FGameplayTag SlotTag, FGameplayTag UnholsterActionTag = FGameplayTag());
+	bool RequestActivateSlot(FGameplayTag SlotTag, EUnholsterStyle Style = EUnholsterStyle::Normal);
 
-	/** Holster the currently active slot. Queues if a swap is in flight. */
+	/** Holster the active slot back to empty hands. Queues if a transition is in flight. */
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Activation")
-	bool RequestHolster();
+	bool RequestDeactivateActiveSlot();
 
-	/**
-	 * Quick-swap to the most-recently-active slot — the weapon in hand before the
-	 * current one. Back-end for a "previous weapon" key; pressing it twice returns
-	 * you where you started (the holster re-captures the stowed slot). No-op when
-	 * there's no remembered slot, it's no longer occupied, or it's already active.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Equipment|Activation")
-	bool RequestActivateLastSlot();
-
-	/**
-	 * Activate the next / previous occupied slot in AvailableSlots order, wrapping
-	 * and skipping empty slots — the "cycle weapons" keys (InputTag.Weapon.SwapNext /
-	 * SwapPrev). No-op if no other occupied slot exists. Honors the swap lock exactly
-	 * like RequestActivateSlot.
-	 */
+	/** Activate the next / previous occupied in-hand slot in loadout order, wrapping. */
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Activation")
 	bool RequestActivateNextSlot();
-
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Activation")
 	bool RequestActivatePrevSlot();
 
-	/**
-	 * Assign Instance to SlotTag and activate it once the (async) Equipped-bundle
-	 * load resolves. Fixes the obvious race in "AssignToSlot + RequestActivateSlot"
-	 * pairs where activation ran before FinalizeAssignment spawned the actor —
-	 * the slot would be marked active with no visible weapon.
-	 *
-	 * UnholsterActionTag is forwarded to the eventual RequestActivateSlot call;
-	 * pass Action.Equipment.Ceremony for a first-pickup flourish, or leave invalid
-	 * for standard unholster. The library UNexusInventoryAcquireLibrary::AcquireItem
-	 * is the canonical caller.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Equipment|Loadout")
-	bool AssignAndActivate(UNexusItemInstance* Instance, FGameplayTag SlotTag,
-		FGameplayTag UnholsterActionTag = FGameplayTag());
+	/** Quick-swap back to the slot active before the current one (the "previous weapon" key). */
+	UFUNCTION(BlueprintCallable, Category = "Equipment|Activation")
+	bool RequestActivateLastSlot();
 
-	/**
-	 * Slot the equipment component would pick for Instance during auto-equip:
-	 * PreferredSlot when free, else first compatible free slot, else invalid.
-	 * Shared with UNexusInventoryAcquireLibrary so both inventory-side selection
-	 * and direct equipment callers agree.
-	 */
-	UFUNCTION(BlueprintPure, Category = "Equipment|Loadout")
-	FGameplayTag PickAutoAssignSlot(const UNexusItemInstance* Instance) const;
+public:
+	// Queries
+	UFUNCTION(BlueprintPure, Category = "Equipment")
+	UNexusItemInstance* GetAssigned(FGameplayTag SlotTag) const;
+
+	UFUNCTION(BlueprintPure, Category = "Equipment")
+	ANexusEquippedActor* GetEquippedActorInSlot(FGameplayTag SlotTag) const;
+
+	UFUNCTION(BlueprintPure, Category = "Equipment")
+	bool IsSlotOccupied(FGameplayTag SlotTag) const;
+
+	UFUNCTION(BlueprintPure, Category = "Equipment")
+	bool IsSlotActive(FGameplayTag SlotTag) const;
+
+	UFUNCTION(BlueprintPure, Category = "Equipment")
+	EEquipmentSlotPhase GetSlotPhase(FGameplayTag SlotTag) const;
+
+	UFUNCTION(BlueprintPure, Category = "Equipment")
+	TArray<FGameplayTag> GetOccupiedSlots() const;
+
+	/** The slot Instance is assigned to, or invalid. Reverse of GetAssigned. */
+	UFUNCTION(BlueprintPure, Category = "Equipment")
+	FGameplayTag GetSlotForInstance(const UNexusItemInstance* Instance) const;
 
 	UFUNCTION(BlueprintPure, Category = "Equipment|Activation")
 	FGameplayTag GetActiveSlot() const { return ActiveSlot; }
@@ -176,39 +264,32 @@ public:
 	FGameplayTag GetLastActiveSlot() const { return LastActiveSlot; }
 
 	UFUNCTION(BlueprintPure, Category = "Equipment|Activation")
-	UNexusItemInstance* GetActiveInstance() const { return GetEquippedInSlot(ActiveSlot); }
+	UNexusItemInstance* GetActiveInstance() const { return GetAssigned(ActiveSlot); }
 
 	UFUNCTION(BlueprintPure, Category = "Equipment|Activation")
 	ANexusEquippedActor* GetActiveActor() const { return GetEquippedActorInSlot(ActiveSlot); }
 
+	/** True while a holster/unholster transition is mid-flight. */
 	UFUNCTION(BlueprintPure, Category = "Equipment|Activation")
-	bool IsSwapping() const { return SwapPhase != ENexusEquipSwapPhase::Idle; }
-
-	UFUNCTION(BlueprintPure, Category = "Equipment|Activation")
-	ENexusEquipSwapPhase GetSwapPhase() const { return SwapPhase; }
+	bool IsSwapping() const;
 
 public:
-	// Utility
-	UFUNCTION(BlueprintPure, Category = "Equipment")
-	UNexusItemInstance* GetEquippedInSlot(FGameplayTag SlotTag) const;
-
-	UFUNCTION(BlueprintPure, Category = "Equipment")
-	ANexusEquippedActor* GetEquippedActorInSlot(FGameplayTag SlotTag) const;
-
-	UFUNCTION(BlueprintPure, Category = "Equipment")
-	bool IsSlotOccupied(FGameplayTag SlotTag) const;
-
-	UFUNCTION(BlueprintPure, Category = "Equipment")
-	TArray<FGameplayTag> GetOccupiedSlots() const;
-
-	/** The slot Instance is assigned to, or invalid if it isn't equipped. Reverse of GetEquippedInSlot. */
-	UFUNCTION(BlueprintPure, Category = "Equipment")
-	FGameplayTag GetSlotForInstance(const UNexusItemInstance* Instance) const;
-
-
-public:
+	// Anim-notify hooks (phase advancement is notify-driven, never timed off montage length)
+	/**
+	 * UNexusAnimNotify_HideOutgoingEquipped fires this at the authored frame of a
+	 * holster montage: it hides the outgoing actor and hands off to the incoming
+	 * draw in one step, so no frame shows both equipped actors.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Equipment|Anim Notify")
 	void NotifyHideOutgoingSlot();
+
+	/**
+	 * UNexusAnimNotify_EquipmentAction fires this with the action it carries.
+	 * Holster advances a stow; Unholster / Ceremony complete a draw. All other
+	 * actions (Fire, Reload, ...) are ignored here — they only drive item-mesh anim.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Equipment|Anim Notify")
+	void HandleEquipmentActionNotify(FGameplayTag ActionTag);
 
 public:
 	// Delegates
@@ -219,7 +300,10 @@ public:
 	FOnEquipmentSlotChanged OnSlotCleared;
 
 	UPROPERTY(BlueprintAssignable, Category = "Equipment")
-	FOnEquipmentSlotChanged OnActiveSlotChanged;
+	FOnEquipmentSlotChanged OnSlotActivated;
+
+	UPROPERTY(BlueprintAssignable, Category = "Equipment")
+	FOnEquipmentSlotChanged OnSlotDeactivated;
 
 protected:
 	virtual void BeginPlay() override;
@@ -229,135 +313,103 @@ protected:
 	virtual void ComponentPreLoad_Implementation() override;
 	virtual void ComponentLoaded_Implementation() override;
 
-	UNexusAbilitySystemComponent* GetASC() const;
-	UNexusInventoryComponent*     GetInventory() const;
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Equipment|Config",
-		meta = (Categories = "Equipment.Slot"))
-	TArray<FGameplayTag> AvailableSlots;
+protected:
+	/** Slots this character exposes. One asset per character class; assigned per BP. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment|Config")
+	TObjectPtr<UNexusEquipmentLoadout> Loadout;
+
+	/** Items the character spawns already carrying (NPC starter weapon / armor). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment|Config")
+	TArray<FNexusStarterEquipped> StarterEquipment;
+
+	/** Live per-slot state, keyed by SlotTag. Only occupied slots have an entry. */
+	UPROPERTY()
+	TMap<FGameplayTag, FNexusEquipmentSlotState> SlotStates;
 
 	/**
-	 * Live slot -> equipped instance map. Not persisted directly: the instances are
-	 * runtime subobjects owned by the inventory, whose pointers cannot round-trip
-	 * through EMS. Rebuilt on load from SavedSlotGuids by resolving each GUID against
-	 * the restored inventory (see ResolveEquippedFromSave).
+	 * Persisted slot → instance GUID. The runtime SlotStates pointers can't
+	 * round-trip through EMS (transient inventory subobjects have no loadable
+	 * path), so we persist the stable GUIDs and re-resolve them against the
+	 * restored inventory on load.
 	 */
-	UPROPERTY()
-	TMap<FGameplayTag, TObjectPtr<UNexusItemInstance>> EquippedSlots;
-
-	/** Persisted slot -> instance GUID. The save-safe form of EquippedSlots. */
 	UPROPERTY(SaveGame)
 	TMap<FGameplayTag, FGuid> SavedSlotGuids;
 
-	UPROPERTY(Transient)
-	TMap<FGameplayTag, TObjectPtr<ANexusEquippedActor>> SpawnedActors;
-
-	UPROPERTY(Transient)
-	TMap<FGameplayTag, FGameplayTagContainer> AppliedTagsBySlot;
-
-	TMap<FGameplayTag, TArray<TSubclassOf<UNexusAbility>>> AppliedAbilitiesBySlot;
-
+	/** The active slot — saved so a draw is restored on load. */
 	UPROPERTY(SaveGame)
 	FGameplayTag ActiveSlot;
 
 private:
-	void ApplyEquipEffects(FGameplayTag SlotTag, UNexusItemInstance* Instance);
-	void RemoveEquipEffects(FGameplayTag SlotTag);
-	void FinalizeAssignment(FGameplayTag SlotTag, UNexusItemInstance* Instance);
-	
-	void BeginSlotTransition(const FGameplayTag OutgoingSlot, const FGameplayTag IncomingSlot);
-	void BeginHolsterPhase(const FGameplayTag OutgoingSlot, const  FGameplayTag IncomingSlot);
-	void BeginDrawPhase(const  FGameplayTag IncomingSlot);
-	void CompleteSwap();
-	void ProcessPendingActivation();
+	// Host access — everything goes through the interfaces, never a concrete class.
+	INexusEquipmentInterface*     GetHost() const;
+	UAnimInstance*                GetHostAnimInstance() const;
+	UNexusAbilitySystemComponent* GetASC() const;
+	UNexusInventoryComponent*     GetInventory() const;
 
-	/** Shared back-end for RequestActivateNextSlot / PrevSlot. Direction is +1 / -1. */
+	// Assignment internals
+	void FinalizeInHandAssignment(FGameplayTag SlotTag, UNexusItemInstance* Instance);
+	void ApplySlotEffects(FGameplayTag SlotTag, FNexusEquipmentSlotState& State);
+	void RemoveSlotEffects(FNexusEquipmentSlotState& State);
+	void AttachActorForSlotState(FGameplayTag SlotTag, bool bActive) const;
+
+	// Lifecycle state machine
+	void BeginActivate(FGameplayTag SlotTag, EUnholsterStyle Style);
+	void BeginHolsterPhase(FGameplayTag OutgoingSlot, FGameplayTag IncomingSlot, EUnholsterStyle IncomingStyle);
+	void FinishHolsterPhase();
+	void BeginDrawPhase(FGameplayTag IncomingSlot, EUnholsterStyle Style);
+	void FinishDrawPhase();
+
+	UAnimMontage* ResolveTransitionMontage(FGameplayTag SlotTag, FGameplayTag ActionTag) const;
+	void HandleHolsterMontageBlendingOut(UAnimMontage* Montage, bool bInterrupted);
+	void HandleDrawMontageBlendingOut(UAnimMontage* Montage, bool bInterrupted);
+	
+	void SetSwapTag(bool bOn) const;
+
 	bool CycleActiveSlot(int32 Direction);
 
-	UFUNCTION()
-	void HandleHolsterPhaseFinished();
+	void DrainPendingActivationsAfterAssignment(FGameplayTag SlotTag);
 
-	UFUNCTION()
-	void HandleDrawPhaseFinished();
-
-	void AttachActorForSlotState(FGameplayTag SlotTag, bool bActive) const;
-	float PlayMontageOnOwner(UAnimMontage* Montage) const;
-
-	void SetSwapTag(const bool bOn) const;
-	
+	// Inventory hookup
 	UFUNCTION()
 	void HandleInventoryItemRemoved(UNexusItemInstance* RemovedInstance);
 
+	// Starter loadout / save-restore
+	void ApplyStarterEquipment();
+	void ResolveEquippedFromSave();
+
+private:
 	TMap<TObjectPtr<UNexusItemInstance>, TSharedPtr<FStreamableHandle>> EquippableLoadHandles;
 
-	ENexusEquipSwapPhase SwapPhase = ENexusEquipSwapPhase::Idle;
-	FGameplayTag         SwapOutgoingSlot;
-	FGameplayTag         SwapIncomingSlot;
+	/** Slot currently being stowed (Phase == Holstering). */
+	FGameplayTag HolsteringSlot;
 
-	/**
-	 * Most-recently-active slot, captured when a swap stows the current weapon.
-	 * Drives RequestActivateLastSlot (quick-swap-to-previous). Runtime-only and not
-	 * persisted — a restored session starts with no remembered previous weapon.
-	 */
+	/** Slot to draw once the in-flight holster finishes (the swap target); invalid for a plain deactivate. */
+	FGameplayTag PendingDrawSlot;
+	EUnholsterStyle PendingDrawStyle = EUnholsterStyle::Normal;
+
+	/** Most-recently-stowed slot, the quick-swap-to-previous target. Runtime-only. */
 	FGameplayTag LastActiveSlot;
 
+	/** A clear requested on the active slot, deferred until its holster montage finishes. */
+	FGameplayTag SlotPendingClear;
+
 	/**
-	 * Slot + unholster action tag queued by RequestActivateSlot while a swap is
-	 * in flight, or by RequestHolster (slot invalid). Drained when the in-flight
-	 * swap completes. SlotTag.IsValid() distinguishes queued-activation from
-	 * queued-holster — TOptional<> wraps the pair to also encode "nothing queued."
+	 * A slot + draw style pairing. Transitions themselves are non-interruptible and never
+	 * queued, but AssignAndActivate still needs to remember a requested draw until the
+	 * slot's actor finishes its async spawn — that's the one deferred case below.
 	 */
 	struct FPendingActivation
 	{
-		FGameplayTag SlotTag;
-		FGameplayTag UnholsterActionTag;
+		FGameplayTag    SlotTag;
+		EUnholsterStyle Style = EUnholsterStyle::Normal;
 	};
-	TOptional<FPendingActivation> PendingActivation;
 
-	/**
-	 * Activations waiting on FinalizeAssignment to spawn the equipped actor.
-	 * AssignAndActivate adds an entry; FinalizeAssignment drains matching entries
-	 * after broadcasting OnSlotAssigned so the actor is guaranteed to exist by
-	 * the time we call into the draw phase. Without this, RequestActivateSlot
-	 * would race the streamable callback and set ActiveSlot with no spawned
-	 * actor — the bug that broke the pickup auto-equip path.
-	 */
+	/** Activations waiting on an async actor spawn (AssignAndActivate). Drained in FinalizeInHandAssignment. */
 	TArray<FPendingActivation> PendingActivationsAfterAssignment;
-	void DrainPendingActivationsAfterAssignment(FGameplayTag SlotTag);
 
-	/**
-	 * Deferred save-restore: rebuild EquippedSlots from SavedSlotGuids by resolving
-	 * each GUID against the restored inventory, then load bundles, mount actors, and
-	 * restore the active slot. Scheduled for the next tick from ComponentLoaded so it
-	 * runs after the inventory component's own restore regardless of EMS component
-	 * load order.
-	 */
-	void ResolveEquippedFromSave();
-
-	/** Active slot captured from the save, consumed by the deferred ResolveEquippedFromSave. */
+	/** Active slot captured from a save, consumed by the deferred ResolveEquippedFromSave. */
 	FGameplayTag PendingRestoreActiveSlot;
 
-	FGameplayTag OutgoingPendingHide;
-
-	/**
-	 * Slot that ClearSlot() asked us to drop *after* its holster montage finishes.
-	 * Lets clearing the active slot stay animated (player sees the gun being
-	 * stowed) while the actual EquippedSlots removal waits for the montage —
-	 * matches the header contract on ClearSlot and the survival-horror feel of
-	 * deliberate weapon handling. Snap clears (non-active slot, EndPlay teardown,
-	 * inventory removal) bypass this and call ClearSlotImmediate directly.
-	 */
-	FGameplayTag SlotPendingClear;
-
-	FTimerHandle PhaseTimer;
-
-	/**
-	 * Pulled by BeginDrawPhase and cleared right after. When set, the next draw's
-	 * arms montage is resolved against this action tag instead of the default
-	 * Action.Equipment.Unholster. Lives as a transient member rather than a
-	 * parameter on BeginDrawPhase so the holster→draw chain through
-	 * BeginSlotTransition / HandleHolsterPhaseFinished picks it up without
-	 * changing those signatures.
-	 */
-	FGameplayTag PendingUnholsterActionTag;
+	/** Set once starter equipment has been applied (or suppressed by a save-restore). */
+	bool bStarterApplied = false;
 };

@@ -131,8 +131,13 @@ struct NEXUS_API FNexusFragment_Equippable : public FNexusItemFragment
         meta = (AssetBundles = "Equipped"))
     TSoftObjectPtr<USkeletalMesh> WorldMesh;
 
+    /**
+     * Socket on the host's GetEquipmentAttachMesh() the in-world actor snaps to.
+     * Defaults to the UE5 skeleton convention ik_hand_gun so the same socket name
+     * and anim contract serve the player's view-space mesh and an NPC's body mesh.
+     */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-    FName AttachSocket = "hand_r_socket";
+    FName AttachSocket = "ik_hand_gun";
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
     TArray<TSubclassOf<UNexusAbility>> GrantedAbilities;

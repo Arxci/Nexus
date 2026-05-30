@@ -1,6 +1,7 @@
 ﻿#include "NexusAbility_Weapon.h"
 
 #include "Nexus/Equipment/NexusEquipmentComponent.h"
+#include "Nexus/Equipment/NexusEquipmentInterface.h"
 #include "Nexus/Equipment/NexusEquippedActor.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
@@ -34,6 +35,11 @@ const FNexusFragment_Weapon* UNexusAbility_Weapon::GetWeaponFragment() const
 {
 	const UNexusItemDefinition* Def = GetActiveDefinition();
 	return Def ? Def->FindFragment<FNexusFragment_Weapon>() : nullptr;
+}
+
+INexusEquipmentInterface* UNexusAbility_Weapon::GetEquipmentHost() const
+{
+	return Cast<INexusEquipmentInterface>(GetOwner());
 }
 
 bool UNexusAbility_Weapon::CanActivateAbility_Implementation() const

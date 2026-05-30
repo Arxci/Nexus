@@ -97,7 +97,7 @@ void ANexusEquippedActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-UAnimMontage* ANexusEquippedActor::GetEffectiveArmsMontage(const FGameplayTag ActionTag) const
+UAnimMontage* ANexusEquippedActor::GetEffectiveHostMontage(const FGameplayTag ActionTag) const
 {
 	if (!ActionTag.IsValid() || !Assembly) return nullptr;
 	return Assembly->ResolveArmsMontage(ActionTag);

@@ -9,6 +9,7 @@
 
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "InputAction.h"
 
 #include "Nexus/NexusGameplayTags.h"
 #include "Nexus/Character/NexusCharacterMovementComponent.h"
@@ -29,16 +30,26 @@ ANexusHeroCharacter::ANexusHeroCharacter(const FObjectInitializer& ObjectInitial
 	GetMesh()->SetCollisionProfileName(FName("NoCollision"));
 	GetMesh()->SetCastShadow(false);
 	GetMesh()->SetFirstPersonPrimitiveType(EFirstPersonPrimitiveType::FirstPerson);
-
+	
+	// View origin rides the capsule at eye height — it is NOT welded to the head bone.
+	// Look (pitch/yaw) comes from control rotation via the spring arm; the head bone's
+	// motion is layered back onto the view as a camera-only offset in
+	// ANexusPlayerCameraManager::UpdateViewTarget. 70 is a rough eye height for the
+	// 90cm half-height capsule — tune it (or override in BP) so the neutral view sits
+	// at the eyes.
 	ViewRoot = CreateDefaultSubobject<USceneComponent>(TEXT("ViewRoot"));
-	ViewRoot->SetupAttachment(GetMesh(), FName("head"));
-	ViewRoot->SetRelativeRotation(FRotator(-90.f, 0.f, 90.f));
+	ViewRoot->SetupAttachment(GetCapsuleComponent());
+	ViewRoot->SetRelativeLocation(FVector(0.f, 0.f, 70.f));
 
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
 	SpringArm->SetupAttachment(ViewRoot);
 	SpringArm->TargetArmLength = 0.0f;
-	SpringArm->bEnableCameraRotationLag = true;
-	SpringArm->CameraRotationLagSpeed = 15.0f;
+	// Drive the camera straight from control rotation and keep it crisp. Any weight or
+	// lag the view model needs is authored as weapon sway in the Anim BP, not on the
+	// camera itself (lagging the camera lags your actual aim).
+	SpringArm->bUsePawnControlRotation = true;
+	SpringArm->bEnableCameraRotationLag = false;
+	SpringArm->bDoCollisionTest = false;
 
 	ViewSource = CreateDefaultSubobject<USceneComponent>(TEXT("ViewSource"));
 	ViewSource->SetupAttachment(SpringArm);
@@ -49,15 +60,23 @@ ANexusHeroCharacter::ANexusHeroCharacter(const FObjectInitializer& ObjectInitial
 	FollowCamera->SetEnableFirstPersonFieldOfView(true);
 	FollowCamera->SetEnableFirstPersonScale(true);
 
+	// Arms hang off a sibling of the camera (both under the spring arm) so they inherit
+	// only the shared control rotation. The camera-only head-bone offset moves the view
+	// without dragging the arms along with it.
+	ViewModelRoot = CreateDefaultSubobject<USceneComponent>(TEXT("ViewModelRoot"));
+	ViewModelRoot->SetupAttachment(SpringArm);
+
 	FirstPersonArms = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonArms"));
-	FirstPersonArms->SetupAttachment(FollowCamera);
+	FirstPersonArms->SetupAttachment(ViewModelRoot);
 	FirstPersonArms->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	FirstPersonArms->SetCollisionProfileName(FName("NoCollision"));
 	FirstPersonArms->SetCastShadow(false);
 	FirstPersonArms->SetFirstPersonPrimitiveType(EFirstPersonPrimitiveType::FirstPerson);
 	FirstPersonArms->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
-	FirstPersonArms->SetRelativeLocation(FVector(0, 0, -162.575263f));
-	FirstPersonArms->SetRelativeRotation(FRotator(0, 0, -90));
+	// Re-tune in editor: the parent frame changed from head-bone space to
+	// control-rotation space, so the old weld (-162.575 Z, -90 roll) no longer maps 1:1.
+	FirstPersonArms->SetRelativeLocation(FVector(0.f, 0.f, -162.575263f));
+	FirstPersonArms->SetRelativeRotation(FRotator(0.f, 0.f, -90.0f));
 }
 
 void ANexusHeroCharacter::BeginPlay()
@@ -72,14 +91,24 @@ void ANexusHeroCharacter::BeginPlay()
 		}
 	}
 
-	if (FirstPersonArms && GetMesh())
+	if (NexusEquipmentComponent)
 	{
-		if (!FirstPersonArms->GetSkeletalMeshAsset())
-		{
-			FirstPersonArms->SetSkeletalMeshAsset(GetMesh()->GetSkeletalMeshAsset());
-		}
-		FirstPersonArms->SetLeaderPoseComponent(GetMesh());
+		NexusEquipmentComponent->OnSlotActivated.AddDynamic(this, &ANexusHeroCharacter::HandleActiveSlotChanged);
+		NexusEquipmentComponent->OnSlotDeactivated.AddDynamic(this, &ANexusHeroCharacter::HandleActiveSlotChanged);
 	}
+	UpdateArmsVisibility();
+}
+
+void ANexusHeroCharacter::HandleActiveSlotChanged(FGameplayTag /*SlotTag*/, UNexusItemInstance* /*Instance*/)
+{
+	UpdateArmsVisibility();
+}
+
+void ANexusHeroCharacter::UpdateArmsVisibility()
+{
+	if (!FirstPersonArms) return;
+	const bool bItemInHand = NexusEquipmentComponent && NexusEquipmentComponent->GetActiveSlot().IsValid();
+	FirstPersonArms->SetVisibility(bItemInHand);
 }
 
 void ANexusHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -99,8 +128,12 @@ void ANexusHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 		EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnReloadInputStarted);
 		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnAimInputStarted);
 		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnAimInputCompleted);
-		EnhancedInputComponent->BindAction(SlotPrimaryAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnSlotPrimaryInputStarted);
-		EnhancedInputComponent->BindAction(SlotSecondaryAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnSlotSecondaryInputStarted);
+		// Hold trigger per slot action: Canceled (released before the hold threshold) =
+		// tap = Normal draw; Triggered (held past the threshold) = Ceremony draw.
+		EnhancedInputComponent->BindAction(SlotPrimaryAction, ETriggerEvent::Canceled, this, &ANexusHeroCharacter::OnSlotPrimaryTap);
+		EnhancedInputComponent->BindAction(SlotPrimaryAction, ETriggerEvent::Triggered, this, &ANexusHeroCharacter::OnSlotPrimaryHold);
+		EnhancedInputComponent->BindAction(SlotSecondaryAction, ETriggerEvent::Canceled, this, &ANexusHeroCharacter::OnSlotSecondaryTap);
+		EnhancedInputComponent->BindAction(SlotSecondaryAction, ETriggerEvent::Triggered, this, &ANexusHeroCharacter::OnSlotSecondaryHold);
 		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started,   this, &ANexusHeroCharacter::OnInteractInputStarted);
 		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnInteractInputCompleted);
 
@@ -219,21 +252,18 @@ void ANexusHeroCharacter::OnAimInputCompleted()
 	NexusAbilitySystemComponent->TryDeactivateAbilityByTag(NexusGameplayTags::Ability_Weapon_Aim);
 }
 
-void ANexusHeroCharacter::OnSlotPrimaryInputStarted()
-{
-	HandleSlotInput(NexusGameplayTags::Equipment_Slot_Primary);
-}
+void ANexusHeroCharacter::OnSlotPrimaryTap()    { HandleSlotInput(NexusGameplayTags::Equipment_Slot_Primary,   EUnholsterStyle::Normal); }
+void ANexusHeroCharacter::OnSlotPrimaryHold()   { HandleSlotInput(NexusGameplayTags::Equipment_Slot_Primary,   EUnholsterStyle::Ceremony); }
+void ANexusHeroCharacter::OnSlotSecondaryTap()  { HandleSlotInput(NexusGameplayTags::Equipment_Slot_Secondary, EUnholsterStyle::Normal); }
+void ANexusHeroCharacter::OnSlotSecondaryHold() { HandleSlotInput(NexusGameplayTags::Equipment_Slot_Secondary, EUnholsterStyle::Ceremony); }
 
-void ANexusHeroCharacter::OnSlotSecondaryInputStarted()
-{
-	HandleSlotInput(NexusGameplayTags::Equipment_Slot_Secondary);
-}
-
-void ANexusHeroCharacter::HandleSlotInput(FGameplayTag SlotTag)
+void ANexusHeroCharacter::HandleSlotInput(FGameplayTag SlotTag, EUnholsterStyle Style)
 {
 	if (!NexusEquipmentComponent) return;
-	
-	NexusEquipmentComponent->RequestActivateSlot(SlotTag);
+
+	// Pressing the already-active slot routes through RequestActivateSlot's toggle to
+	// empty hands; otherwise this draws SlotTag with the requested style.
+	NexusEquipmentComponent->RequestActivateSlot(SlotTag, Style);
 }
 
 void ANexusHeroCharacter::OnCrouchInputStarted()

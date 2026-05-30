@@ -67,6 +67,7 @@ namespace NexusGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(Item_Category_Consumable, "Item.Category.Consumable");
 	UE_DEFINE_GAMEPLAY_TAG(Item_Category_Key,        "Item.Category.Key");
 	UE_DEFINE_GAMEPLAY_TAG(Item_Category_Document,   "Item.Category.Document");
+	UE_DEFINE_GAMEPLAY_TAG(Item_Category_Armor,      "Item.Category.Armor");
 
 	UE_DEFINE_GAMEPLAY_TAG(Stat_Ammo_InMagazine, "Stat.Ammo.InMagazine");
 	UE_DEFINE_GAMEPLAY_TAG(Stat_Durability,      "Stat.Durability");
