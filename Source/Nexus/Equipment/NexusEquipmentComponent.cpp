@@ -18,11 +18,15 @@
 #include "Nexus/AbilitySystem/NexusAbility.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemInterface.h"
+#include "GameFramework/Pawn.h"
+
 #include "Nexus/Inventory/NexusInventoryComponent.h"
+#include "Nexus/Inventory/NexusInventoryAcquireLibrary.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
 #include "Nexus/Inventory/Fragments/Equippable/NexusFragment_Equippable.h"
 #include "Nexus/Inventory/Fragments/PassiveEquipment/NexusFragment_PassiveEquipment.h"
+#include "Nexus/Inventory/Fragments/Charm/NexusFragment_Charm.h"
 
 UNexusEquipmentComponent::UNexusEquipmentComponent()
 {
@@ -36,6 +40,10 @@ void UNexusEquipmentComponent::BeginPlay()
 	if (UNexusInventoryComponent* Inventory = GetInventory())
 	{
 		Inventory->OnItemRemoved.AddDynamic(this, &UNexusEquipmentComponent::HandleInventoryItemRemoved);
+		Inventory->OnEquippedCaseChanged.AddDynamic(this, &UNexusEquipmentComponent::HandleEquippedCaseChanged);
+		// Sync against whatever case state already exists (covers BeginPlay order vs the
+		// inventory equipping its default case).
+		RefreshCharms();
 	}
 
 	// Apply starter gear on the next tick so the inventory (and any EMS restore) has
@@ -55,7 +63,23 @@ void UNexusEquipmentComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (UNexusInventoryComponent* Inventory = GetInventory())
 	{
 		Inventory->OnItemRemoved.RemoveDynamic(this, &UNexusEquipmentComponent::HandleInventoryItemRemoved);
+		Inventory->OnEquippedCaseChanged.RemoveDynamic(this, &UNexusEquipmentComponent::HandleEquippedCaseChanged);
 	}
+
+	// Drop any charm grants so we don't leave abilities/tags on the ASC after teardown.
+	if (UNexusAbilitySystemComponent* ASC = GetASC())
+	{
+		for (const TSubclassOf<UNexusAbility>& Ability : GrantedCharmAbilities)
+		{
+			if (Ability) ASC->RemoveAbility(Ability);
+		}
+		for (const FGameplayTag& Tag : GrantedCharmTags)
+		{
+			ASC->RemoveLooseGameplayTag(Tag);
+		}
+	}
+	GrantedCharmTags.Reset();
+	GrantedCharmAbilities.Reset();
 
 	PendingActivationsAfterAssignment.Empty();
 	SlotPendingClear = FGameplayTag();
@@ -837,6 +861,61 @@ void UNexusEquipmentComponent::HandleInventoryItemRemoved(UNexusItemInstance* Re
 }
 
 
+// Case-charm hookup — apply the equipped case's socketed charms through the SAME ASC
+// passive-grant path armor uses (GiveAbility + AddLooseGameplayTag), never a parallel system.
+void UNexusEquipmentComponent::HandleEquippedCaseChanged()
+{
+	RefreshCharms();
+}
+
+void UNexusEquipmentComponent::RefreshCharms()
+{
+	UNexusAbilitySystemComponent* ASC = GetASC();
+
+	// Remove the previously-granted charm effects (ref-counted, so flat-list removal pairs
+	// 1:1 with the grants below).
+	if (ASC)
+	{
+		for (const TSubclassOf<UNexusAbility>& Ability : GrantedCharmAbilities)
+		{
+			if (Ability) ASC->RemoveAbility(Ability);
+		}
+		for (const FGameplayTag& Tag : GrantedCharmTags)
+		{
+			ASC->RemoveLooseGameplayTag(Tag);
+		}
+	}
+	GrantedCharmAbilities.Reset();
+	GrantedCharmTags.Reset();
+
+	UNexusInventoryComponent* Inventory = GetInventory();
+	if (!ASC || !Inventory) return;
+
+	// Grant each socketed charm's payload — identical shape to FNexusFragment_PassiveEquipment,
+	// so charms and armor share one mechanism.
+	for (const FGameplayTag& Slot : Inventory->GetCaseCharmSlots())
+	{
+		UNexusItemDefinition* CharmDef = Inventory->GetSocketedCharm(Slot);
+		const FNexusFragment_Charm* Charm = CharmDef
+			? CharmDef->FindFragment<FNexusFragment_Charm>() : nullptr;
+		if (!Charm) continue;
+
+		for (const TSubclassOf<UNexusAbility>& Ability : Charm->GrantedAbilities)
+		{
+			if (Ability && ASC->GiveAbility(Ability))
+			{
+				GrantedCharmAbilities.Add(Ability);
+			}
+		}
+		for (const FGameplayTag& Tag : Charm->GrantedTags)
+		{
+			ASC->AddLooseGameplayTag(Tag);
+			GrantedCharmTags.Add(Tag);
+		}
+	}
+}
+
+
 // Queries
 UNexusItemInstance* UNexusEquipmentComponent::GetAssigned(FGameplayTag SlotTag) const
 {
@@ -902,8 +981,12 @@ void UNexusEquipmentComponent::ApplyStarterEquipment()
 	if (bStarterApplied) return;
 	bStarterApplied = true;
 
-	UNexusInventoryComponent* Inventory = GetInventory();
-	if (!Inventory) return;
+	// Starter gear is a "give", so it goes through the one acquire façade (mark-seen, stat
+	// seeding) like every other item source — just with auto-equip suppressed, because we
+	// target an explicit slot below. The façade needs a pawn recipient; equipment hosts are
+	// pawns (player character / NPC).
+	APawn* OwnerPawn = Cast<APawn>(GetOwner());
+	if (!OwnerPawn) return;
 
 	for (const FNexusStarterEquipped& Entry : StarterEquipment)
 	{
@@ -913,10 +996,13 @@ void UNexusEquipmentComponent::ApplyStarterEquipment()
 		UNexusItemDefinition* Definition = Entry.ItemDefinition.LoadSynchronous();
 		if (!Definition) continue;
 
-		const FNexusAddItemResult Add = Inventory->AddItem(Definition, 1);
-		UNexusItemInstance* Instance = Add.NewInstances.Num() > 0
-			? Add.NewInstances[0]
-			: (Add.AffectedInstances.Num() > 0 ? Add.AffectedInstances[0] : nullptr);
+		FNexusAcquireParams Params;
+		Params.bAutoEquipIfPossible = false;
+		const FNexusAcquireResult Acquired = UNexusInventoryAcquireLibrary::AcquireItem(
+			OwnerPawn, Definition, 1, Params);
+
+		// Starter equippables don't stack, so a new instance is always created.
+		UNexusItemInstance* Instance = Acquired.NewInstances.Num() > 0 ? Acquired.NewInstances[0] : nullptr;
 		if (!Instance) continue;
 
 		if (Entry.bActivateOnSpawn && !IsSlotPassive(Entry.SlotTag))

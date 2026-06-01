@@ -59,7 +59,24 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Inventory")
 	bool bDropOnDeath = true;
-	
+
+	// Economy
+	/**
+	 * Base merchant value of one unit, in currency. The inventory owns this *data*; the
+	 * merchant subsystem reads it (plus any per-instance modifiers like treasure gem
+	 * sockets) to price a sell/buy. 0 = worthless / not priced by value alone.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Economy", meta = (ClampMin = "0"))
+	int32 BaseValue = 0;
+
+	/** The merchant may buy this from the player. Pure data — the shop flow lives elsewhere. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Economy")
+	bool bSellable = false;
+
+	/** The merchant may sell this to the player. Pure data — the shop flow lives elsewhere. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Economy")
+	bool bBuyable = false;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Pickup",
 		meta = (AssetBundles = "Pickup"))
 	TSoftObjectPtr<UStaticMesh> PickupMesh;

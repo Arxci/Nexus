@@ -14,6 +14,36 @@ class UNexusItemDefinition;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnItemInstanceChanged, UNexusItemInstance*, Instance);
 
+
+/**
+ * Stable, location-independent reference to an item instance: just its persistent GUID.
+ * Cross-system links (equipment slot, quest, hotbar, a charm socketed in a case, a gem
+ * socketed in a treasure) hold a handle rather than a raw UNexusItemInstance* — the GUID
+ * survives the save round-trip and a transfer between containers, where a raw pointer does
+ * not. Resolve it back to the live instance via UNexusItemContainerSubsystem (added with
+ * the item box) or a known container's FindInstanceByGuid.
+ */
+USTRUCT(BlueprintType)
+struct NEXUS_API FNexusItemHandle
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, SaveGame, Category = "Item")
+	FGuid InstanceId;
+
+	FNexusItemHandle() = default;
+	explicit FNexusItemHandle(const FGuid& InInstanceId) : InstanceId(InInstanceId) {}
+
+	bool IsValid() const { return InstanceId.IsValid(); }
+	void Reset() { InstanceId.Invalidate(); }
+
+	bool operator==(const FNexusItemHandle& Other) const { return InstanceId == Other.InstanceId; }
+	bool operator!=(const FNexusItemHandle& Other) const { return !(*this == Other); }
+
+	friend uint32 GetTypeHash(const FNexusItemHandle& Handle) { return GetTypeHash(Handle.InstanceId); }
+};
+
+
 /**
  * Flat, fully-serializable snapshot of a single item instance's persistent state.
  * This — not the live UNexusItemInstance pointer — is what the inventory writes to
@@ -47,6 +77,14 @@ struct NEXUS_API FNexusItemSaveData
 
 	UPROPERTY(SaveGame)
 	TMap<FGameplayTag, TSoftObjectPtr<UNexusAttachmentDefinition>> Attachments;
+
+	/**
+	 * Items socketed into this instance's slots: charm slot tag -> charm definition on a
+	 * case, gem socket tag -> gem definition on a treasure. Soft pointers so a non-active
+	 * item doesn't pin its socketed assets.
+	 */
+	UPROPERTY(SaveGame)
+	TMap<FGameplayTag, TSoftObjectPtr<UNexusItemDefinition>> SocketedItems;
 
 	/** Top-left grid cell; (-1,-1) = not yet placed. */
 	UPROPERTY(SaveGame)
@@ -84,6 +122,10 @@ public:
 	
 	UFUNCTION(BlueprintPure, Category = "Item")
 	FGuid GetInstanceGuid() const { return InstanceGuid; }
+
+	/** Stable, location-independent handle for cross-system references (see FNexusItemHandle). */
+	UFUNCTION(BlueprintPure, Category = "Item")
+	FNexusItemHandle GetHandle() const { return FNexusItemHandle(InstanceGuid); }
 
 
 	// Grid placement (attaché model)
@@ -169,6 +211,26 @@ public:
 		return Attachments;
 	}
 
+	// Sockets (charm slots on a case, gem sockets on a treasure)
+	/**
+	 * The item definition socketed in SlotTag, or null. The socketed item's identity is
+	 * persisted per-instance, so a socketed treasure never auto-merges (IsMergeableStack)
+	 * and the socket survives save/load.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Item|Sockets")
+	TSoftObjectPtr<UNexusItemDefinition> GetSocketedItem(FGameplayTag SlotTag) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Item|Sockets")
+	void SetSocketedItem(FGameplayTag SlotTag, TSoftObjectPtr<UNexusItemDefinition> ItemDef);
+
+	UFUNCTION(BlueprintCallable, Category = "Item|Sockets")
+	void ClearSocketedItem(FGameplayTag SlotTag);
+
+	const TMap<FGameplayTag, TSoftObjectPtr<UNexusItemDefinition>>& GetSocketedItemMap() const
+	{
+		return SocketedItems;
+	}
+
 	//Delegates
 	UPROPERTY(BlueprintAssignable, Category = "Item")
 	FOnItemInstanceChanged OnInstanceChanged;
@@ -199,6 +261,10 @@ protected:
 
 	UPROPERTY(SaveGame)
 	TMap<FGameplayTag, TSoftObjectPtr<UNexusAttachmentDefinition>> Attachments;
+
+	/** Items socketed into this instance (charm slot -> charm def, gem socket -> gem def). */
+	UPROPERTY(SaveGame)
+	TMap<FGameplayTag, TSoftObjectPtr<UNexusItemDefinition>> SocketedItems;
 
 	/** Top-left grid cell; (-1,-1) = not yet placed by the owning inventory. */
 	UPROPERTY(SaveGame)

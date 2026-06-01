@@ -68,6 +68,18 @@ namespace NexusGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(Item_Category_Key,        "Item.Category.Key");
 	UE_DEFINE_GAMEPLAY_TAG(Item_Category_Document,   "Item.Category.Document");
 	UE_DEFINE_GAMEPLAY_TAG(Item_Category_Armor,      "Item.Category.Armor");
+	UE_DEFINE_GAMEPLAY_TAG(Item_Category_Treasure,   "Item.Category.Treasure");
+	UE_DEFINE_GAMEPLAY_TAG(Item_Category_Charm,      "Item.Category.Charm");
+	UE_DEFINE_GAMEPLAY_TAG(Item_Category_Gem,        "Item.Category.Gem");
+
+	UE_DEFINE_GAMEPLAY_TAG(Charm_Slot_1,             "Charm.Slot.1");
+	UE_DEFINE_GAMEPLAY_TAG(Charm_Slot_2,             "Charm.Slot.2");
+	UE_DEFINE_GAMEPLAY_TAG(Charm_Slot_3,             "Charm.Slot.3");
+
+	UE_DEFINE_GAMEPLAY_TAG(Item_Section_Grid,        "Item.Section.Grid");
+	UE_DEFINE_GAMEPLAY_TAG(Item_Section_KeyItems,    "Item.Section.KeyItems");
+	UE_DEFINE_GAMEPLAY_TAG(Item_Section_Treasures,   "Item.Section.Treasures");
+	UE_DEFINE_GAMEPLAY_TAG(Item_Section_Box,         "Item.Section.Box");
 
 	UE_DEFINE_GAMEPLAY_TAG(Stat_Ammo_InMagazine, "Stat.Ammo.InMagazine");
 	UE_DEFINE_GAMEPLAY_TAG(Stat_Durability,      "Stat.Durability");

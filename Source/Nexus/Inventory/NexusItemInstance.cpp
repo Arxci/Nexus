@@ -49,6 +49,7 @@ FNexusItemSaveData UNexusItemInstance::ToSaveData() const
 	Data.StackCount   = StackCount;
 	Data.StatTags     = StatTags;
 	Data.Attachments  = Attachments;
+	Data.SocketedItems = SocketedItems;
 	Data.GridPosition = GridPosition;
 	Data.bRotated     = bRotated;
 	return Data;
@@ -73,6 +74,7 @@ bool UNexusItemInstance::LoadFromSaveData(const FNexusItemSaveData& SaveData)
 	StackCount   = FMath::Max(0, SaveData.StackCount);
 	StatTags     = SaveData.StatTags;
 	Attachments  = SaveData.Attachments;
+	SocketedItems = SaveData.SocketedItems;
 	GridPosition = SaveData.GridPosition;
 	bRotated     = SaveData.bRotated;
 
@@ -120,9 +122,10 @@ int32 UNexusItemInstance::ModifyStack(int32 Delta, int32 MaxStack)
 bool UNexusItemInstance::IsMergeableStack() const
 {
 	// A fungible stack carries no per-instance state: no stat tags (e.g. a partial
-	// magazine), no attachments. Anything customised gets its own slot so merging
-	// can never silently drop one side's ammo count or attachment map.
-	return StatTags.Num() == 0 && Attachments.Num() == 0;
+	// magazine or a treasure's socketed gem value), no attachments, no socketed items
+	// (a case's charms / a treasure's gems). Anything customised gets its own slot so
+	// merging can never silently drop one side's state.
+	return StatTags.Num() == 0 && Attachments.Num() == 0 && SocketedItems.Num() == 0;
 }
 
 bool UNexusItemInstance::CanStackWith(const UNexusItemInstance* Other) const
@@ -199,6 +202,41 @@ void UNexusItemInstance::SetAttachmentForSlot(FGameplayTag SlotPath, TSoftObject
 void UNexusItemInstance::ClearAttachmentForSlot(FGameplayTag SlotPath)
 {
 	if (Attachments.Remove(SlotPath) > 0)
+	{
+		BroadcastChanged();
+	}
+}
+
+// Sockets
+TSoftObjectPtr<UNexusItemDefinition> UNexusItemInstance::GetSocketedItem(FGameplayTag SlotTag) const
+{
+	if (const TSoftObjectPtr<UNexusItemDefinition>* Found = SocketedItems.Find(SlotTag))
+	{
+		return *Found;
+	}
+	return TSoftObjectPtr<UNexusItemDefinition>();
+}
+
+void UNexusItemInstance::SetSocketedItem(FGameplayTag SlotTag, TSoftObjectPtr<UNexusItemDefinition> ItemDef)
+{
+	if (!SlotTag.IsValid()) return;
+
+	if (ItemDef.IsNull())
+	{
+		ClearSocketedItem(SlotTag);
+		return;
+	}
+
+	const TSoftObjectPtr<UNexusItemDefinition>* Existing = SocketedItems.Find(SlotTag);
+	if (Existing && *Existing == ItemDef) return;
+
+	SocketedItems.Add(SlotTag, ItemDef);
+	BroadcastChanged();
+}
+
+void UNexusItemInstance::ClearSocketedItem(FGameplayTag SlotTag)
+{
+	if (SocketedItems.Remove(SlotTag) > 0)
 	{
 		BroadcastChanged();
 	}

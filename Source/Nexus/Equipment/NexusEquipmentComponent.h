@@ -373,6 +373,12 @@ private:
 	UFUNCTION()
 	void HandleInventoryItemRemoved(UNexusItemInstance* RemovedInstance);
 
+	// Case-charm hookup: re-apply the equipped case's socketed charms through the host ASC,
+	// the same passive-effect path armor uses (no parallel system).
+	UFUNCTION()
+	void HandleEquippedCaseChanged();
+	void RefreshCharms();
+
 	// Starter loadout / save-restore
 	void ApplyStarterEquipment();
 	void ResolveEquippedFromSave();
@@ -412,4 +418,14 @@ private:
 
 	/** Set once starter equipment has been applied (or suppressed by a save-restore). */
 	bool bStarterApplied = false;
+
+	/**
+	 * Abilities + loose tags currently granted to the host ASC by the equipped case's
+	 * socketed charms. Tracked as flat lists so each grant has a matching ref-counted
+	 * removal (two charms granting the same tag coexist). RefreshCharms removes exactly
+	 * these, then re-grants from the current charm set.
+	 */
+	UPROPERTY(Transient)
+	TArray<TSubclassOf<UNexusAbility>> GrantedCharmAbilities;
+	TArray<FGameplayTag> GrantedCharmTags;
 };

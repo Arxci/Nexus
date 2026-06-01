@@ -79,6 +79,31 @@ namespace NexusGameplayTags
 	// Passive-equipment category (armor / charms). Slotted into a bIsPassive slot
 	// whose AcceptedItemTags include this; carried by items with a PassiveEquipment fragment.
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Item_Category_Armor);
+	// Sellable valuables (gems / idols / RE-style treasures). Routed to the Treasures
+	// list section; carried by items with a Treasure fragment.
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Item_Category_Treasure);
+	// Charm items — slotted into the equipped case's charm slots; grant passive bonuses
+	// via the same PassiveEquipment path as armor. Carried by items with a Charm fragment.
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Item_Category_Charm);
+	// Gems — sellable valuables that also socket into treasures. A gem typically carries
+	// both Item.Category.Treasure (routes to the Treasures list) and Item.Category.Gem
+	// (a treasure socket's AcceptedGemCategory accepts it).
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Item_Category_Gem);
+
+	// Charm slot identity exposed by a case (FNexusFragment_Case::CharmSlots). Common roots
+	// shipped in C++; cases pick which they expose and charms socket into them by tag.
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Charm_Slot_1);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Charm_Slot_2);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Charm_Slot_3);
+
+	// Inventory section identity. A sectioned container routes items to one of these by
+	// CategoryTags: the spatial attaché grid, or the non-spatial Key Items / Treasures
+	// lists that consume zero grid cells. Used as section keys by UI and the container.
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Item_Section_Grid);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Item_Section_KeyItems);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Item_Section_Treasures);
+	// The item box's single non-spatial storage section (unlimited stash).
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Item_Section_Box);
 
 	// Stat tag roots stored on UNexusItemInstance::StatTags
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Ammo_InMagazine);
