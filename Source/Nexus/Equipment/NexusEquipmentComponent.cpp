@@ -377,6 +377,17 @@ void UNexusEquipmentComponent::ApplySlotEffects(FGameplayTag SlotTag, FNexusEqui
 		TagsToApply.AppendTags(Eq->OwnedTagsWhileEquipped);
 	}
 
+	// Each fragment contributes the abilities its capability needs (the weapon fragment
+	// grants Fire/Reload/Aim for a Ranged capability, Melee for a Melee one). Generic and
+	// ref-counted on the ASC, so the equipment component stays weapon-agnostic — it never
+	// names a concrete ability — and overlap with the flat GrantedAbilities lists above is
+	// harmless (a duplicate grant is balanced by a duplicate remove in RemoveSlotEffects).
+	for (const TInstancedStruct<FNexusItemFragment>& Frag : Definition->Fragments)
+	{
+		if (!Frag.IsValid()) continue;
+		Frag.Get().GatherGrantedAbilities(AbilitiesToGrant);
+	}
+
 	if (UNexusAbilitySystemComponent* ASC = GetASC())
 	{
 		for (const TSubclassOf<UNexusAbility>& AbilityClass : AbilitiesToGrant)
@@ -814,8 +825,9 @@ void UNexusEquipmentComponent::SetSwapTag(bool bOn) const
 	{
 		ASC->AddLooseGameplayTag(NexusGameplayTags::Character_State_Weapon_Swapping);
 		// A swap interrupts an in-flight reload so its timer can't transfer ammo after
-		// the weapon has left the hands.
+		// the weapon has left the hands, and drops aim so the new weapon draws from hip.
 		ASC->ForceEndAbilityByTag(NexusGameplayTags::Ability_Weapon_Reload);
+		ASC->ForceEndAbilityByTag(NexusGameplayTags::Ability_Weapon_Aim);
 	}
 	else if (!bOn && bAlreadyOn)
 	{

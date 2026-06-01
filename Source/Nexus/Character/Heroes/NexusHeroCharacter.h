@@ -106,7 +106,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions|Weapon")
 	TObjectPtr<UInputAction> AimAction;
 
-	
+	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions|Weapon")
+	TObjectPtr<UInputAction> MeleeAction;
+
+
 	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions|Weapon")
 	TObjectPtr<UInputAction> SlotPrimaryAction;
 	UPROPERTY(EditAnywhere, Category = "Character|Input|Actions|Weapon")
@@ -158,9 +161,11 @@ private:
 	void OnRunInputStarted();
 	void OnRunInputCompleted();
 	void OnFireInputStarted();
+	void OnFireInputCompleted();
 	void OnReloadInputStarted();
 	void OnAimInputStarted();
 	void OnAimInputCompleted();
+	void OnMeleeInputStarted();
 	void OnInteractInputStarted();
 	void OnInteractInputCompleted();
 	

@@ -33,4 +33,16 @@ public:
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Combat|Damage")
 	float GetResistanceForDamageType(FGameplayTag DamageType) const;
 	virtual float GetResistanceForDamageType_Implementation(FGameplayTag DamageType) const { return 1.0f; }
+
+	/**
+	 * Weak-point multiplier for BoneName — the same value the receiver applies in its
+	 * own damage math. The damage SOURCE reads this (const, one-way) to classify a hit
+	 * into branchable ContextTags (weak-point -> Critical, strongest -> Headshot) so AI,
+	 * FX and the HUD can react, while the receiver keeps ownership of the numeric multiply.
+	 * Default 1.0 = no weak point. A receiver typically forwards to
+	 * UNexusHealthComponent::GetBoneMultiplier.
+	 */
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Combat|Damage")
+	float GetBoneDamageMultiplier(FName BoneName) const;
+	virtual float GetBoneDamageMultiplier_Implementation(FName BoneName) const { return 1.0f; }
 };

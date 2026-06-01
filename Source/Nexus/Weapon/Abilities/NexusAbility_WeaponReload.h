@@ -29,9 +29,6 @@ protected:
 	void TransferAmmo();
 	void FinishReload();
 
-	int32 GetReserveAmmo() const;
-	int32 ConsumeReserveAmmo(int32 Amount) const;
-
 	UFUNCTION()
 	void HandleNotifyBegin(const FName NotifyName, const FBranchingPointNotifyPayload& Payload);
 

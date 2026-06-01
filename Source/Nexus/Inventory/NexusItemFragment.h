@@ -5,9 +5,12 @@
 
 #include "GameplayTagContainer.h"
 
+#include "Templates/SubclassOf.h"
+
 #include "NexusItemFragment.generated.h"
 
 class ANexusEquippedActor;
+class UNexusAbility;
 class UNexusItemDefinition;
 class UNexusItemInstance;
 
@@ -61,6 +64,17 @@ struct NEXUS_API FNexusItemFragment
 	 * destroyed mid-life (e.g. owner death, save load).
 	 */
 	virtual void OnUninstall(ANexusEquippedActor* EquippedActor) const {}
+
+	/**
+	 * Contribute the ability classes this fragment's capability needs. Granted to the
+	 * host ASC when the item is equipped and removed when it is unequipped. Lets a
+	 * fragment declare its own verbs — the weapon fragment grants Fire / Reload / Aim
+	 * for a Ranged capability and Melee for a Melee one — without the equipment
+	 * component knowing any concrete ability type; it only ever sees
+	 * TSubclassOf<UNexusAbility>. Grants are ref-counted on the ASC, so overlap with the
+	 * equippable fragment's GrantedAbilities is harmless. Append only — never clear Out.
+	 */
+	virtual void GatherGrantedAbilities(TArray<TSubclassOf<UNexusAbility>>& OutAbilities) const {}
 
 	/**
 	 * Contribute this fragment's base stat values into the assembly's

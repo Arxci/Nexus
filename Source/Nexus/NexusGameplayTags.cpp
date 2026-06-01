@@ -41,6 +41,7 @@ namespace NexusGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Weapon_Reloading, "Character.State.Weapon.Reloading");
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Weapon_Aiming,    "Character.State.Weapon.Aiming");
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Weapon_Swapping,  "Character.State.Weapon.Swapping");
+	UE_DEFINE_GAMEPLAY_TAG(Character_State_Weapon_Meleeing,  "Character.State.Weapon.Meleeing");
 
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_Weapon_Fire,     "Input.Weapon.Fire");
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_Weapon_Reload,   "Input.Weapon.Reload");
@@ -61,6 +62,10 @@ namespace NexusGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(Damage_Type_Melee,     "Damage.Type.Melee");
 	UE_DEFINE_GAMEPLAY_TAG(Damage_Type_Fire,      "Damage.Type.Fire");
 	UE_DEFINE_GAMEPLAY_TAG(Damage_Type_Explosive, "Damage.Type.Explosive");
+
+	UE_DEFINE_GAMEPLAY_TAG(Damage_Context_Headshot, "Damage.Context.Headshot");
+	UE_DEFINE_GAMEPLAY_TAG(Damage_Context_Critical, "Damage.Context.Critical");
+	UE_DEFINE_GAMEPLAY_TAG(Damage_Context_Stagger,  "Damage.Context.Stagger");
 
 	UE_DEFINE_GAMEPLAY_TAG(Item_Category_Weapon,     "Item.Category.Weapon");
 	UE_DEFINE_GAMEPLAY_TAG(Item_Category_Ammo,       "Item.Category.Ammo");
@@ -96,6 +101,12 @@ namespace NexusGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(Stat_Weapon_ADSTime,          "Stat.Weapon.ADSTime");
 	UE_DEFINE_GAMEPLAY_TAG(Stat_Weapon_ReloadDuration,   "Stat.Weapon.ReloadDuration");
 
+	UE_DEFINE_GAMEPLAY_TAG(Stat_Melee_Damage,      "Stat.Melee.Damage");
+	UE_DEFINE_GAMEPLAY_TAG(Stat_Melee_Range,       "Stat.Melee.Range");
+	UE_DEFINE_GAMEPLAY_TAG(Stat_Melee_SwingRate,   "Stat.Melee.SwingRate");
+	UE_DEFINE_GAMEPLAY_TAG(Stat_Melee_StaminaCost, "Stat.Melee.StaminaCost");
+	UE_DEFINE_GAMEPLAY_TAG(Stat_Melee_Knockback,   "Stat.Melee.Knockback");
+
 	UE_DEFINE_GAMEPLAY_TAG(Attachment_Slot_Slide,       "Attachment.Slot.Slide");
 	UE_DEFINE_GAMEPLAY_TAG(Attachment_Slot_Sight,       "Attachment.Slot.Sight");
 	UE_DEFINE_GAMEPLAY_TAG(Attachment_Slot_Magazine,    "Attachment.Slot.Magazine");
@@ -127,5 +138,9 @@ namespace NexusGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(Action_Equipment_Weapon_MagIn,        "Action.Equipment.Weapon.MagIn");
 	UE_DEFINE_GAMEPLAY_TAG(Action_Equipment_Weapon_SlideRack,    "Action.Equipment.Weapon.SlideRack");
 	UE_DEFINE_GAMEPLAY_TAG(Action_Equipment_Weapon_BoltClose,    "Action.Equipment.Weapon.BoltClose");
+
+	UE_DEFINE_GAMEPLAY_TAG(Action_Equipment_Weapon_MeleeLight,   "Action.Equipment.Weapon.MeleeLight");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Equipment_Weapon_MeleeHeavy,   "Action.Equipment.Weapon.MeleeHeavy");
+	UE_DEFINE_GAMEPLAY_TAG(Action_Equipment_Weapon_Bash,         "Action.Equipment.Weapon.Bash");
 }
 

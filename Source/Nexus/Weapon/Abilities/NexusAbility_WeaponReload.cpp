@@ -44,17 +44,21 @@ bool UNexusAbility_WeaponReload::CanActivateAbility_Implementation() const
 	const UNexusItemInstance* Instance = GetActiveInstance();
 	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
 	if (!Instance || !Weapon) return false;
-	if (Weapon->Ammo.AmmoModel == ENexusWeaponAmmoModel::None) return false;
+	if (!Weapon->bHasRanged) return false; // Reload is a ranged-capability verb; melee weapons never reload.
+
+	// Only the Magazine model reloads. Pooled fires straight from the reserve pool (nothing
+	// to load into); None is infinite / melee. Both have no magazine to refill.
+	if (Weapon->Ranged.Ammo.AmmoModel != ENexusWeaponAmmoModel::Magazine) return false;
 
 	// Read the effective magazine size off the assembly so an extended-mag
 	// attachment lifts the cap; fall back to the fragment's authored value
 	// when no equipped actor is currently spawned.
-	int32 EffectiveMagSize = Weapon->Ammo.MagazineSize;
+	int32 EffectiveMagSize = Weapon->Ranged.Ammo.MagazineSize;
 	if (const ANexusEquippedActor* Equipped = GetEquippedActor())
 	{
 		EffectiveMagSize = FMath::FloorToInt(
 			Equipped->GetEffectiveStat(NexusGameplayTags::Stat_Weapon_MagazineSize,
-				static_cast<float>(Weapon->Ammo.MagazineSize)));
+				static_cast<float>(Weapon->Ranged.Ammo.MagazineSize)));
 	}
 
 	const int32 InMag = FMath::RoundToInt(Instance->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0));
@@ -119,7 +123,7 @@ void UNexusAbility_WeaponReload::CommitAbility()
 	BoundAnimInstance   = ReloadAnimInstance;
 	BoundReloadMontage  = HostReload;
 
-	if (USoundBase* ReloadSound = NexusWeapon::GetEquippedAsset(Weapon->Presentation.ReloadSound,
+	if (USoundBase* ReloadSound = NexusWeapon::GetEquippedAsset(Weapon->Ranged.Presentation.ReloadSound,
 	TEXT("ReloadSound"), GetActiveDefinition()))
 	{
 		if (const AActor* Owner = GetOwner())
@@ -129,7 +133,7 @@ void UNexusAbility_WeaponReload::CommitAbility()
 	}
 
 	// Effective reload duration: assembly modifier > montage length > fragment fallback.
-	float EffectiveConfigDuration = Weapon->Reload.ReloadDuration;
+	float EffectiveConfigDuration = Weapon->Ranged.Reload.ReloadDuration;
 	if (const ANexusEquippedActor* Equipped = GetEquippedActor())
 	{
 		EffectiveConfigDuration = Equipped->GetEffectiveStat(
@@ -174,7 +178,7 @@ void UNexusAbility_WeaponReload::HandleNotifyBegin(const FName NotifyName, const
 {
 	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
 	if (!Weapon) return;
-	if (NotifyName != Weapon->Reload.AmmoTransferNotifyName) return;
+	if (NotifyName != Weapon->Ranged.Reload.AmmoTransferNotifyName) return;
 
 	// OnPlayMontageNotifyBegin fires for any notify on any montage on the bound
 	// AnimInstance. Verify our reload montage is still the one playing — another
@@ -195,12 +199,12 @@ void UNexusAbility_WeaponReload::TransferAmmo()
 	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
 	if (!Instance || !Weapon) return;
 
-	int32 EffectiveMagSize = Weapon->Ammo.MagazineSize;
+	int32 EffectiveMagSize = Weapon->Ranged.Ammo.MagazineSize;
 	if (const ANexusEquippedActor* Equipped = GetEquippedActor())
 	{
 		EffectiveMagSize = FMath::FloorToInt(
 			Equipped->GetEffectiveStat(NexusGameplayTags::Stat_Weapon_MagazineSize,
-				static_cast<float>(Weapon->Ammo.MagazineSize)));
+				static_cast<float>(Weapon->Ranged.Ammo.MagazineSize)));
 	}
 
 	const int32 CurrentInMag = FMath::RoundToInt(Instance->GetStat(NexusGameplayTags::Stat_Ammo_InMagazine, 0));
@@ -225,44 +229,6 @@ void UNexusAbility_WeaponReload::FinishReload()
 	// Fallback path: timer expired. If the AmmoTransfer notify already moved ammo, this is a no-op.
 	TransferAmmo();
 	CommitAbilityEnd();
-}
-
-int32 UNexusAbility_WeaponReload::GetReserveAmmo() const
-{
-	const FNexusFragment_Weapon* W = GetWeaponFragment();
-	const AActor* Owner            = GetOwner();
-	if (!W || !Owner || !W->Ammo.AmmoIdentityTag.IsValid()) return 0;
-	if (const UNexusInventoryComponent* Inv = Owner->FindComponentByClass<UNexusInventoryComponent>())
-	{
-		return Inv->GetTotalCountForIdentityTag(W->Ammo.AmmoIdentityTag);
-	}
-	return 0;
-}
-
-int32 UNexusAbility_WeaponReload::ConsumeReserveAmmo(const int32 Amount) const
-{
-	if (Amount <= 0) return 0;
-	
-	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
-	const AActor* Owner = GetOwner();
-	
-	if (!Weapon || !Owner || !Weapon->Ammo.AmmoIdentityTag.IsValid()) return 0;
-
-	UNexusInventoryComponent* Inventory = Owner->FindComponentByClass<UNexusInventoryComponent>();
-	if (!Inventory) return 0;
-
-	int32 Remaining = Amount;
-	TArray<UNexusItemInstance*> Snapshot = Inventory->GetItems();
-	for (UNexusItemInstance* Inst : Snapshot)
-	{
-		if (Remaining <= 0) break;
-		if (!Inst) continue;
-		if (!Inst->GetIdentityTag().MatchesTagExact(Weapon->Ammo.AmmoIdentityTag)) continue;
-
-		const int32 Taken = Inventory->RemoveFromInstance(Inst, Remaining);
-		Remaining -= Taken;
-	}
-	return Amount - Remaining;
 }
 
 void UNexusAbility_WeaponReload::OnSaveStateRestored()

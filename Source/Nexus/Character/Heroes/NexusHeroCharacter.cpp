@@ -125,9 +125,11 @@ void ANexusHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnCrouchInputStarted);
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnCrouchInputCompleted);
 		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnFireInputStarted);
+		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnFireInputCompleted);
 		EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnReloadInputStarted);
 		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnAimInputStarted);
 		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnAimInputCompleted);
+		EnhancedInputComponent->BindAction(MeleeAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnMeleeInputStarted);
 		// Hold trigger per slot action: Canceled (released before the hold threshold) =
 		// tap = Normal draw; Triggered (held past the threshold) = Ceremony draw.
 		EnhancedInputComponent->BindAction(SlotPrimaryAction, ETriggerEvent::Canceled, this, &ANexusHeroCharacter::OnSlotPrimaryTap);
@@ -228,6 +230,14 @@ void ANexusHeroCharacter::OnFireInputStarted()
 	NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Weapon_Fire);
 }
 
+void ANexusHeroCharacter::OnFireInputCompleted()
+{
+	// Releasing the trigger ends a held full-auto; semi / shotgun already ended after their
+	// shot (no-op), and a burst ignores the release and finishes its count.
+	if (!NexusAbilitySystemComponent) return;
+	NexusAbilitySystemComponent->TryDeactivateAbilityByTag(NexusGameplayTags::Ability_Weapon_Fire);
+}
+
 void ANexusHeroCharacter::OnReloadInputStarted()
 {
 	if (!NexusAbilitySystemComponent) return;
@@ -250,6 +260,14 @@ void ANexusHeroCharacter::OnAimInputCompleted()
 	if (AimInputMode != EInputMode::Hold) return;
 	if (!NexusAbilitySystemComponent) return;
 	NexusAbilitySystemComponent->TryDeactivateAbilityByTag(NexusGameplayTags::Ability_Weapon_Aim);
+}
+
+void ANexusHeroCharacter::OnMeleeInputStarted()
+{
+	// One press = a light swing (knife primary, or a ranged weapon's contextual bash). The
+	// ability supports a heavy variant via SetHeavyNext for a designer-added heavy binding.
+	if (!NexusAbilitySystemComponent) return;
+	NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Weapon_Melee);
 }
 
 void ANexusHeroCharacter::OnSlotPrimaryTap()    { HandleSlotInput(NexusGameplayTags::Equipment_Slot_Primary,   EUnholsterStyle::Normal); }

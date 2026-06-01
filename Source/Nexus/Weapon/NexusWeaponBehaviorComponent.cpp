@@ -106,21 +106,21 @@ void UNexusWeaponBehaviorComponent::SpawnChamberRoundMesh(const FNexusFragment_W
 {
 	if (!EquippedActor) return;
 
-	UStaticMesh* RoundMesh = WeaponFragment.AmmoVisual.RoundMesh.Get();
+	UStaticMesh* RoundMesh = WeaponFragment.Ranged.AmmoVisual.RoundMesh.Get();
 	if (!RoundMesh)
 	{
 		// Bundle should have made this resident; absence means the weapon
 		// fragment didn't author one (a melee weapon, or a magazineless
 		// design). Skip silently.
-		if (WeaponFragment.AmmoVisual.RoundMesh.IsNull()) return;
-		RoundMesh = WeaponFragment.AmmoVisual.RoundMesh.LoadSynchronous();
+		if (WeaponFragment.Ranged.AmmoVisual.RoundMesh.IsNull()) return;
+		RoundMesh = WeaponFragment.Ranged.AmmoVisual.RoundMesh.LoadSynchronous();
 		if (!RoundMesh) return;
 	}
 
 	USkeletalMeshComponent* HostMesh = EquippedActor->GetMesh();
 	if (!HostMesh) return;
 
-	const FName Socket = WeaponFragment.AmmoVisual.AmmoSocket;
+	const FName Socket = WeaponFragment.Ranged.AmmoVisual.AmmoSocket;
 	if (!HostMesh->DoesSocketExist(Socket))
 	{
 		UE_LOG(LogNexusWeapon, Warning,         // was LogTemp

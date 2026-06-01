@@ -45,6 +45,7 @@ namespace NexusGameplayTags
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Character_State_Weapon_Reloading);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Character_State_Weapon_Aiming);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Character_State_Weapon_Swapping);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Character_State_Weapon_Meleeing);
 
 	// Weapon input
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Weapon_Fire);
@@ -69,6 +70,14 @@ namespace NexusGameplayTags
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damage_Type_Melee);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damage_Type_Fire);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damage_Type_Explosive);
+
+	// Damage context taxonomy (parent: Damage.Context). Branchable per-hit context the
+	// SOURCE computes (weak-point / headshot / stagger) so AI, FX and HUD can react.
+	// Conveyed on FNexusDamageContext::ContextTags; the receiver still owns the numeric
+	// bone / resistance multipliers — these tags only classify the hit, never apply damage.
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damage_Context_Headshot);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damage_Context_Critical);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damage_Context_Stagger);
 
 	// Item identity roots (children authored as data-driven tags per item)
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Item_Category_Weapon);
@@ -120,6 +129,16 @@ namespace NexusGameplayTags
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Weapon_SpreadADS);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Weapon_ADSTime);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Weapon_ReloadDuration);
+
+	// Melee effective-stat keys (parent: Stat.Melee). Seeded by FWeaponMeleeSpec and
+	// folded through the SAME assembly resolution as Stat.Weapon.*, so a melee attachment
+	// or merchant tune-up applies for free. Durability persists on the instance as the
+	// shared Stat.Durability key, not here (it's per-instance state, not a resolved stat).
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Melee_Damage);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Melee_Range);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Melee_SwingRate);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Melee_StaminaCost);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stat_Melee_Knockback);
 
 	// Attachment slot identity (used as keys in FAssemblySlotDefinition::SlotID).
 	// Slot identity is data-driven — these are common roots shipped in C++.
@@ -177,4 +196,12 @@ namespace NexusGameplayTags
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Equipment_Weapon_MagIn);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Equipment_Weapon_SlideRack);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Equipment_Weapon_BoltClose);
+
+	// Melee swing actions (parent: Action.Equipment.Weapon). Resolved through the SAME
+	// assembly override-then-fallback walk as Fire/Reload, so an attachment (e.g. a
+	// bayonet) can override a weapon's bash animation with no weapon-side branch. Bash is
+	// the contextual melee on a ranged weapon; MeleeLight/Heavy are a melee weapon's swings.
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Equipment_Weapon_MeleeLight);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Equipment_Weapon_MeleeHeavy);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Action_Equipment_Weapon_Bash);
 }

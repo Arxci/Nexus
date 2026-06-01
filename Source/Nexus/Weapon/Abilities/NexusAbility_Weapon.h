@@ -13,6 +13,10 @@ class UNexusItemDefinition;
 class UNexusItemInstance;
 struct FNexusFragment_Weapon;
 
+
+/** Attacker-side hit confirmation: how many receivers a shot / swing damaged, and the union of branch tags. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnWeaponHitConfirmed, int32, ReceiversHit, const FGameplayTagContainer&, ContextTags);
+
 namespace NexusWeapon
 {
 	/**
@@ -71,4 +75,37 @@ public:
 	INexusEquipmentInterface* GetEquipmentHost() const;
 
 	virtual bool CanActivateAbility_Implementation() const override;
+
+	/**
+	 * Fires on the attacker side when a shot / swing damages one or more receivers,
+	 * carrying the union of branch tags (Critical / Headshot / Stagger). A HUD subscribes
+	 * (via the granted ability) for the hit-marker and weak-point cue, without any system
+	 * reaching into the damaged actor's health.
+	 */
+	UPROPERTY(BlueprintAssignable, Category = "Weapon Ability")
+	FOnWeaponHitConfirmed OnHitConfirmed;
+
+protected:
+	/** Broadcast OnHitConfirmed when ReceiversHit > 0. Shared by Fire and Melee. Const — the
+	 *  dynamic delegate's Broadcast is const, and Fire's hit path is a const method. */
+	void BroadcastHitConfirmed(int32 ReceiversHit, const FGameplayTagContainer& ContextTags) const;
+
+	/**
+	 * Reserve ammo for the active weapon's ammo identity (FWeaponAmmo::AmmoIdentityTag),
+	 * summed across the wielder's inventory via the public inventory query API. Shared by
+	 * Reload (magazine refill) and Fire (pooled-model consumption). 0 when there is no
+	 * inventory or no identity tag.
+	 */
+	int32 GetReserveAmmo() const;
+
+	/** Remove up to Amount of the active weapon's ammo identity from inventory; returns the amount actually removed. */
+	int32 ConsumeReserveAmmo(int32 Amount) const;
+
+	/**
+	 * Host-agnostic aim ray: the controller viewpoint (player camera via the camera
+	 * manager, or an AI controller's eyes), with an owner-eyes fallback for an
+	 * uncontrolled host. Shared by Fire (trace / projectile origin) and Melee (sweep
+	 * direction) — no player-camera utility, no first-person assumption.
+	 */
+	void ResolveAimRay(FVector& OutLocation, FRotator& OutRotation) const;
 };
