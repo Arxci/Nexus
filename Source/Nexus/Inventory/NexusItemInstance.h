@@ -8,7 +8,6 @@
 
 #include "NexusItemInstance.generated.h"
 
-class UNexusAttachmentDefinition;
 class UNexusItemDefinition;
 
 
@@ -75,8 +74,16 @@ struct NEXUS_API FNexusItemSaveData
 	UPROPERTY(SaveGame)
 	TMap<FGameplayTag, float> StatTags;
 
+	/**
+	 * Chosen attachments per slot, stored as OPAQUE object handles (soft paths) so
+	 * the inventory module stays a leaf — it persists the player's customization
+	 * without depending on the attachment runtime. UNexusAssemblyComponent (the
+	 * consumer) resolves each handle back to a UNexusAttachmentDefinition on equip.
+	 * Serializes identically to the prior typed soft pointer (same SoftObjectProperty),
+	 * so existing saves round-trip unchanged.
+	 */
 	UPROPERTY(SaveGame)
-	TMap<FGameplayTag, TSoftObjectPtr<UNexusAttachmentDefinition>> Attachments;
+	TMap<FGameplayTag, TSoftObjectPtr<UObject>> Attachments;
 
 	/**
 	 * Items socketed into this instance's slots: charm slot tag -> charm definition on a
@@ -187,26 +194,28 @@ public:
 
 	// Attachments
 	/**
-	 * Persisted attachment configuration. Keyed by FAssemblySlotDefinition::SlotID
-	 * (resolved against the equippable's slot tree). Soft pointers so non-equipped
-	 * inventory items don't pin their attachment assets in memory; the
-	 * UNexusAssemblyComponent loads them via the Asset Manager when the
-	 * item is equipped.
+	 * Persisted attachment configuration, keyed by slot tag (the equippable's slot
+	 * tree, resolved by the assembly). Stored as OPAQUE object handles: the inventory
+	 * module persists the player's chosen attachments without depending on the
+	 * attachment runtime — it never names UNexusAttachmentDefinition. The consumer
+	 * (UNexusAssemblyComponent) resolves each handle to its concrete attachment
+	 * definition on equip. Soft handles, so non-equipped items don't pin their
+	 * assets; the assembly loads them via the Asset Manager when equipped.
 	 *
 	 * Nested attachments use dotted slot paths
 	 * (e.g. "Attachment.Slot.UnderBarrel.Laser") so a single flat map can
 	 * persist arbitrarily deep trees.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Item|Attachments")
-	TSoftObjectPtr<UNexusAttachmentDefinition> GetAttachmentForSlot(FGameplayTag SlotPath) const;
+	TSoftObjectPtr<UObject> GetAttachmentForSlot(FGameplayTag SlotPath) const;
 
 	UFUNCTION(BlueprintCallable, Category = "Item|Attachments")
-	void SetAttachmentForSlot(FGameplayTag SlotPath, TSoftObjectPtr<UNexusAttachmentDefinition> Attachment);
+	void SetAttachmentForSlot(FGameplayTag SlotPath, TSoftObjectPtr<UObject> Attachment);
 
 	UFUNCTION(BlueprintCallable, Category = "Item|Attachments")
 	void ClearAttachmentForSlot(FGameplayTag SlotPath);
 
-	const TMap<FGameplayTag, TSoftObjectPtr<UNexusAttachmentDefinition>>& GetAttachmentMap() const
+	const TMap<FGameplayTag, TSoftObjectPtr<UObject>>& GetAttachmentMap() const
 	{
 		return Attachments;
 	}
@@ -259,8 +268,9 @@ protected:
 	UPROPERTY(SaveGame)
 	TMap<FGameplayTag, float> StatTags;
 
+	/** Chosen attachments per slot as opaque handles — see GetAttachmentForSlot. */
 	UPROPERTY(SaveGame)
-	TMap<FGameplayTag, TSoftObjectPtr<UNexusAttachmentDefinition>> Attachments;
+	TMap<FGameplayTag, TSoftObjectPtr<UObject>> Attachments;
 
 	/** Items socketed into this instance (charm slot -> charm def, gem socket -> gem def). */
 	UPROPERTY(SaveGame)

@@ -12,6 +12,30 @@ class UNexusItemDefinition;
 class UNexusItemInstance;
 
 
+/**
+ * Authored hard bound for one resolved stat, applied by UNexusAssemblyComponent
+ * after the (base + ΣAdd) × ΠMul attachment fold and the persistent-upgrade
+ * additive tier. Min/Max are inclusive. An entry whose Max <= Min is treated as
+ * "unbounded" (the neutral default), so adding an empty row never silently pins a
+ * stat to zero. Fragments contribute these for the keys they own via
+ * SeedStatClamps, keeping the assembly agnostic of which fragment authored a bound.
+ */
+USTRUCT(BlueprintType, DisplayName = "Stat Clamp")
+struct NEXUS_API FNexusStatClamp
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Categories = "Stat"))
+	FGameplayTag StatTag;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	float Min = 0.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	float Max = 0.0f;
+};
+
+
 USTRUCT(BlueprintType, meta = (Hidden))
 struct NEXUS_API FNexusItemFragment
 {
@@ -49,4 +73,14 @@ struct NEXUS_API FNexusItemFragment
 	 * fragments, never reaches into FNexusFragment_Weapon directly.
 	 */
 	virtual void SeedStatTags(TMap<FGameplayTag, float>& OutBaseValues) const {}
+
+	/**
+	 * Contribute per-stat clamp bounds (StatTag -> (Min, Max)) for the keys this
+	 * fragment owns. UNexusAssemblyComponent applies them as the final step of the
+	 * effective-stat resolution — after base, attachment modifiers, and persistent
+	 * upgrades — so a stacked attachment + max-tier upgrade can't push a stat past
+	 * its authored ceiling (or below its floor). Mirrors SeedStatTags; the assembly
+	 * never type-checks the fragment.
+	 */
+	virtual void SeedStatClamps(TMap<FGameplayTag, FVector2D>& OutClamps) const {}
 };

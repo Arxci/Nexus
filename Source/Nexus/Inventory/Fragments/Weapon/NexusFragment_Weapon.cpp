@@ -59,3 +59,14 @@ void FNexusFragment_Weapon::SeedStatTags(TMap<FGameplayTag, float>& OutBaseValue
 	OutBaseValues.Add(NexusGameplayTags::Stat_Weapon_RecoilHorizontal, 0.0f);
 	OutBaseValues.Add(NexusGameplayTags::Stat_Weapon_ADSTime,          0.0f);
 }
+
+void FNexusFragment_Weapon::SeedStatClamps(TMap<FGameplayTag, FVector2D>& OutClamps) const
+{
+	for (const FNexusStatClamp& Clamp : StatClamps)
+	{
+		if (!Clamp.StatTag.IsValid()) continue;
+		// Last writer wins if two entries target the same key — authoring slip,
+		// but deterministic. (Min, Max); the assembly ignores Max <= Min.
+		OutClamps.Add(Clamp.StatTag, FVector2D(Clamp.Min, Clamp.Max));
+	}
+}

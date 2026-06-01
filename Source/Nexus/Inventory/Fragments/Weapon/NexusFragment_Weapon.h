@@ -152,6 +152,45 @@ struct NEXUS_API FWeaponReload
 };
 
 
+/**
+ * One purchasable tier on a weapon upgrade track (RE4R-style: Power Lv.1..N).
+ * Value is the CUMULATIVE upgrade delta over base at this tier — not a per-step
+ * increment — so the merchant can derive the current tier from the persisted
+ * stat and the displayed total is unambiguous. Cost is the currency to advance
+ * INTO this tier from the previous one.
+ */
+USTRUCT(BlueprintType, DisplayName = "Weapon Upgrade Tier")
+struct NEXUS_API FNexusWeaponUpgradeTier
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	float Value = 0.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0"))
+	int32 Cost = 0;
+};
+
+/**
+ * A merchant upgrade track for one effective stat. The merchant reads these to
+ * offer the next tier and enforce the per-stat cap (the last tier); the assembly
+ * folds the purchased delta into the effective-stat resolution via the instance's
+ * persistent stat tag — no new per-instance storage. Author tiers with strictly
+ * increasing Value.
+ */
+USTRUCT(BlueprintType, DisplayName = "Weapon Upgrade Track")
+struct NEXUS_API FNexusWeaponUpgradeTrack
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Categories = "Stat.Weapon"))
+	FGameplayTag StatTag;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	TArray<FNexusWeaponUpgradeTier> Tiers;
+};
+
+
 USTRUCT(BlueprintType, DisplayName = "Weapon")
 struct NEXUS_API FNexusFragment_Weapon : public FNexusItemFragment
 {
@@ -172,9 +211,37 @@ struct NEXUS_API FNexusFragment_Weapon : public FNexusItemFragment
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation")
 	FWeaponPresentation Presentation;
 
+	/**
+	 * Optional hard bounds on the resolved effective stats, applied after base +
+	 * attachment modifiers + persistent upgrades. Stops a stacked muzzle + max-tier
+	 * Power tune-up from pushing damage past a sane ceiling, and keeps a heavy
+	 * negative modifier from driving a stat below its floor. A stat with no entry is
+	 * unbounded; an entry whose Max <= Min is ignored.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats")
+	TArray<FNexusStatClamp> StatClamps;
+
+	/**
+	 * Merchant tune-up tracks (RE4R-style). The merchant offers the next tier per
+	 * track and caps at the last; the purchased delta persists on the instance and
+	 * folds into the effective-stat resolution. One track per upgradeable stat.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Upgrades")
+	TArray<FNexusWeaponUpgradeTrack> UpgradeTracks;
+
 	float GetFireInterval() const
 	{
 		return Combat.RoundsPerMinute > 0.0f ? 60.0f / Combat.RoundsPerMinute : 0.0f;
+	}
+
+	/** The upgrade track tuning StatTag, or null if this weapon doesn't tune that stat. */
+	const FNexusWeaponUpgradeTrack* FindUpgradeTrack(const FGameplayTag StatTag) const
+	{
+		for (const FNexusWeaponUpgradeTrack& Track : UpgradeTracks)
+		{
+			if (Track.StatTag == StatTag) return &Track;
+		}
+		return nullptr;
 	}
 
 	virtual void InitializeInstance(UNexusItemInstance* Instance) const override;
@@ -190,4 +257,7 @@ struct NEXUS_API FNexusFragment_Weapon : public FNexusItemFragment
 	 * attachment Add then Mul modifiers on top of these.
 	 */
 	virtual void SeedStatTags(TMap<FGameplayTag, float>& OutBaseValues) const override;
+
+	/** Seeds authored per-stat clamp bounds (see StatClamps) for the assembly's final clamp pass. */
+	virtual void SeedStatClamps(TMap<FGameplayTag, FVector2D>& OutClamps) const override;
 };

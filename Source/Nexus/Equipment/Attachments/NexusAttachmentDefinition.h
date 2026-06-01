@@ -49,6 +49,28 @@ public:
 		meta = (Categories = "Attachment.Type"))
 	FGameplayTagContainer ProvidedTags;
 
+	/**
+	 * Cross-slot prerequisites: every tag here must be supplied (via ProvidedTags)
+	 * by some OTHER attachment already installed on the same equippable, or this one
+	 * can't be attached. E.g. a magnified scope whose RequiredTags name a mount type
+	 * that a rail attachment provides. Empty = no prerequisite. Evaluated by
+	 * UNexusAssemblyComponent::CanAttachItem against the live tree; if a provider is
+	 * later removed, the dependent is pruned (its persisted choice is kept).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Compatibility",
+		meta = (Categories = "Attachment.Type"))
+	FGameplayTagContainer RequiredTags;
+
+	/**
+	 * Mutual exclusions: this attachment can't coexist with any installed attachment
+	 * that provides one of these tags. Symmetric — another part's own ConflictTags
+	 * are honoured against this one's ProvidedTags too. E.g. a suppressor that
+	 * conflicts with a muzzle brake. Empty = conflicts with nothing.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Compatibility",
+		meta = (Categories = "Attachment.Type"))
+	FGameplayTagContainer ConflictTags;
+
 	// Visual — author EITHER SkeletalMesh OR StaticMesh. Skeletal wins if both
 	// are set (and AnimInstanceClass applies); StaticMesh is then ignored.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual",

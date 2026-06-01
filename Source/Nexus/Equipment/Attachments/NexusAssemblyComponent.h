@@ -9,6 +9,7 @@
 #include "GameplayTagContainer.h"
 
 #include "NexusAttachmentTypes.h"
+#include "NexusResolvedItemStats.h"
 
 #include "NexusAssemblyComponent.generated.h"
 
@@ -20,34 +21,6 @@ class UNexusAttachmentDefinition;
 class UNexusItemInstance;
 class USkeletalMeshComponent;
 struct FNexusFragment_Equippable;
-
-
-/**
- * Runtime resolution of (Stat.* tag) -> (final float value), produced by walking
- * the attachment tree from the equipped item's base values. Base values are
- * contributed by each FNexusItemFragment via SeedStatTags — the assembly itself
- * is fragment-agnostic. Attachment modifiers are layered as
- * (base + sum(Add)) * product(Mul).
- *
- * Retained as "FResolvedItemStats" (not WeaponStats) so the type name reflects
- * its actual scope: any modular equippable can have a resolved stat block, not
- * just weapons. Stat keys are still data-driven (Stat.Weapon.*, Stat.Flashlight.*,
- * etc.) — the struct is just the (key -> value) container.
- */
-USTRUCT(BlueprintType, DisplayName = "Resolved Item Stats")
-struct NEXUS_API FResolvedItemStats
-{
-	GENERATED_BODY()
-
-	UPROPERTY(BlueprintReadOnly)
-	TMap<FGameplayTag, float> Values;
-
-	float Get(const FGameplayTag StatTag, const float Default = 0.0f) const
-	{
-		const float* Found = Values.Find(StatTag);
-		return Found ? *Found : Default;
-	}
-};
 
 
 /**
@@ -143,6 +116,22 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Assembly")
 	bool CanAttachItem(FGameplayTag SlotID, const UNexusAttachmentDefinition* Definition) const;
 
+	/**
+	 * UI helper: the RequiredTags that installing Definition in SlotID would leave
+	 * unsatisfied given the current tree (empty = all prerequisites met). Lets a
+	 * gunsmith grey out an option and show "needs: <tag>" without committing.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Assembly")
+	FGameplayTagContainer GetUnmetRequirements(FGameplayTag SlotID, const UNexusAttachmentDefinition* Definition) const;
+
+	/**
+	 * UI helper: the tags by which Definition would conflict with the current tree
+	 * if installed in SlotID (empty = no conflict). Symmetric — covers both this
+	 * attachment's ConflictTags and other installed parts' ConflictTags.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Assembly")
+	FGameplayTagContainer GetConflictingTags(FGameplayTag SlotID, const UNexusAttachmentDefinition* Definition) const;
+
 	// Resolution
 	/**
 	 * Returns the cached effective stat block for the current assembly tree.
@@ -161,9 +150,47 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Assembly")
 	UAnimMontage* ResolveItemMontage(FGameplayTag ActionTag) const;
 
+	// Preview (gunsmith try-before-buy)
+	/**
+	 * Resolve the effective stats the assembly WOULD have if Definition were
+	 * installed in SlotID, without mutating the live tree, caches, or instance.
+	 * Replaces whatever currently occupies SlotID (and its sub-tree). Sub-slot
+	 * defaults the candidate would introduce are not simulated — this is the
+	 * first-order delta the gunsmith shows before committing; the real AttachItem
+	 * fills sub-slots and re-resolves. Diff against ResolveStats() for "+8 dmg".
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Assembly|Preview")
+	FResolvedItemStats PreviewInstall(FGameplayTag SlotID, const UNexusAttachmentDefinition* Definition) const;
+
+	/**
+	 * Resolve the effective stats the assembly WOULD have if a persistent upgrade
+	 * of Delta were applied to StatTag, without mutating anything. Diff against
+	 * ResolveStats() to show the gunsmith a tune-up's stat delta before purchase.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Assembly|Preview")
+	FResolvedItemStats PreviewUpgrade(FGameplayTag StatTag, float Delta) const;
+
+	/**
+	 * Signal that the source instance's persistent upgrade stat tags changed
+	 * (a merchant tune-up). Invalidates only the stat cache — montage resolutions
+	 * are upgrade-independent — and broadcasts so a live weapon's HUD/UI re-read
+	 * without a respawn. Kept off the instance's OnInstanceChanged delegate on
+	 * purpose: that fires every shot (ammo), which the stat fold ignores anyway.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Assembly")
+	void NotifyUpgradesChanged();
+
 	/** All slot IDs currently part of the tree (top-level + provided sub-slots). */
 	UFUNCTION(BlueprintPure, Category = "Assembly")
 	TArray<FGameplayTag> GetAllSlotIDs() const;
+
+	/**
+	 * The AcceptedTags authored on SlotID (empty if the slot is unknown or accepts
+	 * any). A gunsmith passes this to the catalog's GetCompatibleAttachments /
+	 * GetSlotOptions to discover what fits the slot.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Assembly")
+	FGameplayTagContainer GetSlotAcceptedTags(FGameplayTag SlotID) const;
 
 	/** All currently-spawned attachment mesh components (in arbitrary order). */
 	TArray<UMeshComponent*> GetAttachmentMeshes() const;
@@ -199,6 +226,24 @@ private:
 	void RegisterSlotDefinition(const FAssemblySlotDefinition& Slot);
 	void DetachSubtree(FGameplayTag SlotID);
 
+	/**
+	 * Cross-slot constraint check for installing Definition in SlotID against the
+	 * rest of the tree: fills OutUnmetRequired (RequiredTags no other attachment
+	 * provides) and OutConflicting (symmetric ConflictTags violations). The subtree
+	 * at SlotID is excluded — an attachment can't satisfy/conflict with itself, and
+	 * a replace must not see the part it replaces.
+	 */
+	void ComputeConstraintViolations(FGameplayTag SlotID, const UNexusAttachmentDefinition* Definition,
+		FGameplayTagContainer& OutUnmetRequired, FGameplayTagContainer& OutConflicting) const;
+
+	/**
+	 * After a removal/replace, detach any attachment whose constraints are no longer
+	 * met (a required provider went away). Runtime teardown only — the player's
+	 * persisted choice is kept, so re-adding the provider restores the dependent.
+	 * Fix-point: pruning one can invalidate another.
+	 */
+	void PruneUnsatisfiedAttachments();
+
 	/** Walk SlotDefinitions and install persisted/default attachments for any unfilled slot. Fix-point. */
 	void FillMissingDefaults();
 
@@ -211,6 +256,26 @@ private:
 	FGameplayTag FindParentSlotFor(FGameplayTag SlotID) const;
 
 	void RebuildStatCache() const;
+
+	/**
+	 * Single source of truth for effective-stat resolution, shared by the live
+	 * cache (RebuildStatCache) and the preview paths. Folds, in order:
+	 *   base (fragment SeedStatTags) + Σ(attachment Add), then × Π(attachment Mul),
+	 *   then + persistent upgrade tags (final additive tier), then clamp to the
+	 *   fragment-authored [min,max]. Modifiers/upgrades against unseeded keys are
+	 *   ignored. AttachmentDefs is the contributor set; UpgradeStatTags is the
+	 *   instance's persistent stat tags (filtered to seeded keys internally).
+	 */
+	void ResolveStatsInternal(FResolvedItemStats& Out,
+		const TArray<const UNexusAttachmentDefinition*>& AttachmentDefs,
+		const TMap<FGameplayTag, float>& UpgradeStatTags) const;
+
+	/** Collect the definitions of every installed attachment, optionally excluding the subtree rooted at ExcludeSubtreeRoot. */
+	void GatherAttachmentDefs(TArray<const UNexusAttachmentDefinition*>& Out, FGameplayTag ExcludeSubtreeRoot) const;
+
+	/** True if Slot is ExcludeSubtreeRoot or any descendant of it (walks ParentSlotID). */
+	bool IsSlotInSubtree(FGameplayTag Slot, FGameplayTag Root) const;
+
 	/**
 	 * Wipes every lazy-resolved cache on the component (stats + per-action
 	 * arms/item montages). Called from every mutation point — Attach, Detach,

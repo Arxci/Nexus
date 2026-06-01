@@ -97,6 +97,7 @@ namespace NexusGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(Stat_Weapon_ReloadDuration,   "Stat.Weapon.ReloadDuration");
 
 	UE_DEFINE_GAMEPLAY_TAG(Attachment_Slot_Slide,       "Attachment.Slot.Slide");
+	UE_DEFINE_GAMEPLAY_TAG(Attachment_Slot_Sight,       "Attachment.Slot.Sight");
 	UE_DEFINE_GAMEPLAY_TAG(Attachment_Slot_Magazine,    "Attachment.Slot.Magazine");
 	UE_DEFINE_GAMEPLAY_TAG(Attachment_Slot_Barrel,      "Attachment.Slot.Barrel");
 	UE_DEFINE_GAMEPLAY_TAG(Attachment_Slot_Trigger,     "Attachment.Slot.Trigger");

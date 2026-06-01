@@ -6,7 +6,6 @@
 
 #include "Nexus/Inventory/Fragments/Equippable/NexusFragment_Equippable.h"
 
-#include "Nexus/Equipment/Attachments/NexusAttachmentDefinition.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemFragment.h"
 
@@ -173,16 +172,16 @@ bool UNexusItemInstance::HasStat(FGameplayTag StatTag) const
 }
 
 // Attachments
-TSoftObjectPtr<UNexusAttachmentDefinition> UNexusItemInstance::GetAttachmentForSlot(FGameplayTag SlotPath) const
+TSoftObjectPtr<UObject> UNexusItemInstance::GetAttachmentForSlot(FGameplayTag SlotPath) const
 {
-	if (const TSoftObjectPtr<UNexusAttachmentDefinition>* Found = Attachments.Find(SlotPath))
+	if (const TSoftObjectPtr<UObject>* Found = Attachments.Find(SlotPath))
 	{
 		return *Found;
 	}
-	return TSoftObjectPtr<UNexusAttachmentDefinition>();
+	return TSoftObjectPtr<UObject>();
 }
 
-void UNexusItemInstance::SetAttachmentForSlot(FGameplayTag SlotPath, TSoftObjectPtr<UNexusAttachmentDefinition> Attachment)
+void UNexusItemInstance::SetAttachmentForSlot(FGameplayTag SlotPath, TSoftObjectPtr<UObject> Attachment)
 {
 	if (!SlotPath.IsValid()) return;
 
@@ -192,7 +191,7 @@ void UNexusItemInstance::SetAttachmentForSlot(FGameplayTag SlotPath, TSoftObject
 		return;
 	}
 
-	const TSoftObjectPtr<UNexusAttachmentDefinition>* Existing = Attachments.Find(SlotPath);
+	const TSoftObjectPtr<UObject>* Existing = Attachments.Find(SlotPath);
 	if (Existing && *Existing == Attachment) return;
 
 	Attachments.Add(SlotPath, Attachment);

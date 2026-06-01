@@ -141,7 +141,14 @@ void UNexusAssemblyComponent::FillMissingDefaults()
 			TSoftObjectPtr<UNexusAttachmentDefinition> ToInstall;
 			if (Instance)
 			{
-				ToInstall = Instance->GetAttachmentForSlot(SlotID);
+				// Inventory stores the chosen attachment as an opaque object handle;
+				// reinterpret its path as our concrete definition type — the assembly
+				// is the consumer that knows these handles are attachment definitions.
+				const TSoftObjectPtr<UObject> Persisted = Instance->GetAttachmentForSlot(SlotID);
+				if (!Persisted.IsNull())
+				{
+					ToInstall = TSoftObjectPtr<UNexusAttachmentDefinition>(Persisted.ToSoftObjectPath());
+				}
 			}
 			if (ToInstall.IsNull())
 			{
@@ -155,7 +162,17 @@ void UNexusAssemblyComponent::FillMissingDefaults()
 			// expected; LoadSynchronous fallback is defensive only.
 			UNexusAttachmentDefinition* Definition = ToInstall.Get();
 			if (!Definition) Definition = ToInstall.LoadSynchronous();
-			if (!Definition) continue;
+			if (!Definition)
+			{
+				// Asset removed/renamed without a redirector. Degrade gracefully —
+				// leave the slot empty — but log so a missing part is diagnosable
+				// rather than silently absent (save/load back-compat contract).
+				UE_LOG(LogNexusEquipment, Warning,
+					TEXT("[Assembly] Attachment '%s' for slot %s on %s could not be resolved; leaving slot empty."),
+					*ToInstall.ToSoftObjectPath().ToString(), *SlotID.ToString(),
+					*GetNameSafe(GetSourceInstance()));
+				continue;
+			}
 
 			if (!CanAttachItem(SlotID, Definition)) continue;
 
@@ -193,9 +210,13 @@ bool UNexusAssemblyComponent::CanAttachItem(const FGameplayTag SlotID, const UNe
 	const FAssemblySlotDefinition* SlotDef = FindSlotDefinition(SlotID);
 	if (!SlotDef) return false;
 
-	if (SlotDef->bAcceptsAny) return true;
-
-	if (SlotDef->AcceptedTags.IsEmpty())
+	// 1) Slot tag-acceptance (bAcceptsAny / empty-wildcard legacy / tag intersection).
+	bool bSlotAccepts;
+	if (SlotDef->bAcceptsAny)
+	{
+		bSlotAccepts = true;
+	}
+	else if (SlotDef->AcceptedTags.IsEmpty())
 	{
 		// Legacy behaviour: empty AcceptedTags used to mean "anything fits".
 		// Preserve it but warn once per slot so authors migrate to bAcceptsAny.
@@ -209,10 +230,112 @@ bool UNexusAssemblyComponent::CanAttachItem(const FGameplayTag SlotID, const UNe
 				TEXT("Set bAcceptsAny=true on the slot definition to silence this warning."),
 				*SlotID.ToString());
 		}
-		return true;
+		bSlotAccepts = true;
+	}
+	else
+	{
+		bSlotAccepts = Definition->FitsSlot(SlotDef->AcceptedTags);
 	}
 
-	return Definition->FitsSlot(SlotDef->AcceptedTags);
+	if (!bSlotAccepts) return false;
+
+	// 2) Cross-slot constraints: required providers present, no conflicts. Checked
+	// in every accept path (including bAcceptsAny) so a wildcard slot still honours
+	// an attachment's own requires/conflicts.
+	FGameplayTagContainer Unmet, Conflicting;
+	ComputeConstraintViolations(SlotID, Definition, Unmet, Conflicting);
+	return Unmet.IsEmpty() && Conflicting.IsEmpty();
+}
+
+void UNexusAssemblyComponent::ComputeConstraintViolations(
+	const FGameplayTag SlotID, const UNexusAttachmentDefinition* Definition,
+	FGameplayTagContainer& OutUnmetRequired, FGameplayTagContainer& OutConflicting) const
+{
+	OutUnmetRequired.Reset();
+	OutConflicting.Reset();
+	if (!Definition) return;
+
+	// Union of ProvidedTags and ConflictTags across every OTHER installed
+	// attachment (exclude the subtree at SlotID — self can't satisfy/conflict, and
+	// a replace must ignore the part being swapped out).
+	FGameplayTagContainer Provided;
+	FGameplayTagContainer OthersConflicts;
+	for (const TPair<FGameplayTag, FNexusAttachmentInstance>& Pair : Attached)
+	{
+		if (IsSlotInSubtree(Pair.Key, SlotID)) continue;
+		if (const UNexusAttachmentDefinition* Def = Pair.Value.Definition)
+		{
+			Provided.AppendTags(Def->ProvidedTags);
+			OthersConflicts.AppendTags(Def->ConflictTags);
+		}
+	}
+
+	// Required: each prerequisite must be provided by some other attachment.
+	for (const FGameplayTag& Req : Definition->RequiredTags)
+	{
+		if (!Provided.HasTag(Req)) OutUnmetRequired.AddTag(Req);
+	}
+
+	// Conflicts (symmetric): this part forbids a tag another provides, or another
+	// part forbids a tag this one provides.
+	for (const FGameplayTag& Con : Definition->ConflictTags)
+	{
+		if (Provided.HasTag(Con)) OutConflicting.AddTag(Con);
+	}
+	for (const FGameplayTag& Tag : Definition->ProvidedTags)
+	{
+		if (OthersConflicts.HasTag(Tag)) OutConflicting.AddTag(Tag);
+	}
+}
+
+FGameplayTagContainer UNexusAssemblyComponent::GetUnmetRequirements(
+	const FGameplayTag SlotID, const UNexusAttachmentDefinition* Definition) const
+{
+	FGameplayTagContainer Unmet, Conflicting;
+	ComputeConstraintViolations(SlotID, Definition, Unmet, Conflicting);
+	return Unmet;
+}
+
+FGameplayTagContainer UNexusAssemblyComponent::GetConflictingTags(
+	const FGameplayTag SlotID, const UNexusAttachmentDefinition* Definition) const
+{
+	FGameplayTagContainer Unmet, Conflicting;
+	ComputeConstraintViolations(SlotID, Definition, Unmet, Conflicting);
+	return Conflicting;
+}
+
+void UNexusAssemblyComponent::PruneUnsatisfiedAttachments()
+{
+	// Fix-point: detaching one attachment can orphan another that required it.
+	// Runtime teardown only (DetachSubtree, not DetachItem) so the player's
+	// persisted choice survives and re-adding the provider restores the dependent.
+	int32 Guard = 0;
+	bool bChanged = true;
+	while (bChanged && ++Guard < 64)
+	{
+		bChanged = false;
+		TArray<FGameplayTag> Slots;
+		Attached.GetKeys(Slots);
+		for (const FGameplayTag& SlotID : Slots)
+		{
+			const FNexusAttachmentInstance* Record = Attached.Find(SlotID);
+			if (!Record || !Record->Definition) continue;
+
+			FGameplayTagContainer Unmet, Conflicting;
+			ComputeConstraintViolations(SlotID, Record->Definition, Unmet, Conflicting);
+			if (Unmet.IsEmpty() && Conflicting.IsEmpty()) continue;
+
+			UE_LOG(LogNexusEquipment, Warning,
+				TEXT("[Assembly] Pruning attachment %s in slot %s on %s (unmet=[%s] conflict=[%s])"),
+				*GetNameSafe(Record->Definition), *SlotID.ToString(),
+				*GetNameSafe(GetSourceInstance()),
+				*Unmet.ToStringSimple(), *Conflicting.ToStringSimple());
+
+			DetachSubtree(SlotID);
+			bChanged = true;
+			break; // Attached mutated under us — restart the scan.
+		}
+	}
 }
 
 bool UNexusAssemblyComponent::AttachItem(const FGameplayTag SlotID, UNexusAttachmentDefinition* Definition, const ENexusAttachSource Source)
@@ -260,7 +383,8 @@ bool UNexusAssemblyComponent::AttachItem(const FGameplayTag SlotID, UNexusAttach
 		{
 			if (UNexusItemInstance* Instance = GetSourceInstance())
 			{
-				Instance->SetAttachmentForSlot(SlotID, Definition);
+				// Persist as an opaque handle — inventory doesn't know the concrete type.
+				Instance->SetAttachmentForSlot(SlotID, TSoftObjectPtr<UObject>(Definition));
 			}
 		}
 
@@ -306,6 +430,10 @@ bool UNexusAssemblyComponent::AttachItem(const FGameplayTag SlotID, UNexusAttach
 		{
 			FillMissingDefaults();
 		}
+
+		// A replace can strip a provider a pre-existing attachment relied on (or
+		// introduce a conflict); drop anything now illegal before we broadcast.
+		PruneUnsatisfiedAttachments();
 	}
 
 	// One consolidated broadcast after all internal mutations.
@@ -325,6 +453,9 @@ bool UNexusAssemblyComponent::DetachItem(const FGameplayTag SlotID)
 		{
 			Instance->ClearAttachmentForSlot(SlotID);
 		}
+
+		// Removing this attachment may orphan others that required what it provided.
+		PruneUnsatisfiedAttachments();
 
 		InvalidateCaches();
 	}
@@ -386,6 +517,15 @@ TArray<FGameplayTag> UNexusAssemblyComponent::GetAllSlotIDs() const
 	TArray<FGameplayTag> Out;
 	SlotDefinitions.GetKeys(Out);
 	return Out;
+}
+
+FGameplayTagContainer UNexusAssemblyComponent::GetSlotAcceptedTags(const FGameplayTag SlotID) const
+{
+	if (const FAssemblySlotDefinition* SlotDef = FindSlotDefinition(SlotID))
+	{
+		return SlotDef->AcceptedTags;
+	}
+	return FGameplayTagContainer();
 }
 
 TArray<UMeshComponent*> UNexusAssemblyComponent::GetAttachmentMeshes() const
@@ -557,12 +697,18 @@ void UNexusAssemblyComponent::HandleAttachmentLoaded(const FGameplayTag SlotID)
 
 
 // Resolution
-void UNexusAssemblyComponent::RebuildStatCache() const
+void UNexusAssemblyComponent::ResolveStatsInternal(
+	FResolvedItemStats& Out,
+	const TArray<const UNexusAttachmentDefinition*>& AttachmentDefs,
+	const TMap<FGameplayTag, float>& UpgradeStatTags) const
 {
-	CachedStats.Values.Reset();
+	Out.Values.Reset();
 
-	// Seed phase: every fragment contributes its own base values. Assembly is
-	// type-agnostic — it never reaches into a specific fragment subclass.
+	// Seed phase: every fragment contributes its own base values and optional
+	// clamp bounds. Assembly is type-agnostic — it never reaches into a specific
+	// fragment subclass; the weapon fragment seeds Stat.Weapon.*, a flashlight
+	// fragment would seed Stat.Flashlight.*, etc.
+	TMap<FGameplayTag, FVector2D> Clamps;
 	const UNexusItemInstance* Instance = GetSourceInstance();
 	const UNexusItemDefinition* Definition = Instance ? Instance->GetDefinition() : nullptr;
 	if (Definition)
@@ -570,19 +716,19 @@ void UNexusAssemblyComponent::RebuildStatCache() const
 		for (const TInstancedStruct<FNexusItemFragment>& Frag : Definition->Fragments)
 		{
 			if (!Frag.IsValid()) continue;
-			Frag.Get().SeedStatTags(CachedStats.Values);
+			Frag.Get().SeedStatTags(Out.Values);
+			Frag.Get().SeedStatClamps(Clamps);
 		}
 	}
 
-	// Two-pass fold so multiplicative modifiers always apply on top of the
-	// fully-summed additive base — matches how AAA gunsmiths describe their
+	// Two-pass attachment fold so multiplicative modifiers always apply on top of
+	// the fully-summed additive base — matches how AAA gunsmiths describe their
 	// attachment math (flat bonus, then percentage).
 	TMap<FGameplayTag, float> AddSum;
 	TMap<FGameplayTag, float> MulProduct;
 
-	for (const TPair<FGameplayTag, FNexusAttachmentInstance>& Pair : Attached)
+	for (const UNexusAttachmentDefinition* Def : AttachmentDefs)
 	{
-		const UNexusAttachmentDefinition* Def = Pair.Value.Definition;
 		if (!Def) continue;
 		for (const FAttachmentStatModifier& Mod : Def->Modifiers)
 		{
@@ -596,20 +742,131 @@ void UNexusAssemblyComponent::RebuildStatCache() const
 	{
 		// Only modify keys we actually seeded — modifiers against unknown stat
 		// tags would otherwise silently invent values.
-		if (float* Value = CachedStats.Values.Find(Add.Key))
+		if (float* Value = Out.Values.Find(Add.Key))
 		{
 			*Value += Add.Value;
 		}
 	}
 	for (const TPair<FGameplayTag, float>& Mul : MulProduct)
 	{
-		if (float* Value = CachedStats.Values.Find(Mul.Key))
+		if (float* Value = Out.Values.Find(Mul.Key))
 		{
 			*Value *= Mul.Value;
 		}
 	}
 
+	// Persistent upgrade tier: merchant tune-ups fold in as a FINAL additive tier,
+	// after the attachment multiplier (locked decision — a +N tune-up reads as +N
+	// in the gunsmith UI regardless of installed attachments). Filtered to seeded
+	// keys, so runtime instance state that isn't a resolved stat (ammo in the
+	// magazine, durability, charges) is ignored here — the same rule attachment
+	// modifiers obey against unseeded keys.
+	for (const TPair<FGameplayTag, float>& Upgrade : UpgradeStatTags)
+	{
+		if (float* Value = Out.Values.Find(Upgrade.Key))
+		{
+			*Value += Upgrade.Value;
+		}
+	}
+
+	// Final safety bound: clamp each resolved value to its authored [min,max].
+	// An entry whose Max <= Min is treated as unbounded (the neutral default), so
+	// an empty authored row never pins a stat to zero.
+	for (const TPair<FGameplayTag, FVector2D>& Bound : Clamps)
+	{
+		if (Bound.Value.Y <= Bound.Value.X) continue;
+		if (float* Value = Out.Values.Find(Bound.Key))
+		{
+			*Value = FMath::Clamp(*Value, Bound.Value.X, Bound.Value.Y);
+		}
+	}
+}
+
+bool UNexusAssemblyComponent::IsSlotInSubtree(FGameplayTag Slot, const FGameplayTag Root) const
+{
+	if (!Root.IsValid()) return false;
+	int32 Guard = 0;
+	while (Slot.IsValid())
+	{
+		if (Slot == Root) return true;
+		const FNexusAttachmentInstance* Rec = Attached.Find(Slot);
+		if (!Rec) break;
+		Slot = Rec->ParentSlotID;
+		if (++Guard > 32) break;
+	}
+	return false;
+}
+
+void UNexusAssemblyComponent::GatherAttachmentDefs(
+	TArray<const UNexusAttachmentDefinition*>& Out, const FGameplayTag ExcludeSubtreeRoot) const
+{
+	Out.Reset();
+	Out.Reserve(Attached.Num());
+	for (const TPair<FGameplayTag, FNexusAttachmentInstance>& Pair : Attached)
+	{
+		if (ExcludeSubtreeRoot.IsValid() && IsSlotInSubtree(Pair.Key, ExcludeSubtreeRoot)) continue;
+		if (const UNexusAttachmentDefinition* Def = Pair.Value.Definition) Out.Add(Def);
+	}
+}
+
+void UNexusAssemblyComponent::RebuildStatCache() const
+{
+	TArray<const UNexusAttachmentDefinition*> Defs;
+	GatherAttachmentDefs(Defs, FGameplayTag());
+
+	static const TMap<FGameplayTag, float> EmptyUpgrades;
+	const UNexusItemInstance* Instance = GetSourceInstance();
+	ResolveStatsInternal(CachedStats, Defs, Instance ? Instance->GetStatTags() : EmptyUpgrades);
+
 	bStatCacheValid = true;
+}
+
+FResolvedItemStats UNexusAssemblyComponent::PreviewInstall(
+	const FGameplayTag SlotID, const UNexusAttachmentDefinition* Definition) const
+{
+	// Hypothetical contributor set: every current attachment except the subtree
+	// being replaced at SlotID, plus the candidate. No mutation of the live tree.
+	TArray<const UNexusAttachmentDefinition*> Defs;
+	GatherAttachmentDefs(Defs, SlotID);
+	if (Definition) Defs.Add(Definition);
+
+	static const TMap<FGameplayTag, float> EmptyUpgrades;
+	const UNexusItemInstance* Instance = GetSourceInstance();
+
+	FResolvedItemStats Out;
+	ResolveStatsInternal(Out, Defs, Instance ? Instance->GetStatTags() : EmptyUpgrades);
+	return Out;
+}
+
+FResolvedItemStats UNexusAssemblyComponent::PreviewUpgrade(
+	const FGameplayTag StatTag, const float Delta) const
+{
+	TArray<const UNexusAttachmentDefinition*> Defs;
+	GatherAttachmentDefs(Defs, FGameplayTag());
+
+	// Copy the instance's current persistent stat tags and apply the hypothetical
+	// delta on top before resolving.
+	TMap<FGameplayTag, float> Upgrades;
+	if (const UNexusItemInstance* Instance = GetSourceInstance())
+	{
+		Upgrades = Instance->GetStatTags();
+	}
+	if (StatTag.IsValid())
+	{
+		Upgrades.FindOrAdd(StatTag, 0.0f) += Delta;
+	}
+
+	FResolvedItemStats Out;
+	ResolveStatsInternal(Out, Defs, Upgrades);
+	return Out;
+}
+
+void UNexusAssemblyComponent::NotifyUpgradesChanged()
+{
+	// Only the stat fold depends on the instance's upgrade tags; the per-action
+	// montage caches are upgrade-independent, so leave them intact.
+	bStatCacheValid = false;
+	BroadcastChanged();
 }
 
 void UNexusAssemblyComponent::InvalidateCaches()

@@ -3,6 +3,7 @@
 #include "Engine/AssetManager.h"
 
 #include "Nexus/NexusAssetManager.h"
+#include "Nexus/Equipment/Attachments/NexusAssemblyComponent.h"
 #include "Nexus/Equipment/Attachments/NexusAttachmentDefinition.h"
 
 void UNexusAttachmentCatalogSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -97,6 +98,33 @@ TArray<UNexusAttachmentDefinition*> UNexusAttachmentCatalogSubsystem::GetAllAtta
 	for (UNexusAttachmentDefinition* Def : Catalog)
 	{
 		if (Def) Out.Add(Def);
+	}
+	return Out;
+}
+
+TArray<FNexusAttachmentOption> UNexusAttachmentCatalogSubsystem::GetSlotOptions(
+	const UNexusAssemblyComponent* Assembly, const FGameplayTag SlotID) const
+{
+	TArray<FNexusAttachmentOption> Out;
+	if (!Assembly || !SlotID.IsValid()) return Out;
+
+	const FGameplayTagContainer AcceptedTags = Assembly->GetSlotAcceptedTags(SlotID);
+	for (UNexusAttachmentDefinition* Def : Catalog)
+	{
+		if (!Def) continue;
+
+		// Discovery filter: a slot with no AcceptedTags is treated as a wildcard
+		// (offer everything); otherwise require a tag intersection. Eligibility
+		// (incl. bAcceptsAny + requires/conflicts) is reported per-option below.
+		if (!AcceptedTags.IsEmpty() && !Def->FitsSlot(AcceptedTags)) continue;
+
+		FNexusAttachmentOption Option;
+		Option.Definition        = Def;
+		Option.PreviewStats      = Assembly->PreviewInstall(SlotID, Def);
+		Option.UnmetRequirements = Assembly->GetUnmetRequirements(SlotID, Def);
+		Option.Conflicts         = Assembly->GetConflictingTags(SlotID, Def);
+		Option.bCanInstall       = Assembly->CanAttachItem(SlotID, Def);
+		Out.Add(Option);
 	}
 	return Out;
 }
