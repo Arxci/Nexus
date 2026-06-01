@@ -68,3 +68,13 @@ void UNexusWorldMarkerWidget::HandleStateTagChanged(const FGameplayTag Tag, cons
 	OnStateTagChanged.Broadcast(Tag, bAdded);
 	K2_OnStateTagChanged(Tag, bAdded);
 }
+
+//Prompt
+void UNexusWorldMarkerWidget::SetPromptText(const FText& InText)
+{
+	if (PromptText.EqualTo(InText)) return;
+
+	PromptText = InText;
+	OnPromptChanged.Broadcast(PromptText);
+	K2_OnPromptChanged(PromptText);
+}

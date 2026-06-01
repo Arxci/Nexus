@@ -75,6 +75,14 @@ protected:
 	int32 InitialCount = 1;
 
 	/**
+	 * Seconds the player must hold to collect. 0 = instant (tap), matching the
+	 * prior pickup default. Authored into the generic component's Take interaction
+	 * by ConfigureInteraction.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pickup", meta = (ClampMin = "0.0"))
+	float PickupHoldDuration = 0.0f;
+
+	/**
 	 * Per-pickup-actor decision: should the acquired item be slotted into the
 	 * player's equipment if a compatible slot is free? Lives on the pickup
 	 * instance, not the item definition, because the same gun spawned by a
@@ -120,6 +128,9 @@ private:
 	TSharedPtr<FStreamableHandle> PickupMeshHandle;
 
 	void RequestPickupMeshLoad();
+
+	/** (Re)build the generic component's single Take interaction from this pickup's Definition/Count/flags. */
+	void ConfigureInteraction();
 
 	FTimerHandle PickupTeardownTimer;
 	void HandleTeardownComplete();

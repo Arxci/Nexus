@@ -2,10 +2,11 @@
 
 #include "Components/WidgetComponent.h"
 
-#include "Nexus/Nexus.h" 
+#include "Nexus/Nexus.h"
 #include "Nexus/NexusCollisionChannels.h"
 #include "Nexus/NexusGameplayTags.h"
 #include "Nexus/UI/World/NexusWorldMarkerWidget.h"
+#include "Nexus/Interaction/NexusInteractionContext.h"
 
 
 UNexusInteractableComponent::UNexusInteractableComponent()
@@ -46,7 +47,31 @@ void UNexusInteractableComponent::TryStartInteraction_Implementation(AActor* Int
 	// stream can't double-fire the lifecycle.
 	if (CurrentInteractor) return;
 
+	// Resolve which interaction to run. With authored entries we pick the best
+	// ENABLED one for this interactor; if every entry is gated we surface the
+	// reason and abort (never silently do nothing). With no entries we fall back
+	// to the legacy single-hold path so pre-data interactables keep working.
+	int32 ChosenIndex = INDEX_NONE;
+	float Duration = InteractionDuration;
+	if (Interactions.Num() > 0)
+	{
+		FText GatedReason;
+		ChosenIndex = ResolveBestInteraction(Interactor, GatedReason);
+		if (ChosenIndex == INDEX_NONE)
+		{
+			OnInteractionGateFailed.Broadcast(Interactor, GatedReason);
+#if !UE_BUILD_SHIPPING
+			UE_LOG(LogNexusInteraction, Verbose, TEXT("[Interact] %s blocked on %s (%s)."),
+				*GetNameSafe(Interactor), *GetNameSafe(GetOwner()), *GatedReason.ToString());
+#endif
+			return;
+		}
+		Duration = Interactions[ChosenIndex].HoldDuration;
+	}
+
 	CurrentInteractor = Interactor;
+	ActiveInteractionIndex = ChosenIndex;
+	ActiveHoldDuration = Duration;
 	if (const UWorld* World = GetWorld())
 	{
 		InteractionStartTime = World->GetTimeSeconds();
@@ -55,11 +80,10 @@ void UNexusInteractableComponent::TryStartInteraction_Implementation(AActor* Int
 
 #if !UE_BUILD_SHIPPING
 	UE_LOG(LogNexusInteraction, Verbose, TEXT("[Interact] %s started interaction on %s (duration=%.2fs)."),
-		*GetNameSafe(Interactor), *GetNameSafe(GetOwner()), InteractionDuration);
+		*GetNameSafe(Interactor), *GetNameSafe(GetOwner()), Duration);
 #endif
-	
 
-	if (InteractionDuration <= 0.0f)
+	if (Duration <= 0.0f)
 	{
 		// Tap-to-interact: no hold required, complete on the same call so callers
 		// who expect a synchronous interaction (instant lootables) get it.
@@ -88,7 +112,7 @@ void UNexusInteractableComponent::InteractionProgress_Implementation()
 	const float Elapsed = GetElapsedTime();
 	OnInteractionProgressed.Broadcast(Elapsed);
 
-	if (InteractionDuration > 0.0f && Elapsed >= InteractionDuration)
+	if (ActiveHoldDuration > 0.0f && Elapsed >= ActiveHoldDuration)
 	{
 		CompleteInteraction();
 	}
@@ -97,8 +121,23 @@ void UNexusInteractableComponent::InteractionProgress_Implementation()
 void UNexusInteractableComponent::CompleteInteraction()
 {
 	AActor* Interactor = CurrentInteractor;
+	const int32 Index = ActiveInteractionIndex;
 	CurrentInteractor = nullptr;
+	ActiveInteractionIndex = INDEX_NONE;
 	SetComponentTickEnabled(false);
+
+	// Run the resolved entry's effects in order BEFORE broadcasting completion, so
+	// the world has changed (item acquired, flag set) by the time listeners — e.g.
+	// a pickup that hides + tears itself down on OnInteractionCompleted — react.
+	if (Interactions.IsValidIndex(Index))
+	{
+		const FNexusInteraction& Entry = Interactions[Index];
+		RunEffects(Entry, Interactor);
+		if (Entry.bOneShot)
+		{
+			MarkInteractionConsumed(Entry.GetStateKey());
+		}
+	}
 
 #if !UE_BUILD_SHIPPING
 	UE_LOG(LogNexusInteraction, Verbose, TEXT("[Interact] %s completed interaction on %s."),
@@ -113,6 +152,7 @@ void UNexusInteractableComponent::CancelInteraction()
 {
 	AActor* Interactor = CurrentInteractor;
 	CurrentInteractor = nullptr;
+	ActiveInteractionIndex = INDEX_NONE;
 	SetComponentTickEnabled(false);
 
 #if !UE_BUILD_SHIPPING
@@ -249,6 +289,158 @@ UNexusWorldMarkerWidget* UNexusInteractableComponent::GetMarkerWidget() const
 	return IndicatorWidgetComponent
 	? Cast<UNexusWorldMarkerWidget>(IndicatorWidgetComponent->GetUserWidgetObject())
 	: nullptr;
+}
+
+
+// Interaction resolution + effects
+
+FNexusInteractionContext UNexusInteractableComponent::BuildContext(AActor* Interactor, FGameplayTag StateKey) const
+{
+	FNexusInteractionContext Context;
+	Context.Interactor = Interactor;
+	Context.Interactable = const_cast<UNexusInteractableComponent*>(this);
+	Context.StateKey = StateKey;
+	return Context;
+}
+
+bool UNexusInteractableComponent::IsInteractionEnabled(const FNexusInteraction& Entry, AActor* Interactor, FText& OutFailReason) const
+{
+	const FNexusInteractionContext Context = BuildContext(Interactor, Entry.GetStateKey());
+	for (const TInstancedStruct<FNexusInteractionCondition>& ConditionStruct : Entry.Conditions)
+	{
+		const FNexusInteractionCondition* Condition = ConditionStruct.GetPtr<const FNexusInteractionCondition>();
+		if (!Condition) continue;
+		if (!Condition->IsMet(Context))
+		{
+			OutFailReason = Condition->GetFailReason(Context);
+			return false;
+		}
+	}
+	return true;
+}
+
+int32 UNexusInteractableComponent::ResolveBestInteraction(AActor* Interactor, FText& OutGatedReason) const
+{
+	int32 BestIndex = INDEX_NONE;
+	int32 BestPriority = MIN_int32;
+	bool bAnyGated = false;
+	FText FirstGatedReason;
+
+	for (int32 i = 0; i < Interactions.Num(); ++i)
+	{
+		const FNexusInteraction& Entry = Interactions[i];
+
+		// A consumed one-shot is no longer offered.
+		if (Entry.bOneShot && IsInteractionConsumed(Entry.GetStateKey())) continue;
+
+		FText FailReason;
+		if (IsInteractionEnabled(Entry, Interactor, FailReason))
+		{
+			// Highest Priority wins; on a tie, prefer the Primary slot.
+			const bool bBetter =
+				BestIndex == INDEX_NONE ||
+				Entry.Priority > BestPriority ||
+				(Entry.Priority == BestPriority &&
+					static_cast<uint8>(Entry.Slot) < static_cast<uint8>(Interactions[BestIndex].Slot));
+			if (bBetter)
+			{
+				BestIndex = i;
+				BestPriority = Entry.Priority;
+			}
+		}
+		else if (!bAnyGated)
+		{
+			bAnyGated = true;
+			FirstGatedReason = FailReason;
+		}
+	}
+
+	if (BestIndex == INDEX_NONE)
+	{
+		OutGatedReason = FirstGatedReason;
+	}
+	return BestIndex;
+}
+
+void UNexusInteractableComponent::RunEffects(const FNexusInteraction& Entry, AActor* Interactor)
+{
+	// Fresh result sink for this completion; effects report into it via the context.
+	LastInteractionResult = FNexusInteractionResult();
+
+	FNexusInteractionContext Context = BuildContext(Interactor, Entry.GetStateKey());
+	Context.Result = &LastInteractionResult;
+
+	for (const TInstancedStruct<FNexusInteractionEffect>& EffectStruct : Entry.Effects)
+	{
+		const FNexusInteractionEffect* Effect = EffectStruct.GetPtr<const FNexusInteractionEffect>();
+		if (Effect)
+		{
+			Effect->Execute(Context);
+		}
+	}
+}
+
+void UNexusInteractableComponent::SetInteractions(TArray<FNexusInteraction> InInteractions)
+{
+	Interactions = MoveTemp(InInteractions);
+}
+
+void UNexusInteractableComponent::SetMarkerPrompt(const FText& PromptText)
+{
+	if (UNexusWorldMarkerWidget* Marker = GetMarkerWidget())
+	{
+		Marker->SetPromptText(PromptText);
+	}
+}
+
+void UNexusInteractableComponent::MarkInteractionConsumed(FGameplayTag StateKey)
+{
+	if (StateKey.IsValid())
+	{
+		ConsumedInteractions.AddTag(StateKey);
+	}
+}
+
+bool UNexusInteractableComponent::IsInteractionConsumed(FGameplayTag StateKey) const
+{
+	return StateKey.IsValid() && ConsumedInteractions.HasTag(StateKey);
+}
+
+void UNexusInteractableComponent::GetAvailableInteractions_Implementation(AActor* Interactor, TArray<FNexusResolvedInteraction>& OutInteractions)
+{
+	OutInteractions.Reset();
+
+	// Legacy fallback: a single, always-enabled generic interaction with no verb.
+	if (Interactions.Num() == 0)
+	{
+		FNexusResolvedInteraction Resolved;
+		Resolved.HoldDuration = InteractionDuration;
+		Resolved.bEnabled = true;
+		Resolved.EntryIndex = INDEX_NONE;
+		OutInteractions.Add(Resolved);
+		return;
+	}
+
+	for (int32 i = 0; i < Interactions.Num(); ++i)
+	{
+		const FNexusInteraction& Entry = Interactions[i];
+
+		// Consumed one-shots drop out of the prompt entirely.
+		if (Entry.bOneShot && IsInteractionConsumed(Entry.GetStateKey())) continue;
+
+		FNexusResolvedInteraction Resolved;
+		Resolved.Verb = Entry.Verb;
+		Resolved.HoldDuration = Entry.HoldDuration;
+		Resolved.Slot = Entry.Slot;
+		Resolved.Prompt = Entry.PromptOverride;
+		Resolved.EntryIndex = i;
+
+		FText FailReason;
+		Resolved.bEnabled = IsInteractionEnabled(Entry, Interactor, FailReason);
+		Resolved.FailReason = FailReason;
+
+		OutInteractions.Add(Resolved);
+	}
 }
 
 

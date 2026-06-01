@@ -3,6 +3,7 @@
 #include "Kismet/KismetSystemLibrary.h"
 
 #include "Nexus/Interaction/NexusInteractableComponent.h"
+#include "Nexus/Interaction/NexusInteractionPromptLibrary.h"
 #include "Nexus/NexusCollisionChannels.h"
 #include "Nexus/Util/NexusHeroPlayerUtility.h"
 #include "Nexus/Character/NexusCharacterBase.h"
@@ -175,6 +176,7 @@ void UNexusAbility_Interaction::UpdateInteractionTarget(UNexusInteractableCompon
 	if (Previous)
 	{
 		INexusInteractableInterface::Execute_OnLostPlayerFocus(Previous);
+		Previous->SetMarkerPrompt(FText::GetEmpty());
 	}
 	else if (bTargetWasDestroyed)
 	{
@@ -186,6 +188,12 @@ void UNexusAbility_Interaction::UpdateInteractionTarget(UNexusInteractableCompon
 	if (NewInteractionTarget)
 	{
 		INexusInteractableInterface::Execute_OnGainedPlayerFocus(NewInteractionTarget);
+
+		// Resolve the verb/gate line for THIS interactor and push it to the marker,
+		// so the in-world prompt reads "Open" / "Examine" / "Locked — needs X".
+		TArray<FNexusResolvedInteraction> Resolved;
+		INexusInteractableInterface::Execute_GetAvailableInteractions(NewInteractionTarget, GetOwner(), Resolved);
+		NewInteractionTarget->SetMarkerPrompt(UNexusInteractionPromptLibrary::ResolvePrompt(Resolved));
 	}
 }
 

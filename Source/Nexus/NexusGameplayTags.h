@@ -24,6 +24,26 @@ namespace NexusGameplayTags
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Interactable_Proximity_PlayerInRange);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Interactable_State_HasPlayerFocus);
 
+	// Interaction verbs — the data-driven verb an interactable's FNexusInteraction
+	// declares. A single "interact" input resolves to one of these by data on the
+	// focused object (no input-side branch per verb).
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Interaction_Verb_PickUp);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Interaction_Verb_Open);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Interaction_Verb_Close);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Interaction_Verb_Use);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Interaction_Verb_Unlock);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Interaction_Verb_Read);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Interaction_Verb_Search);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Interaction_Verb_Examine);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Interaction_Verb_Talk);
+	// Contextual action verb — a finisher prompt that appears on a staggered enemy.
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Interaction_Verb_Finisher);
+
+	// Player examine/inspect sub-mode owned state — abilities gate off it while active.
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Character_State_Examining);
+	// Persistent "staggered" state combat applies to an enemy; the finisher verb gates on it.
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Character_State_Staggered);
+
 
 	//World Marker
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(WorldMarker_State_Visible);

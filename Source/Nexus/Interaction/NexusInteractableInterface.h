@@ -6,6 +6,8 @@
 
 #include "UObject/Interface.h"
 
+#include "Nexus/Interaction/NexusInteraction.h"
+
 #include "NexusInteractableInterface.generated.h"
 
 
@@ -34,4 +36,13 @@ public:
 	void OnGainedPlayerFocus();
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interaction")
 	void OnLostPlayerFocus();
+
+	/**
+	 * Query the interactions this object offers a given interactor and whether
+	 * each is currently enabled (with a fail reason when not). The HUD / ability
+	 * read this to resolve the prompt — verb, hold-vs-tap, gate reason — without
+	 * the interactable pushing any UI. Host-agnostic: the Interactor is any actor.
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Interaction")
+	void GetAvailableInteractions(AActor* Interactor, TArray<FNexusResolvedInteraction>& OutInteractions);
 };

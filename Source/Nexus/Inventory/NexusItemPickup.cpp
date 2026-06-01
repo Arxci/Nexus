@@ -6,17 +6,16 @@
 #include "Engine/World.h"
 #include "Engine/AssetManager.h"
 
-#include "GameFramework/Pawn.h"
-
-#include "Kismet/GameplayStatics.h"
-
 #include "TimerManager.h"
 #include "Nexus/NexusAssetManager.h"
 
 #include "Nexus/Nexus.h"
-#include "Nexus/Inventory/NexusInventoryAcquireLibrary.h"
+#include "Nexus/NexusGameplayTags.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Interaction/NexusInteractableComponent.h"
+#include "Nexus/Interaction/NexusInteraction.h"
+#include "Nexus/Interaction/NexusInteractionCondition.h"
+#include "Nexus/Interaction/NexusInteractionEffect.h"
 
 ANexusItemPickup::ANexusItemPickup()
 {
@@ -44,6 +43,8 @@ void ANexusItemPickup::BeginPlay()
 	{
 		Interactable->OnInteractionCompleted.AddDynamic(this, &ANexusItemPickup::HandleInteractionCompleted);
 	}
+
+	ConfigureInteraction();
 }
 
 void ANexusItemPickup::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -96,6 +97,7 @@ void ANexusItemPickup::ConfigurePickup(UNexusItemDefinition* InDefinition, int32
 	Definition   = InDefinition;
 	InitialCount = FMath::Max(1, InCount);
 	RequestPickupMeshLoad();
+	ConfigureInteraction();
 }
 
 void ANexusItemPickup::RequestPickupMeshLoad()
@@ -123,41 +125,62 @@ void ANexusItemPickup::RequestPickupMeshLoad()
 		}));
 }
 
+void ANexusItemPickup::ConfigureInteraction()
+{
+	if (!Interactable || !Definition) return;
+
+	// Reskin: the pickup is data on the generic component. It authors a single
+	// "Take" interaction — gated on inventory space, giving the item through the
+	// canonical acquire façade — instead of hand-coding the acquire in C++.
+	FNexusInteraction Entry;
+	Entry.Verb = NexusGameplayTags::Interaction_Verb_PickUp;
+	Entry.HoldDuration = PickupHoldDuration;
+
+	// Gate on at least one cell free; partial pickups still take what fits and
+	// leave the remainder (handled in HandleInteractionCompleted).
+	TInstancedStruct<FNexusInteractionCondition> SpaceGate;
+	SpaceGate.InitializeAs<FNexusInteractionCondition_RequiresFreeSpace>();
+	SpaceGate.GetMutable<FNexusInteractionCondition_RequiresFreeSpace>().Definition = Definition;
+	Entry.Conditions.Add(MoveTemp(SpaceGate));
+
+	// Pick Up IS a GiveItem effect — identical auto-equip / ceremony / stat-seed
+	// behaviour as the previous hand-coded path, now expressed as data.
+	TInstancedStruct<FNexusInteractionEffect> GiveStruct;
+	GiveStruct.InitializeAs<FNexusInteractionEffect_GiveItem>();
+	FNexusInteractionEffect_GiveItem& Give = GiveStruct.GetMutable<FNexusInteractionEffect_GiveItem>();
+	Give.Definition = Definition;
+	Give.Count = InitialCount;
+	Give.bAutoEquipIfPossible = bAutoEquipOnPickup;
+	Give.bSkipCeremony = bSkipCeremony;
+	Give.InitialStatTags = InitialStatTags;
+	Entry.Effects.Add(MoveTemp(GiveStruct));
+
+	TArray<FNexusInteraction> List;
+	List.Add(MoveTemp(Entry));
+	Interactable->SetInteractions(MoveTemp(List));
+}
+
 void ANexusItemPickup::HandleInteractionCompleted(AActor* Interactor)
 {
-	if (bWasCollected || !Definition) return;
+	if (bWasCollected || !Definition || !Interactable) return;
 
-	APawn* Pawn = Cast<APawn>(Interactor);
-	if (!Pawn)
-	{
-		// Fall back to the local player pawn — the interaction system passes a
-		// hero character today, but a future AI-driven interaction might pass
-		// something else. Either way, no pawn = no acquire.
-		Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
-	}
-	if (!Pawn) return;
-
-	FNexusAcquireParams AcquireParams;
-	AcquireParams.bAutoEquipIfPossible = bAutoEquipOnPickup;
-	AcquireParams.bSkipCeremony        = bSkipCeremony;
-	AcquireParams.InitialStatTags      = InitialStatTags;
-
-	const FNexusAcquireResult Result = UNexusInventoryAcquireLibrary::AcquireItem(
-		Pawn, Definition, InitialCount, AcquireParams);
-
-	if (Result.AmountAdded <= 0) return;
+	// The acquire ran as the entry's GiveItem effect; read back how much landed
+	// to decide teardown vs. leaving a remainder.
+	const FNexusInteractionResult Result = Interactable->GetLastInteractionResult();
+	if (Result.ItemsAdded <= 0) return;
 
 #if !UE_BUILD_SHIPPING
 	UE_LOG(LogNexusInventory, Verbose, TEXT("[Pickup] %s acquired %d x %s (remainder=%d)."),
-		*GetNameSafe(Pawn), Result.AmountAdded, *GetNameSafe(Definition), Result.Remainder);
+		*GetNameSafe(Interactor), Result.ItemsAdded, *GetNameSafe(Definition), Result.ItemsRemaining);
 #endif
 
 	// Partial placement (weight / slot cap) leaves the remainder visible so the
-	// player can interact again after dropping something. No teardown — the
-	// world model should stay until the pickup actually fully empties.
-	if (Result.Remainder > 0)
+	// player can interact again after dropping something. Rebuild the Take entry
+	// for the reduced count; no teardown until the pickup actually fully empties.
+	if (Result.ItemsRemaining > 0)
 	{
-		InitialCount = Result.Remainder;
+		InitialCount = Result.ItemsRemaining;
+		ConfigureInteraction();
 		return;
 	}
 

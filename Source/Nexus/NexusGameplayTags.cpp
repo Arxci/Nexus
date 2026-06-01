@@ -21,6 +21,21 @@ namespace NexusGameplayTags
 	//Interaction
 	UE_DEFINE_GAMEPLAY_TAG(Interactable_Proximity_PlayerInRange,   "Interactable.Proximity.PlayerInRange");
 	UE_DEFINE_GAMEPLAY_TAG(Interactable_State_HasPlayerFocus,   "Interactable.State.HasPlayerFocus");
+
+	// Interaction verbs
+	UE_DEFINE_GAMEPLAY_TAG(Interaction_Verb_PickUp,   "Interaction.Verb.PickUp");
+	UE_DEFINE_GAMEPLAY_TAG(Interaction_Verb_Open,     "Interaction.Verb.Open");
+	UE_DEFINE_GAMEPLAY_TAG(Interaction_Verb_Close,    "Interaction.Verb.Close");
+	UE_DEFINE_GAMEPLAY_TAG(Interaction_Verb_Use,      "Interaction.Verb.Use");
+	UE_DEFINE_GAMEPLAY_TAG(Interaction_Verb_Unlock,   "Interaction.Verb.Unlock");
+	UE_DEFINE_GAMEPLAY_TAG(Interaction_Verb_Read,     "Interaction.Verb.Read");
+	UE_DEFINE_GAMEPLAY_TAG(Interaction_Verb_Search,   "Interaction.Verb.Search");
+	UE_DEFINE_GAMEPLAY_TAG(Interaction_Verb_Examine,  "Interaction.Verb.Examine");
+	UE_DEFINE_GAMEPLAY_TAG(Interaction_Verb_Talk,     "Interaction.Verb.Talk");
+	UE_DEFINE_GAMEPLAY_TAG(Interaction_Verb_Finisher, "Interaction.Verb.Finisher");
+
+	UE_DEFINE_GAMEPLAY_TAG(Character_State_Examining, "Character.State.Examining");
+	UE_DEFINE_GAMEPLAY_TAG(Character_State_Staggered, "Character.State.Staggered");
 	
 	//World Marker
 	UE_DEFINE_GAMEPLAY_TAG(WorldMarker_State_Visible,   "WorldMarker.State.Visible");

@@ -14,6 +14,7 @@
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
     FOnMarkerStateTagChanged, FGameplayTag, Tag, bool, bAdded);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnMarkerContextChanged);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnMarkerPromptChanged, FText, PromptText);
 
 
 UCLASS(Abstract, Blueprintable)
@@ -67,6 +68,19 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "World Marker|State")
     FOnMarkerStateTagChanged OnStateTagChanged;
 
+public:
+    // Prompt — the resolved verb/gate line for the focused interactable (e.g.
+    // "Open", "Examine", "Locked — needs Square Crank"). The interactable pushes
+    // it on focus; the marker BP displays it. The marker stays UI-shape-agnostic.
+    UFUNCTION(BlueprintCallable, Category = "World Marker|Prompt")
+    void SetPromptText(const FText& InText);
+
+    UFUNCTION(BlueprintPure, Category = "World Marker|Prompt")
+    FText GetPromptText() const { return PromptText; }
+
+    UPROPERTY(BlueprintAssignable, Category = "World Marker|Prompt")
+    FOnMarkerPromptChanged OnPromptChanged;
+
 protected:
     /** BP hook for context changes — useful for one-time setup (e.g. caching references). */
     UFUNCTION(BlueprintImplementableEvent, Category = "World Marker|Context",
@@ -83,9 +97,17 @@ protected:
         meta = (DisplayName = "On State Tag Changed"))
     void K2_OnStateTagChanged(FGameplayTag Tag, bool bAdded);
 
+    /** BP hook for prompt changes — update the text block. */
+    UFUNCTION(BlueprintImplementableEvent, Category = "World Marker|Prompt",
+        meta = (DisplayName = "On Prompt Changed"))
+    void K2_OnPromptChanged(const FText& InPromptText);
+
 private:
     UPROPERTY(Transient)
     FGameplayTagContainer StateTags;
+
+    UPROPERTY(Transient)
+    FText PromptText;
 
     UPROPERTY(Transient)
     TWeakObjectPtr<USceneComponent> Anchor;

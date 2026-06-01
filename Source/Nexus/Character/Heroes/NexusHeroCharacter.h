@@ -1,6 +1,4 @@
-﻿
-
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 
@@ -19,6 +17,7 @@ class USceneComponent;
 class USpringArmComponent;
 class USkeletalMeshComponent;
 class UCameraComponent;
+class UNexusExamineComponent;
 
 
 UENUM(BlueprintType)
@@ -84,6 +83,12 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Arms")
 	TObjectPtr<USkeletalMeshComponent> FirstPersonArms;
 
+	// The first-person Examine/Inspect sub-mode. A BeginExamine effect on a focused
+	// interactable drives it; while it is active the hero routes look-input into it
+	// (rotate the item) and suppresses movement/combat via IsExamining().
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character|Interaction")
+	TObjectPtr<UNexusExamineComponent> ExamineComponent;
+
 protected:
 	// Input
 	UPROPERTY(EditAnywhere, Category = "Character|Input")
@@ -144,6 +149,9 @@ private:
 	TObjectPtr<UEnhancedInputComponent> EnhancedInputComponent;
 	
 	class UNexusInteractableComponent* GetFocusedInteractable() const;
+
+	/** True while the Examine sub-mode is active — gates movement/combat input and reroutes look. */
+	bool IsExamining() const;
 	/**
 	 * The interactable we last called TryStartInteraction on. Used on release
 	 * so a player who starts holding on A and looks away to B before releasing

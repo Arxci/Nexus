@@ -10,13 +10,18 @@
 
 #include "GameplayTagContainer.h"
 
+#include "EMSCompSaveInterface.h"
+
 #include "NexusInteractableInterface.h"
+
+#include "NexusInteraction.h"
 
 #include "NexusInteractableComponent.generated.h"
 
 class UWidgetComponent;
 class UUserWidget;
 class UNexusWorldMarkerWidget;
+struct FNexusInteractionContext;
 
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInteractionProgressed, float, ElapsedTime);
@@ -24,10 +29,11 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInteractionStarted, AActor*, Inte
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInteractionCompleted, AActor*, Interactor);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInteractionCancelled, AActor*, Interactor);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInteractionEnded, AActor*, Interactor);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnInteractionGateFailed, AActor*, Interactor, FText, Reason);
 
 
 UCLASS(Blueprintable, BlueprintType, ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
-class NEXUS_API UNexusInteractableComponent : public UActorComponent, public INexusInteractableInterface
+class NEXUS_API UNexusInteractableComponent : public UActorComponent, public INexusInteractableInterface, public IEMSCompSaveInterface
 {
 	GENERATED_BODY()
 
@@ -57,11 +63,30 @@ protected:
 
 	virtual void OnGainedPlayerFocus_Implementation() override;
 	virtual void OnLostPlayerFocus_Implementation() override;
+
+	virtual void GetAvailableInteractions_Implementation(AActor* Interactor, TArray<FNexusResolvedInteraction>& OutInteractions) override;
 	//~Stop interaction interface
 	
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Interaction")
 	void InteractionProgress();
 	
+	/**
+	 * The interactions this object offers (verb + conditions + effects). On
+	 * TryStartInteraction the component resolves the best ENABLED entry for the
+	 * interactor, holds for that entry's HoldDuration, and runs its effects in
+	 * order on completion. This is the data-driven model — a door, note, lever,
+	 * safe or merchant differ only by the entries authored here, not by a C++
+	 * actor subclass.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interaction")
+	TArray<FNexusInteraction> Interactions;
+
+	/**
+	 * Legacy single-hold fallback, used ONLY when Interactions is empty: the
+	 * component holds for this duration and fires the delegates with no effects,
+	 * so pre-data interactables (and listeners hand-bound to OnInteractionCompleted,
+	 * like an un-migrated pickup) keep working. Author Interactions instead.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interaction")
 	float InteractionDuration = 0.0f;
 
@@ -93,6 +118,36 @@ public:
 	 */
 	UPROPERTY(BlueprintAssignable, Category = "Interaction")
 	FOnInteractionEnded OnInteractionEnded;
+
+	/**
+	 * Fires when a press resolves to no enabled interaction because every offered
+	 * entry is gated (e.g. "Locked — needs Square Crank"). Carries the best gated
+	 * entry's fail reason so the HUD can flash it. No hold is started.
+	 */
+	UPROPERTY(BlueprintAssignable, Category = "Interaction")
+	FOnInteractionGateFailed OnInteractionGateFailed;
+
+	// Per-interactable "already used" state, keyed by an interaction's StateKey
+	// (its Verb by default). Marked SaveGame so it round-trips with the owning
+	// actor's EMS save (the save wiring lands in a later phase); a consumed
+	// one-shot entry is never offered again.
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	void MarkInteractionConsumed(FGameplayTag StateKey);
+
+	UFUNCTION(BlueprintPure, Category = "Interaction")
+	bool IsInteractionConsumed(FGameplayTag StateKey) const;
+
+	/** Aggregate result of the most recently completed interaction's effects (e.g. how much GiveItem placed). */
+	UFUNCTION(BlueprintPure, Category = "Interaction")
+	FNexusInteractionResult GetLastInteractionResult() const { return LastInteractionResult; }
+
+	/** Replace the authored interactions at runtime — e.g. a pickup building its Take entry from its item definition. */
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	void SetInteractions(TArray<FNexusInteraction> InInteractions);
+
+	/** Push the resolved prompt line onto this interactable's world marker (called by the focus ability). */
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	void SetMarkerPrompt(const FText& PromptText);
 
 protected:
 	//Indicator
@@ -137,8 +192,34 @@ private:
 	/** Runtime: world time when the current interaction started. */
 	float InteractionStartTime = 0.0f;
 
+	/** Runtime: index into Interactions of the entry being held, or INDEX_NONE for the legacy single-hold path. */
+	int32 ActiveInteractionIndex = INDEX_NONE;
+
+	/** Runtime: hold duration of the active entry, cached so progress/complete don't re-resolve. */
+	float ActiveHoldDuration = 0.0f;
+
+	/** Runtime: aggregate outcome of the last completed interaction's effects (read by completion listeners). */
+	UPROPERTY(Transient)
+	FNexusInteractionResult LastInteractionResult;
+
 	void CompleteInteraction();
 	void CancelInteraction();
+
+	/** Build the context passed to conditions/effects for a given interactor + state key. */
+	FNexusInteractionContext BuildContext(AActor* Interactor, FGameplayTag StateKey) const;
+
+	/** True if every condition on Entry is met for Interactor; otherwise fills OutFailReason from the first failing condition. */
+	bool IsInteractionEnabled(const FNexusInteraction& Entry, AActor* Interactor, FText& OutFailReason) const;
+
+	/** Index of the highest-priority ENABLED entry for Interactor (Primary preferred on ties), or INDEX_NONE; fills OutGatedReason when every entry is gated. */
+	int32 ResolveBestInteraction(AActor* Interactor, FText& OutGatedReason) const;
+
+	/** Run an entry's effects in order through the context (each mutates the world only via public APIs). */
+	void RunEffects(const FNexusInteraction& Entry, AActor* Interactor);
+
+	/** Per-interactable consumed-state (see MarkInteractionConsumed). Round-trips via the owning actor's EMS save once wired. */
+	UPROPERTY(SaveGame)
+	FGameplayTagContainer ConsumedInteractions;
 
 	UPROPERTY()
 	FGameplayTagContainer InteractableState;

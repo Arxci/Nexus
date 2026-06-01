@@ -19,6 +19,7 @@
 #include "Nexus/Character/Abilities/NexusAbility_Interaction.h"
 #include "Nexus/Interaction/NexusInteractableComponent.h"
 #include "Nexus/Interaction/NexusInteractableInterface.h"
+#include "Nexus/Interaction/NexusExamineComponent.h"
 
 ANexusHeroCharacter::ANexusHeroCharacter(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
@@ -77,6 +78,8 @@ ANexusHeroCharacter::ANexusHeroCharacter(const FObjectInitializer& ObjectInitial
 	// control-rotation space, so the old weld (-162.575 Z, -90 roll) no longer maps 1:1.
 	FirstPersonArms->SetRelativeLocation(FVector(0.f, 0.f, -162.575263f));
 	FirstPersonArms->SetRelativeRotation(FRotator(0.f, 0.f, -90.0f));
+
+	ExamineComponent = CreateDefaultSubobject<UNexusExamineComponent>(TEXT("ExamineComponent"));
 }
 
 void ANexusHeroCharacter::BeginPlay()
@@ -167,6 +170,11 @@ UNexusInteractableComponent* ANexusHeroCharacter::GetFocusedInteractable() const
 	return InteractAbility ? InteractAbility->GetFocusedInteractable() : nullptr;
 }
 
+bool ANexusHeroCharacter::IsExamining() const
+{
+	return ExamineComponent && ExamineComponent->IsExamining();
+}
+
 FVector ANexusHeroCharacter::GetAcceleration() const
 {
 	if (NexusCharacterMovement)
@@ -204,6 +212,14 @@ bool ANexusHeroCharacter::GetCrouchInput() const
 // Player Input
 void ANexusHeroCharacter::OnInteractInputStarted()
 {
+	// While examining, the interact button exits the sub-mode instead of starting
+	// a new interaction.
+	if (ExamineComponent && ExamineComponent->IsExamining())
+	{
+		ExamineComponent->EndExamine();
+		return;
+	}
+
 	UNexusInteractableComponent* Focused = GetFocusedInteractable();
 	if (!Focused) return;
 	ActiveInteractable = Focused;
@@ -226,6 +242,7 @@ void ANexusHeroCharacter::OnInteractInputCompleted()
 
 void ANexusHeroCharacter::OnFireInputStarted()
 {
+	if (IsExamining()) return;
 	if (!NexusAbilitySystemComponent) return;
 	NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Weapon_Fire);
 }
@@ -240,12 +257,14 @@ void ANexusHeroCharacter::OnFireInputCompleted()
 
 void ANexusHeroCharacter::OnReloadInputStarted()
 {
+	if (IsExamining()) return;
 	if (!NexusAbilitySystemComponent) return;
 	NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Weapon_Reload);
 }
 
 void ANexusHeroCharacter::OnAimInputStarted()
 {
+	if (IsExamining()) return;
 	if (!NexusAbilitySystemComponent) return;
 	if (AimInputMode == EInputMode::Hold)
 	{
@@ -266,6 +285,7 @@ void ANexusHeroCharacter::OnMeleeInputStarted()
 {
 	// One press = a light swing (knife primary, or a ranged weapon's contextual bash). The
 	// ability supports a heavy variant via SetHeavyNext for a designer-added heavy binding.
+	if (IsExamining()) return;
 	if (!NexusAbilitySystemComponent) return;
 	NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Weapon_Melee);
 }
@@ -277,6 +297,7 @@ void ANexusHeroCharacter::OnSlotSecondaryHold() { HandleSlotInput(NexusGameplayT
 
 void ANexusHeroCharacter::HandleSlotInput(FGameplayTag SlotTag, EUnholsterStyle Style)
 {
+	if (IsExamining()) return;
 	if (!NexusEquipmentComponent) return;
 
 	// Pressing the already-active slot routes through RequestActivateSlot's toggle to
@@ -286,6 +307,7 @@ void ANexusHeroCharacter::HandleSlotInput(FGameplayTag SlotTag, EUnholsterStyle 
 
 void ANexusHeroCharacter::OnCrouchInputStarted()
 {
+	if (IsExamining()) return;
 	if (!NexusAbilitySystemComponent) return;
 	if (CrouchInputMode == EInputMode::Hold)
 	{
@@ -306,6 +328,7 @@ void ANexusHeroCharacter::OnCrouchInputCompleted()
 
 void ANexusHeroCharacter::OnRunInputStarted()
 {
+	if (IsExamining()) return;
 	if (!NexusAbilitySystemComponent) return;
 	if (RunInputMode == EInputMode::Hold)
 	{
@@ -325,6 +348,8 @@ void ANexusHeroCharacter::OnRunInputCompleted()
 
 void ANexusHeroCharacter::Move(const FInputActionValue& Value)
 {
+	if (IsExamining()) return;
+
 	const FVector2D MovementVector = Value.Get<FVector2D>();
 	if (Controller == nullptr) return;
 
@@ -340,6 +365,13 @@ void ANexusHeroCharacter::Move(const FInputActionValue& Value)
 void ANexusHeroCharacter::Look(const FInputActionValue& Value)
 {
 	const FVector2D LookAxisVector = Value.Get<FVector2D>();
+
+	// While examining, look-input rotates the inspected item instead of the camera.
+	if (ExamineComponent && ExamineComponent->IsExamining())
+	{
+		ExamineComponent->AddRotationInput(LookAxisVector);
+		return;
+	}
 
 	if (Controller != nullptr)
 	{
