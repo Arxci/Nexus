@@ -4,7 +4,7 @@
 
 #include "GameplayTagContainer.h"
 
-#include "Nexus/Equipment/Attachments/NexusAttachmentTypes.h"
+#include "NexusAttachmentTypes.h"
 #include "Nexus/Inventory/NexusItemFragment.h"
 
 #include "NexusFragment_Equippable.generated.h"

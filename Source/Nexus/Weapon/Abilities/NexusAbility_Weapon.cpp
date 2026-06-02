@@ -8,7 +8,7 @@
 #include "Nexus/Inventory/NexusInventoryComponent.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
-#include "Nexus/Inventory/Fragments/Weapon/NexusFragment_Weapon.h"
+#include "Nexus/Weapon/Fragments/NexusFragment_Weapon.h"
 
 UNexusEquipmentComponent* UNexusAbility_Weapon::GetEquipment() const
 {

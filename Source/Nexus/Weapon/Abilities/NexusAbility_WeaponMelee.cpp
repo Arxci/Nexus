@@ -20,7 +20,7 @@
 #include "Nexus/Inventory/NexusInventoryComponent.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
-#include "Nexus/Inventory/Fragments/Weapon/NexusFragment_Weapon.h"
+#include "Nexus/Weapon/Fragments/NexusFragment_Weapon.h"
 #include "Nexus/NexusCollisionChannels.h"
 #include "Nexus/NexusGameplayTags.h"
 #include "Nexus/Weapon/HitDelivery/NexusHitDelivery_MeleeSweep.h"

@@ -10,7 +10,7 @@
 
 #include "Nexus/Inventory/Fragments/Equippable/NexusFragment_Equippable.h"
 #include "NexusAttachmentFragment.h"
-#include "NexusAttachmentTypes.h"
+#include "Nexus/Inventory/Fragments/Equippable/NexusAttachmentTypes.h"
 
 #include "NexusAttachmentDefinition.generated.h"
 

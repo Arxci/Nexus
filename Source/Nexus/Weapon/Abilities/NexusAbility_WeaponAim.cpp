@@ -1,7 +1,7 @@
 #include "NexusAbility_WeaponAim.h"
 
 #include "Nexus/Equipment/NexusEquippedActor.h"
-#include "Nexus/Inventory/Fragments/Weapon/NexusFragment_Weapon.h"
+#include "Nexus/Weapon/Fragments/NexusFragment_Weapon.h"
 #include "Nexus/NexusGameplayTags.h"
 
 UNexusAbility_WeaponAim::UNexusAbility_WeaponAim()

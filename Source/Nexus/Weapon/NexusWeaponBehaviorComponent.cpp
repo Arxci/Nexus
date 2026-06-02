@@ -13,7 +13,7 @@
 #include "Nexus/Equipment/NexusEquippedActor.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemInstance.h"
-#include "Nexus/Inventory/Fragments/Weapon/NexusFragment_Weapon.h"
+#include "Nexus/Weapon/Fragments/NexusFragment_Weapon.h"
 #include "Nexus/NexusGameplayTags.h"
 
 UNexusWeaponBehaviorComponent::UNexusWeaponBehaviorComponent()

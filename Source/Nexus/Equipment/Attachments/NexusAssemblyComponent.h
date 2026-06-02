@@ -8,7 +8,7 @@
 
 #include "GameplayTagContainer.h"
 
-#include "NexusAttachmentTypes.h"
+#include "Nexus/Inventory/Fragments/Equippable/NexusAttachmentTypes.h"
 #include "NexusResolvedItemStats.h"
 
 #include "NexusAssemblyComponent.generated.h"

@@ -24,7 +24,7 @@
 #include "Nexus/Inventory/NexusItemInstance.h"
 #include "Nexus/NexusGameplayTags.h"
 #include "Nexus/Inventory/NexusItemDefinition.h"
-#include "Nexus/Inventory/Fragments/Weapon/NexusFragment_Weapon.h"
+#include "Nexus/Weapon/Fragments/NexusFragment_Weapon.h"
 
 UNexusAbility_WeaponReload::UNexusAbility_WeaponReload()
 {
