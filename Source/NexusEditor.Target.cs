@@ -10,6 +10,6 @@ public class NexusEditorTarget : TargetRules
 		Type = TargetType.Editor;
 		DefaultBuildSettings = BuildSettingsVersion.V6;
 
-		ExtraModuleNames.AddRange( new string[] { "Nexus" } );
+		ExtraModuleNames.AddRange( new string[] { "Nexus", "NexusEditor" } );
 	}
 }

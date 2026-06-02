@@ -87,4 +87,8 @@ public:
 
 	/** Slot tags in SortOrder (then declaration) order — a stable sequence for UI / cycling. */
 	void GetSlotTagsSorted(TArray<FGameplayTag>& OutSlotTags) const;
+
+#if WITH_EDITOR
+	virtual EDataValidationResult IsDataValid(FDataValidationContext& Context) const override;
+#endif
 };

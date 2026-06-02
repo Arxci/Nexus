@@ -1,5 +1,7 @@
 ﻿#include "NexusAssemblyComponent.h"
 
+#include "Nexus/Equipment/Attachments/NexusStatResolver.h"
+
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Animation/Skeleton.h"
@@ -721,65 +723,9 @@ void UNexusAssemblyComponent::ResolveStatsInternal(
 		}
 	}
 
-	// Two-pass attachment fold so multiplicative modifiers always apply on top of
-	// the fully-summed additive base — matches how AAA gunsmiths describe their
-	// attachment math (flat bonus, then percentage).
-	TMap<FGameplayTag, float> AddSum;
-	TMap<FGameplayTag, float> MulProduct;
-
-	for (const UNexusAttachmentDefinition* Def : AttachmentDefs)
-	{
-		if (!Def) continue;
-		for (const FAttachmentStatModifier& Mod : Def->Modifiers)
-		{
-			if (!Mod.StatTag.IsValid()) continue;
-			AddSum.FindOrAdd(Mod.StatTag, 0.0f)     += Mod.Add;
-			MulProduct.FindOrAdd(Mod.StatTag, 1.0f) *= Mod.Mul;
-		}
-	}
-
-	for (const TPair<FGameplayTag, float>& Add : AddSum)
-	{
-		// Only modify keys we actually seeded — modifiers against unknown stat
-		// tags would otherwise silently invent values.
-		if (float* Value = Out.Values.Find(Add.Key))
-		{
-			*Value += Add.Value;
-		}
-	}
-	for (const TPair<FGameplayTag, float>& Mul : MulProduct)
-	{
-		if (float* Value = Out.Values.Find(Mul.Key))
-		{
-			*Value *= Mul.Value;
-		}
-	}
-
-	// Persistent upgrade tier: merchant tune-ups fold in as a FINAL additive tier,
-	// after the attachment multiplier (locked decision — a +N tune-up reads as +N
-	// in the gunsmith UI regardless of installed attachments). Filtered to seeded
-	// keys, so runtime instance state that isn't a resolved stat (ammo in the
-	// magazine, durability, charges) is ignored here — the same rule attachment
-	// modifiers obey against unseeded keys.
-	for (const TPair<FGameplayTag, float>& Upgrade : UpgradeStatTags)
-	{
-		if (float* Value = Out.Values.Find(Upgrade.Key))
-		{
-			*Value += Upgrade.Value;
-		}
-	}
-
-	// Final safety bound: clamp each resolved value to its authored [min,max].
-	// An entry whose Max <= Min is treated as unbounded (the neutral default), so
-	// an empty authored row never pins a stat to zero.
-	for (const TPair<FGameplayTag, FVector2D>& Bound : Clamps)
-	{
-		if (Bound.Value.Y <= Bound.Value.X) continue;
-		if (float* Value = Out.Values.Find(Bound.Key))
-		{
-			*Value = FMath::Clamp(*Value, Bound.Value.X, Bound.Value.Y);
-		}
-	}
+	// The fold (Σ/Π attachment modifiers -> + upgrade tier -> clamp) is the single
+	// source of truth shared with the editor's author-time preview.
+	FNexusStatResolver::ApplyFold(Out.Values, Clamps, AttachmentDefs, UpgradeStatTags);
 }
 
 bool UNexusAssemblyComponent::IsSlotInSubtree(FGameplayTag Slot, const FGameplayTag Root) const

@@ -23,7 +23,11 @@ class NEXUS_API UNexusItemDefinition : public UPrimaryDataAsset
 
 public:
 	virtual FPrimaryAssetId GetPrimaryAssetId() const override;
-	
+
+#if WITH_EDITOR
+	virtual EDataValidationResult IsDataValid(FDataValidationContext& Context) const override;
+#endif
+
 	// Identity
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Identity",
 		meta = (Categories = "Item.Identity"))

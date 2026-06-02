@@ -34,6 +34,10 @@ class NEXUS_API UNexusLevelManifest : public UPrimaryDataAsset
 public:
 	virtual FPrimaryAssetId GetPrimaryAssetId() const override;
 
+#if WITH_EDITOR
+	virtual EDataValidationResult IsDataValid(FDataValidationContext& Context) const override;
+#endif
+
 	/**
 	 * Items reachable in this level. The loader preloads each with the
 	 * "Equipped" bundle. Includes pickup-spawned items, loot drops, quest
