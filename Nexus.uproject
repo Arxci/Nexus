@@ -1,0 +1,80 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.7",
+	"Category": "",
+	"Description": "",
+	"Modules": [
+		{
+			"Name": "Nexus",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "ModelingToolsEditorMode",
+			"Enabled": true,
+			"TargetAllowList": [
+				"Editor"
+			]
+		},
+		{
+			"Name": "EasyMultiSave",
+			"Enabled": true
+		},
+		{
+			"Name": "QuickTween",
+			"Enabled": true
+		},
+		{
+			"Name": "ScreenSpaceFogScattering",
+			"Enabled": true,
+			"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/content/260929cfa39b43238302154c98311fc7"
+		},
+		{
+			"Name": "CMAA2",
+			"Enabled": true,
+			"MarketplaceURL": "com.epicgames.launcher://ue/Fab/product/74b323b8-265d-4f19-b5b6-305c3129d6e4"
+		},
+		{
+			"Name": "ComponentPicker",
+			"Enabled": true,
+			"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/product/79abb37a1f3a4b1fa24f97b10eb6baf9"
+		},
+		{
+			"Name": "RestartEditor",
+			"Enabled": true,
+			"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/product/a00eb1e478ae4a8fb655aa22f9125b07"
+		},
+		{
+			"Name": "ColorThemesEditor",
+			"Enabled": true,
+			"MarketplaceURL": "com.epicgames.launcher://ue/Fab/product/8b6bb566-e9d5-454e-b148-c0c334018934"
+		},
+		{
+			"Name": "ComponentTimeline",
+			"Enabled": true,
+			"MarketplaceURL": "https://publish.unrealengine.com/v3/edit-product/a861fe34f1f94dcca67cdb2ce376bd24"
+		},
+		{
+			"Name": "GameplayAbilities",
+			"Enabled": false
+		},
+		{
+			"Name": "ShaderOverridePlugin_InMemory",
+			"Enabled": true
+		},
+		{
+			"Name": "GPULightmass",
+			"Enabled": true
+		},
+		{
+			"Name": "ConsoleVariables",
+			"Enabled": true
+		},
+		{
+			"Name": "CommonUI",
+			"Enabled": true
+		}
+	]
+}
