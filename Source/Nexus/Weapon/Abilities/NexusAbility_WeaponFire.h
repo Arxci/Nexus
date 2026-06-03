@@ -54,9 +54,6 @@ protected:
 	/** The chosen hit-delivery strategy CDO for the active ranged weapon (null field -> Hitscan default). */
 	const UNexusHitDelivery* ResolveHitDelivery() const;
 
-	/** Impact FX + sound at a confirmed hit — per-pellet presentation the strategy reports back. */
-	void SpawnImpactPresentation(const FHitResult& Hit) const;
-
 	/**
 	 * Apply per-shot recoil from the effective Stat.Weapon.Recoil* keys to the player's
 	 * control rotation (vertical kick + randomized horizontal). Aiming reduces the felt

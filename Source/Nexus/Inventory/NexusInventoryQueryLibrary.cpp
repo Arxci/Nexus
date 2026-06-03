@@ -14,11 +14,6 @@ namespace
 		return Def ? Def->DisplayName.ToString() : FString();
 	}
 
-	int32 CompareName(const UNexusItemInstance& A, const UNexusItemInstance& B)
-	{
-		return DisplayNameOf(A).Compare(DisplayNameOf(B), ESearchCase::IgnoreCase);
-	}
-
 	int32 FootprintAreaOf(const UNexusItemInstance& Instance)
 	{
 		const FIntPoint Foot = Instance.GetGridFootprint();
@@ -152,14 +147,34 @@ void UNexusInventoryQueryLibrary::SortInPlace(TArray<UNexusItemInstance*>& Items
 		}
 	}
 
+	// Likewise precompute display names once: DisplayName.ToString() heap-allocates an
+	// FString, and comparing at sort time would do it twice per comparison — O(N log N)
+	// allocations across the sort. Mirrors the value-key precompute above.
+	TMap<const UNexusItemInstance*, FString> NameKeys;
+	if (SortMode == ENexusItemSortMode::NameAscending || SortMode == ENexusItemSortMode::NameDescending)
+	{
+		NameKeys.Reserve(Items.Num());
+		for (const UNexusItemInstance* Instance : Items)
+		{
+			if (Instance) NameKeys.Add(Instance, DisplayNameOf(*Instance));
+		}
+	}
+
 	// StableSort preserves acquisition order among equal keys. TArray::StableSort
 	// dereferences the pointers, so the predicate takes instances by reference.
-	Items.StableSort([SortMode, &ValueKeys](const UNexusItemInstance& A, const UNexusItemInstance& B) -> bool
+	Items.StableSort([SortMode, &ValueKeys, &NameKeys](const UNexusItemInstance& A, const UNexusItemInstance& B) -> bool
 	{
 		switch (SortMode)
 		{
-		case ENexusItemSortMode::NameAscending:      return CompareName(A, B) < 0;
-		case ENexusItemSortMode::NameDescending:     return CompareName(A, B) > 0;
+		case ENexusItemSortMode::NameAscending:
+		case ENexusItemSortMode::NameDescending:
+		{
+			// Compare cached strings by pointer — no per-comparison ToString() allocation.
+			const FString* NA = NameKeys.Find(&A);
+			const FString* NB = NameKeys.Find(&B);
+			const int32 Cmp = (NA && NB) ? NA->Compare(*NB, ESearchCase::IgnoreCase) : 0;
+			return SortMode == ENexusItemSortMode::NameAscending ? Cmp < 0 : Cmp > 0;
+		}
 		case ENexusItemSortMode::ValueDescending:    return ValueKeys.FindRef(&A) > ValueKeys.FindRef(&B);
 		case ENexusItemSortMode::ValueAscending:     return ValueKeys.FindRef(&A) < ValueKeys.FindRef(&B);
 		case ENexusItemSortMode::FootprintDescending: return FootprintAreaOf(A) > FootprintAreaOf(B);

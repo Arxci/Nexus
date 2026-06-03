@@ -12,8 +12,18 @@
 
 UNexusEquipmentComponent* UNexusAbility_Weapon::GetEquipment() const
 {
+	// Cached: the owner is fixed for the ability's lifetime, so the equipment component
+	// never moves. The hot paths (FireShot, SpawnImpact, the per-tick melee sweep) reach
+	// the weapon through several accessors that all funnel here — re-running
+	// FindComponentByClass on each would mean dozens of component-list scans per shot/swing.
+	if (UNexusEquipmentComponent* Cached = CachedEquipment.Get())
+	{
+		return Cached;
+	}
 	const AActor* Owner = GetOwner();
-	return Owner ? Owner->FindComponentByClass<UNexusEquipmentComponent>() : nullptr;
+	UNexusEquipmentComponent* Found = Owner ? Owner->FindComponentByClass<UNexusEquipmentComponent>() : nullptr;
+	CachedEquipment = Found;
+	return Found;
 }
 
 UNexusItemInstance* UNexusAbility_Weapon::GetActiveInstance() const
@@ -98,16 +108,26 @@ int32 UNexusAbility_Weapon::ConsumeReserveAmmo(const int32 Amount) const
 	UNexusInventoryComponent* Inventory = Owner->FindComponentByClass<UNexusInventoryComponent>();
 	if (!Inventory) return 0;
 
+	// Gather the matching ammo stacks first. RemoveFromInstance deletes a depleted stack
+	// from the inventory, so we must not remove while iterating the live Items array;
+	// collecting up front (no removal in this loop) is safe and, for the common
+	// one-or-two-stack case, allocates nothing thanks to the inline storage — versus the
+	// prior full-inventory snapshot copy on every pooled-ammo shot / reload.
+	const FGameplayTag AmmoTag = Weapon->Ranged.Ammo.AmmoIdentityTag;
+	TArray<UNexusItemInstance*, TInlineAllocator<8>> Matching;
+	for (UNexusItemInstance* Inst : Inventory->GetItems())
+	{
+		if (Inst && Inst->GetIdentityTag().MatchesTagExact(AmmoTag))
+		{
+			Matching.Add(Inst);
+		}
+	}
+
 	int32 Remaining = Amount;
-	TArray<UNexusItemInstance*> Snapshot = Inventory->GetItems();
-	for (UNexusItemInstance* Inst : Snapshot)
+	for (UNexusItemInstance* Inst : Matching)
 	{
 		if (Remaining <= 0) break;
-		if (!Inst) continue;
-		if (!Inst->GetIdentityTag().MatchesTagExact(Weapon->Ranged.Ammo.AmmoIdentityTag)) continue;
-
-		const int32 Taken = Inventory->RemoveFromInstance(Inst, Remaining);
-		Remaining -= Taken;
+		Remaining -= Inventory->RemoveFromInstance(Inst, Remaining);
 	}
 	return Amount - Remaining;
 }

@@ -42,7 +42,7 @@ namespace
 {
 	int32 GNexusWeaponDebugTrace = 0;
 	FAutoConsoleVariableRef CVarNexusWeaponDebugTrace(
-		TEXT("Nexus.Weapon.Debugtrace"),
+		TEXT("Nexus.Weapon.DebugTrace"),
 		GNexusWeaponDebugTrace,
 		TEXT("Visualize weapon traces. 0 = off, 1 = draw line + impact sphere, 2 = also UE_LOG per shot."),
 		ECVF_Cheat);
@@ -258,6 +258,10 @@ void UNexusAbility_WeaponFire::FireShot() const
 	UNexusItemInstance* Instance        = GetActiveInstance();
 	if (!Weapon || !Instance || !Weapon->bHasRanged) return;
 
+	// Resolve the definition once and reuse it for every per-shot asset lookup below,
+	// instead of GetActiveDefinition() re-walking instance -> definition on each call.
+	const UNexusItemDefinition* Definition = Instance->GetDefinition();
+
 	const FWeaponRangedSpec& R = Weapon->Ranged;
 
 	switch (R.Ammo.AmmoModel)
@@ -329,6 +333,12 @@ void UNexusAbility_WeaponFire::FireShot() const
 	const UNexusHitDelivery* Strategy = ResolveHitDelivery();
 	if (!Strategy) return;
 
+	// Impact FX / sound are identical for every pellet and every hit — resolve them once
+	// here rather than re-resolving (and re-walking the weapon fragment + definition) for
+	// each hit inside the loop below.
+	UFXSystemAsset* ImpactFX    = NexusWeapon::GetEquippedAsset(R.Presentation.ImpactFX,    TEXT("ImpactFX"),    Definition);
+	USoundBase*     ImpactSound = NexusWeapon::GetEquippedAsset(R.Presentation.ImpactSound, TEXT("ImpactSound"), Definition);
+
 	const int32 Pellets = FMath::Max(1, R.Combat.PelletsPerShot);
 	int32 ReceiversHit = 0;
 	FGameplayTagContainer HitContextTags;
@@ -351,7 +361,8 @@ void UNexusAbility_WeaponFire::FireShot() const
 
 		for (const FHitResult& Hit : Result.Hits)
 		{
-			SpawnImpactPresentation(Hit);
+			if (ImpactFX)    SpawnFXAtLocation(this, ImpactFX, Hit.ImpactPoint, Hit.ImpactNormal.Rotation());
+			if (ImpactSound) UGameplayStatics::PlaySoundAtLocation(this, ImpactSound, Hit.ImpactPoint);
 		}
 
 		ReceiversHit += Result.ReceiversDamaged;
@@ -378,13 +389,13 @@ void UNexusAbility_WeaponFire::FireShot() const
 	}
 
 	if (USoundBase* S = NexusWeapon::GetEquippedAsset(R.Presentation.FireSound,
-		TEXT("FireSound"), GetActiveDefinition()))
+		TEXT("FireSound"), Definition))
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, S, ViewLoc);
 	}
 
 	if (UFXSystemAsset* FX = NexusWeapon::GetEquippedAsset(R.Presentation.MuzzleFlash,
-		TEXT("MuzzleFlash"), GetActiveDefinition()))
+		TEXT("MuzzleFlash"), Definition))
 	{
 		SpawnFXAtLocation(this, FX, MuzzleLoc, MuzzleRot);
 	}
@@ -409,24 +420,6 @@ const UNexusHitDelivery* UNexusAbility_WeaponFire::ResolveHitDelivery() const
 		Class = UNexusHitDelivery_Hitscan::StaticClass();
 	}
 	return GetDefault<UNexusHitDelivery>(Class);
-}
-
-void UNexusAbility_WeaponFire::SpawnImpactPresentation(const FHitResult& Hit) const
-{
-	const FNexusFragment_Weapon* Weapon = GetWeaponFragment();
-	if (!Weapon) return;
-
-	if (UFXSystemAsset* Impact = NexusWeapon::GetEquippedAsset(Weapon->Ranged.Presentation.ImpactFX,
-		TEXT("ImpactFX"), GetActiveDefinition()))
-	{
-		SpawnFXAtLocation(this, Impact, Hit.ImpactPoint, Hit.ImpactNormal.Rotation());
-	}
-
-	if (USoundBase* ImpactS = NexusWeapon::GetEquippedAsset(Weapon->Ranged.Presentation.ImpactSound,
-		TEXT("ImpactSound"), GetActiveDefinition()))
-	{
-		UGameplayStatics::PlaySoundAtLocation(this, ImpactS, Hit.ImpactPoint);
-	}
 }
 
 void UNexusAbility_WeaponFire::ApplyRecoil() const

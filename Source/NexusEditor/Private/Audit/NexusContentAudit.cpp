@@ -378,7 +378,7 @@ FNexusAuditResult FNexusContentAudit::Run()
 	// Attachments nothing references — no item slot defaults to one and no manifest lists it.
 	for (UNexusAttachmentDefinition* Attachment : Attachments)
 	{
-		if (Attachment && GetReferencers(Attachment).Num() == 0)
+		if (Attachment && GetReferencers(Attachment).IsEmpty())
 		{
 			AddFinding(Result, ENexusAuditSeverity::Info,
 				FText::FromString(FString::Printf(

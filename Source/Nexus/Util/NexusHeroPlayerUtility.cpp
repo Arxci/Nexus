@@ -1,8 +1,16 @@
 ﻿#include "NexusHeroPlayerUtility.h"
 
-#include "GameFramework/Pawn.h"
+#include "CollisionQueryParams.h"
 
+#include "Engine/EngineTypes.h"
+#include "Engine/World.h"
+
+#include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+
+#if ENABLE_DRAW_DEBUG
+#include "DrawDebugHelpers.h"
+#endif
 
 
 bool UNexusHeroPlayerUtility::CameraForwardTrace(
@@ -14,6 +22,9 @@ bool UNexusHeroPlayerUtility::CameraForwardTrace(
 	const bool bTraceComplex, const float SpreadHalfAngleDegrees)
 {
 	if (!Pawn) return false;
+
+	UWorld* World = Pawn->GetWorld();
+	if (!World) return false;
 
 	FVector CamLoc;
 	FRotator CamRot;
@@ -36,21 +47,25 @@ bool UNexusHeroPlayerUtility::CameraForwardTrace(
 	const FVector Start = CamLoc;
 	const FVector End   = Start + Direction * Distance;
 
-	TArray<AActor*> ActorsToIgnore;
-	ActorsToIgnore.Add(const_cast<APawn*>(Pawn));
+	// Low-level world trace with an FCollisionQueryParams ignore list instead of the
+	// KismetSystemLibrary helper, so this per-tick interaction focus trace doesn't
+	// heap-allocate an ignore-actor TArray every frame.
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(NexusCameraForwardTrace), bTraceComplex);
+	Params.AddIgnoredActor(Pawn);
 
-	return UKismetSystemLibrary::LineTraceSingle(
-		Pawn,                                              // WorldContextObject
-		Start,
-		End,
-		TraceChannel,
-		bTraceComplex,
-		ActorsToIgnore,
-		DrawDebugType,
-		OutHit,
-		true,                                              // bIgnoreSelf
-		FLinearColor::Red,
-		FLinearColor::Green,
-		DrawTime                                             // DrawTime
-	);
+	const ECollisionChannel Channel = UEngineTypes::ConvertToCollisionChannel(TraceChannel);
+	const bool bHit = World->LineTraceSingleByChannel(OutHit, Start, End, Channel, Params);
+
+#if ENABLE_DRAW_DEBUG
+	if (DrawDebugType != EDrawDebugTrace::None)
+	{
+		DrawDebugLine(World, Start, bHit ? OutHit.ImpactPoint : End, FColor::Red, false, DrawTime);
+		if (bHit)
+		{
+			DrawDebugSphere(World, OutHit.ImpactPoint, 8.0f, 12, FColor::Green, false, DrawTime);
+		}
+	}
+#endif
+
+	return bHit;
 }

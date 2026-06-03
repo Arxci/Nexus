@@ -14,6 +14,16 @@ namespace
 		const UNexusItemDefinition* Def = Instance->GetDefinition();
 		return Def ? Def->Weight * Instance->GetStackCount() : 0.0f;
 	}
+
+	// First-fit-decreasing order: largest footprint first packs tightest. Shared by the two
+	// repack paths (OptimizeSpatialSection / ResizeGrid). TArray::Sort dereferences pointer
+	// elements, so the predicate takes instances by reference.
+	bool FootprintAreaDescending(const UNexusItemInstance& A, const UNexusItemInstance& B)
+	{
+		const FIntPoint FA = A.GetGridFootprint();
+		const FIntPoint FB = B.GetGridFootprint();
+		return (FA.X * FA.Y) > (FB.X * FB.Y);
+	}
 }
 
 void UNexusItemContainer::Configure(int32 InGridWidth, int32 InGridHeight, float InWeightCapacity,
@@ -186,19 +196,6 @@ FNexusAddItemResult UNexusItemContainer::AddItem(UNexusItemDefinition* Definitio
 		NewInstance->SetGridPlacement(PlacePos, bPlaceRotated);
 		Items.Add(NewInstance);
 		BindInstance(NewInstance);
-
-#if !UE_BUILD_SHIPPING
-		// One-shot diagnostic for the leak hunt — confirms whether the Definition*
-		// stays the same asset across PIE (correct) or a fresh transient copy is
-		// being constructed each call (leak source). Delete once pinned.
-		UE_LOG(LogNexusInventory, Warning,
-			TEXT("[InvDiag] AddItem    Container=%p  NewItem=%s (%p)  Def=%s (%p)  DefOuter=%s  DefClass=%s"),
-			this,
-			*GetFullNameSafe(NewInstance), NewInstance,
-			*GetFullNameSafe(Definition),  Definition,
-			*GetFullNameSafe(Definition ? Definition->GetOuter() : nullptr),
-			Definition ? *Definition->GetClass()->GetName() : TEXT("-"));
-#endif
 
 		Placed += ToPlace;
 		CachedUsedWeight += ToPlace * Definition->Weight;
@@ -534,41 +531,15 @@ int32 UNexusItemContainer::GetRemainingCapacityForDefinition(const UNexusItemDef
 	const int32 BaseW = FMath::Max(1, Definition->GridSize.X);
 	const int32 BaseH = FMath::Max(1, Definition->GridSize.Y);
 
-	auto TryPlace = [&Occupied, this](int32 W, int32 H) -> bool
-	{
-		for (int32 Y = 0; Y + H <= GridHeight; ++Y)
-		{
-			for (int32 X = 0; X + W <= GridWidth; ++X)
-			{
-				bool bFree = true;
-				for (int32 dy = 0; dy < H && bFree; ++dy)
-				{
-					for (int32 dx = 0; dx < W && bFree; ++dx)
-					{
-						if (Occupied[(Y + dy) * GridWidth + (X + dx)]) bFree = false;
-					}
-				}
-				if (bFree)
-				{
-					for (int32 dy = 0; dy < H; ++dy)
-					{
-						for (int32 dx = 0; dx < W; ++dx)
-						{
-							Occupied[(Y + dy) * GridWidth + (X + dx)] = true;
-						}
-					}
-					return true;
-				}
-			}
-		}
-		return false;
-	};
-
 	int32 NewStacks = 0;
 	const int32 MaxStacksByGrid = GridWidth * GridHeight; // hard upper bound on iterations
+	FIntPoint ScratchPos;
 	for (int32 i = 0; i < MaxStacksByGrid; ++i)
 	{
-		if (TryPlace(BaseW, BaseH) || (BaseW != BaseH && TryPlace(BaseH, BaseW)))
+		// Reuse the shared first-fit scratch placement (also used by the repack paths)
+		// rather than re-implementing the row-major free-region scan inline.
+		if (ScratchPlace(Occupied, BaseW, BaseH, ScratchPos)
+			|| (BaseW != BaseH && ScratchPlace(Occupied, BaseH, BaseW, ScratchPos)))
 		{
 			++NewStacks;
 		}
@@ -746,12 +717,7 @@ bool UNexusItemContainer::OptimizeSpatialSection()
 
 	// First-fit-decreasing: largest footprint first packs tightest. TArray::Sort
 	// dereferences the pointers, so the predicate takes instances by reference.
-	Spatial.Sort([](const UNexusItemInstance& A, const UNexusItemInstance& B)
-	{
-		const FIntPoint FA = A.GetGridFootprint();
-		const FIntPoint FB = B.GetGridFootprint();
-		return (FA.X * FA.Y) > (FB.X * FB.Y);
-	});
+	Spatial.Sort(FootprintAreaDescending);
 
 	// Plan placements on a scratch occupancy grid; mutate nothing until every item fits.
 	TArray<bool> Occupied;
@@ -823,12 +789,7 @@ void UNexusItemContainer::ResizeGrid(int32 NewWidth, int32 NewHeight, TArray<UNe
 	if (Spatial.Num() == 0) return;
 
 	// First-fit-decreasing pack into the new dimensions.
-	Spatial.Sort([](const UNexusItemInstance& A, const UNexusItemInstance& B)
-	{
-		const FIntPoint FA = A.GetGridFootprint();
-		const FIntPoint FB = B.GetGridFootprint();
-		return (FA.X * FA.Y) > (FB.X * FB.Y);
-	});
+	Spatial.Sort(FootprintAreaDescending);
 
 	TArray<bool> Occupied;
 	Occupied.Init(false, GridWidth * GridHeight);

@@ -108,4 +108,14 @@ protected:
 	 * direction) — no player-camera utility, no first-person assumption.
 	 */
 	void ResolveAimRay(FVector& OutLocation, FRotator& OutRotation) const;
+
+private:
+	/**
+	 * Cached equipment-component handle. The ability's owner is fixed for its lifetime, so
+	 * the component never moves; caching it keeps the hot fire / melee paths from re-running
+	 * FindComponentByClass on every accessor call (GetActiveInstance / GetActiveDefinition /
+	 * GetEquippedActor / GetWeaponFragment all route through GetEquipment). Weak so a
+	 * torn-down component is transparently re-resolved; mutable so the const accessors fill it.
+	 */
+	mutable TWeakObjectPtr<UNexusEquipmentComponent> CachedEquipment;
 };
