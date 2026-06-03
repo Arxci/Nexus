@@ -17,6 +17,8 @@
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Equipment/Attachments/NexusAttachmentDefinition.h"
 
+#include "Settings/NexusEditorSettings.h"
+
 #define LOCTEXT_NAMESPACE "NexusManifestBuilder"
 
 namespace
@@ -25,7 +27,7 @@ namespace
 	{
 		IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
 		FString OutPackageName, OutAssetName;
-		AssetTools.CreateUniqueAssetName(FString(TEXT("/Game/Nexus/Manifests")) / AssetName, FString(), OutPackageName, OutAssetName);
+		AssetTools.CreateUniqueAssetName(UNexusEditorSettings::Get().ManifestFolder / AssetName, FString(), OutPackageName, OutAssetName);
 
 		UPackage* Package = CreatePackage(*OutPackageName);
 		if (!Package) { return nullptr; }

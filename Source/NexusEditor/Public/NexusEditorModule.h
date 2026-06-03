@@ -8,11 +8,11 @@ class SDockTab;
 class SNexusCreatorWindow;
 
 /**
- * Editor module entry point. On startup it registers the Nexus Content
- * Dashboard as a nomad tab and adds an entry to the level editor's Tools menu;
- * the cross-asset validator (UNexusContentGraphValidator) needs no manual
- * registration — the editor's validation subsystem discovers UEditorValidatorBase
- * subclasses by reflection once this module is loaded.
+ * Editor module entry point. On startup it registers the Nexus tool tabs as nomad
+ * tabs and adds entries to the level editor's Tools menu; the cross-asset validator
+ * (UNexusContentGraphValidator) needs no manual registration — the editor's
+ * validation subsystem discovers UEditorValidatorBase subclasses by reflection once
+ * this module is loaded.
  */
 class FNexusEditorModule : public IModuleInterface
 {
@@ -30,6 +30,9 @@ private:
 	TSharedRef<SDockTab> SpawnPreviewTab(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnCraftingTab(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnMatrixTab(const FSpawnTabArgs& Args);
+	TSharedRef<SDockTab> SpawnGridTab(const FSpawnTabArgs& Args);
+	TSharedRef<SDockTab> SpawnTagAuditTab(const FSpawnTabArgs& Args);
+	TSharedRef<SDockTab> SpawnEconomyTab(const FSpawnTabArgs& Args);
 
 	/** Tab ids used to register each spawner and invoke it from the Tools menu. */
 	static const FName DashboardTabName;
@@ -37,6 +40,9 @@ private:
 	static const FName PreviewTabName;
 	static const FName CraftingTabName;
 	static const FName MatrixTabName;
+	static const FName GridTabName;
+	static const FName TagAuditTabName;
+	static const FName EconomyTabName;
 
 	/** The live Creator window, so other tools can hand assets to it. */
 	static TWeakPtr<SNexusCreatorWindow> ActiveCreator;

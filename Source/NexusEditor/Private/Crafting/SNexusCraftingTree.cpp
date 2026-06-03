@@ -24,6 +24,8 @@
 #include "Creation/NexusAssetCreationLibrary.h"
 #include "NexusEditorModule.h"
 
+#include "Settings/NexusEditorSettings.h"
+
 #define LOCTEXT_NAMESPACE "NexusCraftingTree"
 
 namespace
@@ -244,7 +246,7 @@ FReply SNexusCraftingTree::OnNewRecipeClicked()
 
 	FText Error;
 	UNexusCombinationRecipe* Recipe = FNexusAssetCreation::CreateRecipe(
-		TEXT("/Game/Nexus/Blueprint/Data/Recipes"), TEXT("NewRecipe"), SeedOutput, Error);
+		UNexusEditorSettings::Get().RecipeFolder, TEXT("NewRecipe"), SeedOutput, Error);
 	if (Recipe)
 	{
 		FNexusEditorModule::OpenCreatorWith(Recipe);

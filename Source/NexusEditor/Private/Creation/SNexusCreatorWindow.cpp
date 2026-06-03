@@ -44,6 +44,8 @@
 #include "Nexus/Equipment/NexusEquipmentLoadout.h"
 #include "Manifest/NexusManifestBuilder.h"
 
+#include "Settings/NexusEditorSettings.h"
+
 #define LOCTEXT_NAMESPACE "NexusCreatorWindow"
 
 namespace
@@ -60,6 +62,8 @@ namespace
 
 void SNexusCreatorWindow::Construct(const FArguments& InArgs)
 {
+	bRouteByType = UNexusEditorSettings::Get().bRouteIntoTypeFoldersByDefault;
+
 	// --- Combo sources --------------------------------------------------------
 	ItemTemplates =
 	{
@@ -200,7 +204,7 @@ void SNexusCreatorWindow::Construct(const FArguments& InArgs)
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 					[ SectionLabel(LOCTEXT("FolderColon", "FOLDER")) ]
 					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(8.0f, 0.0f)
-					[ SAssignNew(FolderBox, SEditableTextBox).Text(FText::FromString(TEXT("/Game/Nexus/Blueprint/Data"))) ]
+					[ SAssignNew(FolderBox, SEditableTextBox).Text(FText::FromString(UNexusEditorSettings::Get().AuthoringRootFolder)) ]
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 					[
 						SAssignNew(FolderPickerButton, SComboButton)
@@ -678,7 +682,7 @@ FText SNexusCreatorWindow::GetActiveHostText() const
 
 FString SNexusCreatorWindow::CurrentFolder() const
 {
-	return FolderBox.IsValid() ? FolderBox->GetText().ToString() : TEXT("/Game/Nexus/Blueprint/Data");
+	return FolderBox.IsValid() ? FolderBox->GetText().ToString() : UNexusEditorSettings::Get().AuthoringRootFolder;
 }
 
 FString SNexusCreatorWindow::CurrentName() const

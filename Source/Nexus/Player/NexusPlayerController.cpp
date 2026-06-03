@@ -1,4 +1,4 @@
-﻿#include "NexusPlayerController.h"
+#include "NexusPlayerController.h"
 
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
@@ -6,10 +6,16 @@
 #include "NexusPlayerCameraManager.h"
 #include "Nexus/Loading/NexusLoadingGateSubsystem.h"
 #include "Nexus/Util/NexusUIUtility.h"
+#include "Nexus/Cheats/NexusCheatManager.h"
 
 ANexusPlayerController::ANexusPlayerController()
 {
 	PlayerCameraManagerClass = ANexusPlayerCameraManager::StaticClass();
+
+	// Dev/QA console commands (Nexus_GiveItem, Nexus_AddCurrency, Nexus_MaxUpgradeEquipped, ...).
+	// UCheatManager is only instantiated when cheats are enabled (PIE, or EnableCheats) and is
+	// never created in a Shipping build, so this can't reach a shipping player.
+	CheatClass = UNexusCheatManager::StaticClass();
 }
 
 void ANexusPlayerController::BeginPlay()

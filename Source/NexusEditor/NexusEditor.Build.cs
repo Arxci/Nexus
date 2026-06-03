@@ -3,10 +3,11 @@
 using UnrealBuildTool;
 
 /**
- * Editor-only module for Nexus authoring tools: the cross-asset content
- * validator and the content dashboard. Kept separate from the runtime "Nexus"
- * module because it links editor-only modules (UnrealEd, DataValidation, Slate,
- * ToolMenus) that must never end up in a packaged build.
+ * Editor-only module for Nexus authoring tools.
+ *
+ * NOTE: this is the cumulative Build.cs — it supersedes the one shipped in the
+ * Phase 1-2 zip (same contents plus "AssetDefinition" for the custom asset
+ * definitions / right-click Create factories added in Phase 3).
  */
 public class NexusEditor : ModuleRules
 {
@@ -27,9 +28,11 @@ public class NexusEditor : ModuleRules
 			"Nexus",          // the runtime data-asset types we audit / create
 			"Slate",
 			"SlateCore",
-			"UnrealEd",       // asset editor subsystem, GEditor, save utils
+			"UnrealEd",       // asset editor subsystem, GEditor, save utils, UFactory
 			"ToolMenus",      // Tools-menu entries
 			"DataValidation", // UEditorValidatorBase
+			"DeveloperSettings", // UNexusEditorSettings (Project Settings page for the tools)
+			"AssetDefinition", // UAssetDefinitionDefault (colours / categories / right-click Create)
 			"GameplayTags",
 			"GameplayTagsEditor", // register derived identity tags (AddNewGameplayTagToINI)
 			"AssetRegistry",  // scan all item/attachment assets
