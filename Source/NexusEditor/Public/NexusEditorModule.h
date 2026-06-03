@@ -46,6 +46,7 @@ public:
 	static const FName GridTabName;
 	static const FName TagAuditTabName;
 	static const FName EconomyTabName;
+	static const FName DocsTabName;
 
 private:
 	void RegisterMenus();
@@ -63,6 +64,7 @@ private:
 	TSharedRef<SDockTab> SpawnGridTab(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnTagAuditTab(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnEconomyTab(const FSpawnTabArgs& Args);
+	TSharedRef<SDockTab> SpawnDocsTab(const FSpawnTabArgs& Args);
 
 	/** The live Creator window, so other tools can hand assets to it. */
 	static TWeakPtr<SNexusCreatorWindow> ActiveCreator;

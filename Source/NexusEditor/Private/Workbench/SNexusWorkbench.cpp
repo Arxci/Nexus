@@ -8,6 +8,7 @@
 #include "Crafting/SNexusCraftingTree.h"
 #include "Creation/SNexusCreatorWindow.h"
 #include "Dashboard/SNexusContentDashboard.h"
+#include "Docs/SNexusDocsBrowser.h"
 #include "Economy/SNexusEconomyView.h"
 #include "Grid/SNexusGridPreview.h"
 #include "Matrix/SNexusAttachmentMatrix.h"
@@ -282,6 +283,7 @@ TSharedPtr<SWidget> SNexusWorkbench::ConstructToolWidget(FName TabName) const
 	if (TabName == FNexusEditorModule::GridTabName)     { return SNew(SNexusGridPreview); }
 	if (TabName == FNexusEditorModule::TagAuditTabName) { return SNew(SNexusTagAudit); }
 	if (TabName == FNexusEditorModule::EconomyTabName)  { return SNew(SNexusEconomyView); }
+	if (TabName == FNexusEditorModule::DocsTabName)     { return SNew(SNexusDocsBrowser); }
 	return nullptr;
 }
 

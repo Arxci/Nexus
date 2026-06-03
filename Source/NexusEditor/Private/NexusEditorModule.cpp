@@ -8,6 +8,7 @@
 #include "Grid/SNexusGridPreview.h"
 #include "Tags/SNexusTagAudit.h"
 #include "Economy/SNexusEconomyView.h"
+#include "Docs/SNexusDocsBrowser.h"
 #include "Hub/SNexusHub.h"
 #include "Workbench/SNexusWorkbench.h"
 #include "Manifest/NexusManifestBuilder.h"
@@ -38,6 +39,7 @@ const FName FNexusEditorModule::MatrixTabName(TEXT("NexusAttachmentMatrix"));
 const FName FNexusEditorModule::GridTabName(TEXT("NexusGridPreview"));
 const FName FNexusEditorModule::TagAuditTabName(TEXT("NexusTagAudit"));
 const FName FNexusEditorModule::EconomyTabName(TEXT("NexusEconomyView"));
+const FName FNexusEditorModule::DocsTabName(TEXT("NexusDocsBrowser"));
 TWeakPtr<SNexusCreatorWindow> FNexusEditorModule::ActiveCreator;
 
 void FNexusEditorModule::StartupModule()
@@ -114,6 +116,13 @@ void FNexusEditorModule::StartupModule()
 		.SetTooltipText(LOCTEXT("EconomyTooltip", "Item value-per-cell balance sheet with outliers flagged."))
 		.SetMenuType(ETabSpawnerMenuType::Hidden);
 
+	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+			DocsTabName,
+			FOnSpawnTab::CreateRaw(this, &FNexusEditorModule::SpawnDocsTab))
+		.SetDisplayName(LOCTEXT("DocsTitle", "Nexus API Reference"))
+		.SetTooltipText(LOCTEXT("DocsTooltip", "Browse every Nexus class, struct, and Blueprint-callable function — designer-friendly API docs auto-generated from C++."))
+		.SetMenuType(ETabSpawnerMenuType::Hidden);
+
 	// ToolMenus may not be ready this early in startup; defer menu wiring.
 	UToolMenus::RegisterStartupCallback(
 		FSimpleMulticastDelegate::FDelegate::CreateRaw(this, &FNexusEditorModule::RegisterMenus));
@@ -136,6 +145,7 @@ void FNexusEditorModule::ShutdownModule()
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(GridTabName);
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TagAuditTabName);
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(EconomyTabName);
+		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(DocsTabName);
 	}
 }
 
@@ -365,6 +375,15 @@ TSharedRef<SDockTab> FNexusEditorModule::SpawnEconomyTab(const FSpawnTabArgs& Ar
 		.TabRole(ETabRole::NomadTab)
 		[
 			SNew(SNexusEconomyView)
+		];
+}
+
+TSharedRef<SDockTab> FNexusEditorModule::SpawnDocsTab(const FSpawnTabArgs& Args)
+{
+	return SNew(SDockTab)
+		.TabRole(ETabRole::NomadTab)
+		[
+			SNew(SNexusDocsBrowser)
 		];
 }
 

@@ -57,6 +57,15 @@ namespace NexusEditorTools
 				TEXT("Icons.Box"),
 				ECategory::Inspection,
 			},
+			{
+				FNexusEditorModule::DocsTabName,
+				TEXT("OpenNexusDocs"),
+				LOCTEXT("DocsLabel", "API Reference"),
+				LOCTEXT("DocsTooltip", "Designer-friendly docs for every Nexus class, struct, and Blueprint-callable function — auto-generated from C++."),
+				LOCTEXT("DocsDesc", "Auto-generated reference for every Blueprint-callable function and exposed property."),
+				TEXT("Icons.Help"),
+				ECategory::Inspection,
+			},
 
 			// Auditing --------------------------------------------------------
 			{
