@@ -40,6 +40,8 @@ public class NexusEditor : ModuleRules
 			"PropertyEditor", // embedded Details panel in the creator window
 			"ContentBrowser", // folder picker in the creator window
 			"DesktopPlatform", // CSV export/import file dialogs
+			"AdvancedPreviewScene", // 3D mesh preview in the creator window
+			"AssetManagerEditor", // reference viewer launch from the validation banner
 		});
 	}
 }

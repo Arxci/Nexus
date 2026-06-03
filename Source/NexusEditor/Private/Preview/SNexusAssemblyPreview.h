@@ -7,6 +7,7 @@
 #include "Preview/NexusAssemblyPreview.h"
 
 class ITableRow;
+class SNexusStatRadar;
 class STableViewBase;
 class SWidget;
 class UNexusItemDefinition;
@@ -61,6 +62,7 @@ private:
 
 	TSharedPtr<SListView<TSharedPtr<FAttachmentToggle>>> AttachmentListView;
 	TSharedPtr<SListView<TSharedPtr<FNexusResolvedStat>>> StatListView;
+	TSharedPtr<SNexusStatRadar> StatRadar;
 
 	int32 UpgradeTier = 0;
 	int32 MaxTier = 0;

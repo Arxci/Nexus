@@ -13,6 +13,7 @@ class ITableRow;
 class STableViewBase;
 class SComboButton;
 class SEditableTextBox;
+class SNexusItemViewport;
 class SWidget;
 class UNexusItemDefinition;
 struct FPropertyChangedEvent;
@@ -94,7 +95,8 @@ private:
 	FText GetAttachmentTypeText() const;
 
 	// Working set.
-	void AddEntry(UObject* Asset, const FString& Label);
+	/** Returns true if a new entry was added; false if the asset was already in the working set (in which case it's just re-selected). */
+	bool AddEntry(UObject* Asset, const FString& Label);
 	void SelectEntry(TSharedPtr<FCreatedEntry> Entry);
 	TSharedRef<ITableRow> OnGenerateEntryRow(TSharedPtr<FCreatedEntry> Entry, const TSharedRef<STableViewBase>& Owner);
 	void OnEntrySelectionChanged(TSharedPtr<FCreatedEntry> Entry, ESelectInfo::Type SelectInfo);
@@ -122,6 +124,9 @@ private:
 	FSlateColor GetValidationColor() const;
 	FText GetReferencesTooltip() const;
 	EVisibility GetBannerVisibility() const;
+
+	/** Banner click action — opens the Reference Viewer for the inspected asset. */
+	FReply OnBannerClicked();
 	FString CurrentFolder() const;
 	FString CurrentName() const;
 
@@ -143,6 +148,7 @@ private:
 	TSharedPtr<SEditableTextBox> NameBox;
 	TSharedPtr<SComboButton> FolderPickerButton;
 	TSharedPtr<IDetailsView> DetailsView;
+	TSharedPtr<SNexusItemViewport> PreviewViewport;
 
 	TArray<TSharedPtr<FCreatedEntry>> Entries;
 	TSharedPtr<SListView<TSharedPtr<FCreatedEntry>>> EntryListView;

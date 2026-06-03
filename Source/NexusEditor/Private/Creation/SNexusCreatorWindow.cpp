@@ -1,6 +1,7 @@
 #include "Creation/SNexusCreatorWindow.h"
 
 #include "Creation/NexusAssetCreationLibrary.h"
+#include "Preview/SNexusItemViewport.h"
 
 #include "IDetailsView.h"
 #include "PropertyEditorModule.h"
@@ -11,6 +12,7 @@
 #include "Misc/DataValidation.h"
 
 #include "ContentBrowserModule.h"
+#include "AssetManagerEditorModule.h"
 #include "IContentBrowserSingleton.h"
 
 #include "Framework/Application/SlateApplication.h"
@@ -387,27 +389,52 @@ void SNexusCreatorWindow::Construct(const FArguments& InArgs)
 			[
 				SNew(SVerticalBox)
 
-				// Live validation + "where used" banner.
+				// Live validation + "where used" banner. The whole row is a
+				// button: clicking it opens the Reference Viewer for the
+				// inspected asset, so the count has somewhere to take you.
 				+ SVerticalBox::Slot().AutoHeight()
 				[
-					SNew(SBorder)
-					.BorderImage(FAppStyle::Get().GetBrush("Brushes.Panel"))
-					.BorderBackgroundColor(this, &SNexusCreatorWindow::GetValidationColor)
+					SNew(SButton)
+					.ButtonStyle(&FAppStyle::Get().GetWidgetStyle<FButtonStyle>("HoverHintOnly"))
+					.ContentPadding(FMargin(0))
 					.Visibility(this, &SNexusCreatorWindow::GetBannerVisibility)
-					.Padding(FMargin(8.0f, 4.0f))
+					.ToolTipText(this, &SNexusCreatorWindow::GetReferencesTooltip)
+					.OnClicked(this, &SNexusCreatorWindow::OnBannerClicked)
 					[
-						SNew(STextBlock)
-						.Text(this, &SNexusCreatorWindow::GetValidationText)
-						.ToolTipText(this, &SNexusCreatorWindow::GetReferencesTooltip)
+						SNew(SBorder)
+						.BorderImage(FAppStyle::Get().GetBrush("Brushes.Panel"))
+						.BorderBackgroundColor(this, &SNexusCreatorWindow::GetValidationColor)
+						.Padding(FMargin(8.0f, 4.0f))
+						[
+							SNew(STextBlock)
+							.Text(this, &SNexusCreatorWindow::GetValidationText)
+						]
 					]
 				]
 
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[
-					SNew(SBorder)
-					.BorderImage(FAppStyle::Get().GetBrush("Brushes.Recessed"))
-					.Padding(2.0f)
-					[ DetailsView.ToSharedRef() ]
+					SNew(SSplitter)
+					+ SSplitter::Slot().Value(0.6f)
+					[
+						SNew(SBorder)
+						.BorderImage(FAppStyle::Get().GetBrush("Brushes.Recessed"))
+						.Padding(2.0f)
+						[ DetailsView.ToSharedRef() ]
+					]
+					+ SSplitter::Slot().Value(0.4f)
+					[
+						SNew(SBorder)
+						.BorderImage(FAppStyle::Get().GetBrush("Brushes.Recessed"))
+						.Padding(2.0f)
+						[
+							SNew(SVerticalBox)
+							+ SVerticalBox::Slot().AutoHeight().Padding(4.0f, 2.0f, 4.0f, 4.0f)
+							[ SectionLabel(LOCTEXT("PreviewHeader", "PREVIEW")) ]
+							+ SVerticalBox::Slot().FillHeight(1.0f)
+							[ SAssignNew(PreviewViewport, SNexusItemViewport) ]
+						]
+					]
 				]
 			]
 		]
@@ -527,8 +554,24 @@ FText SNexusCreatorWindow::GetAttachmentTypeText() const
 	return SelectedAttachmentType.IsValid() ? SelectedAttachmentType->Label : FText::GetEmpty();
 }
 
-void SNexusCreatorWindow::AddEntry(UObject* Asset, const FString& Label)
+bool SNexusCreatorWindow::AddEntry(UObject* Asset, const FString& Label)
 {
+	if (!Asset)
+	{
+		return false;
+	}
+
+	// Dedupe: if this asset is already in the working set, just select that
+	// entry instead of adding a duplicate row.
+	for (const TSharedPtr<FCreatedEntry>& Existing : Entries)
+	{
+		if (Existing.IsValid() && Existing->Asset.Get() == Asset)
+		{
+			SelectEntry(Existing);
+			return false;
+		}
+	}
+
 	TSharedPtr<FCreatedEntry> Entry = MakeShared<FCreatedEntry>();
 	Entry->Asset = Asset;
 	Entry->Label = Label;
@@ -539,6 +582,7 @@ void SNexusCreatorWindow::AddEntry(UObject* Asset, const FString& Label)
 		EntryListView->RequestListRefresh();
 	}
 	SelectEntry(Entry);
+	return true;
 }
 
 void SNexusCreatorWindow::SelectEntry(TSharedPtr<FCreatedEntry> Entry)
@@ -753,8 +797,10 @@ void SNexusCreatorWindow::LoadAsset(UObject* Asset)
 	{
 		return;
 	}
-	AddEntry(Asset, FString::Printf(TEXT("%s  (%s)"), *Asset->GetName(), *Asset->GetClass()->GetName()));
-	StatusText = FText::Format(LOCTEXT("LoadedOne", "Loaded '{0}' for editing."), FText::FromString(Asset->GetName()));
+	const bool bAdded = AddEntry(Asset, FString::Printf(TEXT("%s  (%s)"), *Asset->GetName(), *Asset->GetClass()->GetName()));
+	StatusText = bAdded
+		? FText::Format(LOCTEXT("LoadedOne", "Loaded '{0}' for editing."), FText::FromString(Asset->GetName()))
+		: FText::Format(LOCTEXT("AlreadyLoaded", "'{0}' is already loaded — selecting it."), FText::FromString(Asset->GetName()));
 }
 
 FString SNexusCreatorWindow::CreateFolderFor(const FString& Subfolder) const
@@ -821,13 +867,15 @@ FReply SNexusCreatorWindow::OnLoadFromContentBrowserClicked()
 			continue;
 		}
 
-		AddEntry(Object, FString::Printf(TEXT("%s  (%s)"), *Object->GetName(), bItem ? TEXT("item") : TEXT("attachment")));
-		++Added;
+		if (AddEntry(Object, FString::Printf(TEXT("%s  (%s)"), *Object->GetName(), bItem ? TEXT("item") : TEXT("attachment"))))
+		{
+			++Added;
+		}
 	}
 
 	StatusText = (Added > 0)
 		? FText::Format(LOCTEXT("Loaded", "Loaded {0} asset(s) from the Content Browser for editing."), FText::AsNumber(Added))
-		: LOCTEXT("LoadedNone", "Select Nexus item/attachment assets in the Content Browser, then Load Selected.");
+		: LOCTEXT("LoadedNone", "Select Nexus item/attachment assets in the Content Browser, then Load Selected (already-loaded assets are re-selected, not duplicated).");
 	return FReply::Handled();
 }
 
@@ -866,11 +914,23 @@ void SNexusCreatorWindow::Inspect(UObject* Asset)
 	{
 		DetailsView->SetObject(Asset);
 	}
+	if (PreviewViewport.IsValid())
+	{
+		PreviewViewport->SetPreviewAsset(Asset);
+	}
 	RefreshValidation();
 }
 
 void SNexusCreatorWindow::OnInspectedPropertyChanged(const FPropertyChangedEvent& Event)
 {
+	// Re-apply the asset so a freshly-picked mesh appears in the viewport without
+	// the user having to reselect the entry.
+	if (PreviewViewport.IsValid())
+	{
+		UObject* Object = Inspected.Get();
+		PreviewViewport->SetPreviewAsset(nullptr);
+		PreviewViewport->SetPreviewAsset(Object);
+	}
 	RefreshValidation();
 }
 
@@ -911,18 +971,48 @@ void SNexusCreatorWindow::RefreshValidation()
 	// Where-used: how many assets point at this one (recipes, manifests, slots, ...).
 	const TArray<FAssetData> Referencers = FNexusContentAudit::GetReferencers(Object);
 	ValidationSummary = FText::FromString(FString::Printf(
-		TEXT("%s      Referenced by %d"), *ValidationPart, Referencers.Num()));
+		TEXT("%s      Referenced by %d      (click to open Reference Viewer)"),
+		*ValidationPart, Referencers.Num()));
 
+	TArray<FString> Lines;
+	if (Errors > 0 || Warnings > 0)
+	{
+		Lines.Add(TEXT("Right-click the asset in the Content Browser → 'Asset Actions' → 'Validate Assets' to see the issue details."));
+		Lines.Add(FString());
+	}
 	if (Referencers.Num() > 0)
 	{
-		TArray<FString> Names;
-		for (const FAssetData& Data : Referencers) { Names.Add(Data.AssetName.ToString()); }
-		ReferencesTooltip = FText::FromString(TEXT("Referenced by:\n") + FString::Join(Names, TEXT("\n")));
+		Lines.Add(TEXT("Referenced by:"));
+		for (const FAssetData& Data : Referencers)
+		{
+			Lines.Add(TEXT("  ") + Data.AssetName.ToString());
+		}
 	}
 	else
 	{
-		ReferencesTooltip = LOCTEXT("NoRefs", "Nothing references this asset yet.");
+		Lines.Add(TEXT("Nothing references this asset yet."));
 	}
+	ReferencesTooltip = FText::FromString(FString::Join(Lines, TEXT("\n")));
+}
+
+FReply SNexusCreatorWindow::OnBannerClicked()
+{
+	UObject* Asset = Inspected.Get();
+	if (!Asset)
+	{
+		return FReply::Handled();
+	}
+
+	const UPackage* Package = Asset->GetPackage();
+	if (!Package)
+	{
+		return FReply::Handled();
+	}
+
+	TArray<FAssetIdentifier> Identifiers;
+	Identifiers.Add(FAssetIdentifier(Package->GetFName()));
+	IAssetManagerEditorModule::Get().OpenReferenceViewerUI(Identifiers);
+	return FReply::Handled();
 }
 
 FText SNexusCreatorWindow::GetValidationText() const { return ValidationSummary; }

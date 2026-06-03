@@ -1,4 +1,5 @@
 #include "Preview/SNexusAssemblyPreview.h"
+#include "Preview/SNexusStatRadar.h"
 
 #include "AssetRegistry/ARFilter.h"
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -211,31 +212,53 @@ void SNexusAssemblyPreview::Construct(const FArguments& InArgs)
 			]
 			+ SSplitter::Slot().Value(0.65f)
 			[
-				SNew(SBorder)
-				.BorderImage(FAppStyle::Get().GetBrush("Brushes.Recessed"))
-				.Padding(4.0f)
+				SNew(SSplitter)
+				.Orientation(Orient_Vertical)
+				+ SSplitter::Slot().Value(0.45f)
 				[
-					SNew(SVerticalBox)
-					+ SVerticalBox::Slot().AutoHeight().Padding(4.0f, 2.0f, 4.0f, 4.0f)
-					[ SectionLabel(LOCTEXT("StatsHeader", "RESOLVED STATS")) ]
-					+ SVerticalBox::Slot().FillHeight(1.0f)
+					SNew(SBorder)
+					.BorderImage(FAppStyle::Get().GetBrush("Brushes.Recessed"))
+					.Padding(4.0f)
 					[
-						SAssignNew(StatListView, SListView<TSharedPtr<FNexusResolvedStat>>)
-						.ListItemsSource(&ResultRows)
-						.OnGenerateRow(this, &SNexusAssemblyPreview::OnGenerateStatRow)
-						.SelectionMode(ESelectionMode::None)
-						.HeaderRow(
-							SNew(SHeaderRow)
-							+ SHeaderRow::Column(ColStat).DefaultLabel(LOCTEXT("HStat", "Stat")).FillWidth(0.34f)
-							+ SHeaderRow::Column(ColBase).DefaultLabel(LOCTEXT("HBase", "Base")).FillWidth(0.16f)
-							+ SHeaderRow::Column(ColAttach).DefaultLabel(LOCTEXT("HAttach", "+Attach")).FillWidth(0.16f)
-							+ SHeaderRow::Column(ColUpgrade).DefaultLabel(LOCTEXT("HUpgrade", "+Upgrade")).FillWidth(0.17f)
-							+ SHeaderRow::Column(ColFinal).DefaultLabel(LOCTEXT("HFinal", "Final")).FillWidth(0.17f))
+						SNew(SVerticalBox)
+						+ SVerticalBox::Slot().AutoHeight().Padding(4.0f, 2.0f, 4.0f, 4.0f)
+						[ SectionLabel(LOCTEXT("RadarHeader", "STAT RADAR — base vs final")) ]
+						+ SVerticalBox::Slot().FillHeight(1.0f)
+						[ SAssignNew(StatRadar, SNexusStatRadar) ]
+					]
+				]
+				+ SSplitter::Slot().Value(0.55f)
+				[
+					SNew(SBorder)
+					.BorderImage(FAppStyle::Get().GetBrush("Brushes.Recessed"))
+					.Padding(4.0f)
+					[
+						SNew(SVerticalBox)
+						+ SVerticalBox::Slot().AutoHeight().Padding(4.0f, 2.0f, 4.0f, 4.0f)
+						[ SectionLabel(LOCTEXT("StatsHeader", "RESOLVED STATS")) ]
+						+ SVerticalBox::Slot().FillHeight(1.0f)
+						[
+							SAssignNew(StatListView, SListView<TSharedPtr<FNexusResolvedStat>>)
+							.ListItemsSource(&ResultRows)
+							.OnGenerateRow(this, &SNexusAssemblyPreview::OnGenerateStatRow)
+							.SelectionMode(ESelectionMode::None)
+							.HeaderRow(
+								SNew(SHeaderRow)
+								+ SHeaderRow::Column(ColStat).DefaultLabel(LOCTEXT("HStat", "Stat")).FillWidth(0.34f)
+								+ SHeaderRow::Column(ColBase).DefaultLabel(LOCTEXT("HBase", "Base")).FillWidth(0.16f)
+								+ SHeaderRow::Column(ColAttach).DefaultLabel(LOCTEXT("HAttach", "+Attach")).FillWidth(0.16f)
+								+ SHeaderRow::Column(ColUpgrade).DefaultLabel(LOCTEXT("HUpgrade", "+Upgrade")).FillWidth(0.17f)
+								+ SHeaderRow::Column(ColFinal).DefaultLabel(LOCTEXT("HFinal", "Final")).FillWidth(0.17f))
+						]
 					]
 				]
 			]
 		]
 	];
+
+	// Recompute once more now that StatRadar (which keeps its own copy of the
+	// rendered stats, unlike the list view's bound source) exists.
+	Recompute();
 }
 
 void SNexusAssemblyPreview::Recompute()
@@ -263,6 +286,10 @@ void SNexusAssemblyPreview::Recompute()
 	if (StatListView.IsValid())
 	{
 		StatListView->RequestListRefresh();
+	}
+	if (StatRadar.IsValid())
+	{
+		StatRadar->SetStats(Stats);
 	}
 }
 
