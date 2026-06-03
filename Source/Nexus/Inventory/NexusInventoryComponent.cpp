@@ -44,8 +44,58 @@ void UNexusInventoryComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
+#if !UE_BUILD_SHIPPING
+	{
+		// One-shot diagnostic for the cross-PIE leak hunt. Prints the identity of
+		// every object in the chain so we can see, across PIE cycles, whether the
+		// same Pawn / Component / Container / Items are being reused or fresh ones
+		// are created. Delete once the leak is pinned. Toggle with the CVar.
+		static TAutoConsoleVariable<int32> CVarDiag(
+			TEXT("Nexus.Inventory.DiagBeginPlay"), 1,
+			TEXT("Print inventory chain identity at BeginPlay (1=on, 0=off)."), ECVF_Cheat);
+		if (CVarDiag.GetValueOnGameThread() != 0)
+		{
+			AActor* Owner = GetOwner();
+			const int32 ItemCount = Container ? Container->GetItems().Num() : -1;
+			UE_LOG(LogNexusInventory, Warning,
+				TEXT("[InvDiag] BeginPlay  Owner=%s (%p)  Comp=%s (%p)  Container=%s (%p)  ItemsBeforeClear=%d  World=%p"),
+				*GetFullNameSafe(Owner), Owner,
+				*GetFullName(),          this,
+				*GetFullNameSafe(Container), Container.Get(),
+				ItemCount,
+				GetWorld());
+
+			if (Container)
+			{
+				int32 i = 0;
+				for (UNexusItemInstance* It : Container->GetItems())
+				{
+					UNexusItemDefinition* Def = It ? It->GetDefinition() : nullptr;
+					UE_LOG(LogNexusInventory, Warning,
+						TEXT("[InvDiag]   [%d] Item=%s (%p)  GUID=%s  DefName=%s  DefPtr=%p  DefOuter=%s"),
+						i++,
+						*GetFullNameSafe(It), It,
+						It ? *It->GetInstanceGuid().ToString() : TEXT("-"),
+						*GetNameSafe(Def), Def,
+						Def ? *GetFullNameSafe(Def->GetOuter()) : TEXT("-"));
+				}
+			}
+		}
+	}
+#endif
+
 	if (Container)
 	{
+		// Defensive: every BeginPlay starts with a clean container, in case the
+		// subobject carried items in from an earlier life (a PIE leak that kept
+		// the chain alive past world teardown, or any future caller that touches
+		// the container before BeginPlay). The CDO is empty so a true fresh
+		// instance no-ops; we only pay when there is something stale to drop.
+		Container->ClearAll();
+		EquippedCase = nullptr;
+		SavedItems.Reset();
+		SavedCase = FNexusItemSaveData();
+
 		Container->Configure(GridWidth, GridHeight, WeightCapacity, bUnlimitedWeight, MaxItemsPerAddCall);
 		Container->ConfigureSections(Sections);
 
@@ -82,6 +132,62 @@ void UNexusInventoryComponent::BeginPlay()
 				 "Set bUnlimitedWeight=false to enforce the weight limit."), *GetName(), WeightCapacity);
 	}
 #endif
+}
+
+
+void UNexusInventoryComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+#if !UE_BUILD_SHIPPING
+	{
+		static TAutoConsoleVariable<int32> CVarDiag(
+			TEXT("Nexus.Inventory.DiagBeginPlay"), 1,
+			TEXT("Print inventory chain identity at BeginPlay (1=on, 0=off)."), ECVF_Cheat);
+		if (CVarDiag.GetValueOnGameThread() != 0)
+		{
+			AActor* Owner = GetOwner();
+			const int32 ItemCount = Container ? Container->GetItems().Num() : -1;
+			UE_LOG(LogNexusInventory, Warning,
+				TEXT("[InvDiag] EndPlay    Owner=%s (%p)  Comp=%s (%p)  Container=%s (%p)  Items=%d  Reason=%d  World=%p"),
+				*GetFullNameSafe(Owner), Owner,
+				*GetFullName(),          this,
+				*GetFullNameSafe(Container), Container.Get(),
+				ItemCount,
+				static_cast<int32>(EndPlayReason),
+				GetWorld());
+		}
+	}
+#endif
+
+	// Symmetric to BeginPlay: drop every runtime reference the component holds so
+	// the item subobjects can be reaped even when something further up the chain
+	// (a leaked widget, a stray delegate, an EMS handle) keeps the component
+	// resident past world teardown. Without this, the item chain pins through
+	// the broadcast bindings until the next GC, and any later PIE that finds
+	// the component reuses a populated grid.
+	if (Container)
+	{
+		Container->OnItemAdded.RemoveDynamic(this, &UNexusInventoryComponent::HandleContainerItemAdded);
+		Container->OnItemRemoved.RemoveDynamic(this, &UNexusInventoryComponent::HandleContainerItemRemoved);
+		Container->OnItemChanged.RemoveDynamic(this, &UNexusInventoryComponent::HandleContainerItemChanged);
+		Container->OnInventoryChanged.RemoveDynamic(this, &UNexusInventoryComponent::HandleContainerInventoryChanged);
+
+		Container->ClearAll();
+	}
+
+	// External listeners (UI widgets bound from Blueprints, dropped equipment hooks)
+	// are unbound here too, so a still-alive subscriber can't pull the component
+	// (and the items outered to it) back into the GC root set.
+	OnItemAdded.Clear();
+	OnItemRemoved.Clear();
+	OnItemChanged.Clear();
+	OnInventoryChanged.Clear();
+	OnEquippedCaseChanged.Clear();
+
+	EquippedCase = nullptr;
+	SavedItems.Reset();
+	SavedCase = FNexusItemSaveData();
+
+	Super::EndPlay(EndPlayReason);
 }
 
 

@@ -263,6 +263,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	//~Start save interface
 	virtual void ComponentPreSave_Implementation() override;
@@ -348,8 +349,14 @@ protected:
 	 * A plain UObject so the same class can also back the off-actor item box. The
 	 * component is a thin actor-side wrapper: it forwards the public API, bridges EMS
 	 * save/load, and re-broadcasts the container's events as its own.
+	 *
+	 * MUST be Instanced: without it the engine pointer-copies the CDO's container
+	 * subobject into every spawned instance, so every Hero across every PIE writes
+	 * into the same CDO-owned Items array. Instanced tells UE to deep-copy the CDO
+	 * subobject per outer instance — pairs with UCLASS(EditInlineNew,
+	 * DefaultToInstanced) on UNexusItemContainer.
 	 */
-	UPROPERTY()
+	UPROPERTY(Instanced)
 	TObjectPtr<UNexusItemContainer> Container;
 
 private:

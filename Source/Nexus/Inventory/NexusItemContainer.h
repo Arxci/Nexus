@@ -98,7 +98,7 @@ struct NEXUS_API FNexusInventorySectionConfig
  * these delegates as its own, so external listeners keep binding to
  * UNexusInventoryComponent::OnItem* exactly as before.
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, EditInlineNew, DefaultToInstanced)
 class NEXUS_API UNexusItemContainer : public UObject
 {
 	GENERATED_BODY()

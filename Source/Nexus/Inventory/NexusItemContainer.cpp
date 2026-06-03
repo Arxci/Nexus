@@ -187,6 +187,19 @@ FNexusAddItemResult UNexusItemContainer::AddItem(UNexusItemDefinition* Definitio
 		Items.Add(NewInstance);
 		BindInstance(NewInstance);
 
+#if !UE_BUILD_SHIPPING
+		// One-shot diagnostic for the leak hunt — confirms whether the Definition*
+		// stays the same asset across PIE (correct) or a fresh transient copy is
+		// being constructed each call (leak source). Delete once pinned.
+		UE_LOG(LogNexusInventory, Warning,
+			TEXT("[InvDiag] AddItem    Container=%p  NewItem=%s (%p)  Def=%s (%p)  DefOuter=%s  DefClass=%s"),
+			this,
+			*GetFullNameSafe(NewInstance), NewInstance,
+			*GetFullNameSafe(Definition),  Definition,
+			*GetFullNameSafe(Definition ? Definition->GetOuter() : nullptr),
+			Definition ? *Definition->GetClass()->GetName() : TEXT("-"));
+#endif
+
 		Placed += ToPlace;
 		CachedUsedWeight += ToPlace * Definition->Weight;
 		Result.AffectedInstances.Add(NewInstance);
