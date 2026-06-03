@@ -15,6 +15,14 @@ public class NexusEditor : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
+		// Several .cpp files in this module each define small helper functions
+		// (GatherAssets, LeafName, FindWeapon, Num, SectionLabel) inside their
+		// own anonymous namespace. Each is fine on its own, but when UBT bundles
+		// them into a single unity translation unit those anonymous namespaces
+		// merge and the helpers collide. Compile per-file instead — this is an
+		// editor-only module and the build-time cost is small.
+		bUseUnity = false;
+
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
 			"Core",
