@@ -1,203 +1,222 @@
-# Inventory System — Architecture Plan (RE4R-class target)
+# Inventory
 
-> Authoritative spec for the Nexus inventory system. Survival-horror, RE4R-style.
-> This is a target design used to review and align the existing code.
+> A spatial, sectioned, case-driven inventory and container framework.
+> RE4R-class target. Owns item lifetime; every other system reads it through
+> a small API and reacts to its events.
 
-## Locked design decisions (fixed)
-- **Capacity:** Spatial "Tetris" grid — multi-cell rectangles, 90° rotation, tight packing.
-- **Key items & treasures:** stored in **separate non-spatial list sections** that consume
-  **zero** grid cells (Village/RE4R behavior). The container is sectioned: 1 spatial grid
-  section + N list sections, items routed by `CategoryTags`.
-- **Merchant/economy:** **Yes** (Duke / RE4R-style). Items carry value; treasures are
-  sellable and can take gem sockets; weapons have persistent upgrade state. Inventory owns
-  the value/upgrade **data** + sell/buy primitives; the shop **flow** lives in a separate
-  subsystem.
-- **Case & charms:** **Yes.** The equipped **case** item sets the spatial grid dimensions
-  and exposes charm slots; charms grant passive bonuses through the **same passive-effect
-  path as armor** (host ASC via the equipment / PassiveEquipment mechanism), not a parallel
-  system.
+## What the system does
 
-Legend: **KEEP** = already aligned · **CHANGE** = structural rework · **ADD** = new system.
+- Stores items in a spatial Tetris-style grid: multi-cell rectangles, 90°
+  rotation, tight packing.
+- Adds non-spatial list sections for Key Items and Treasures, each routed
+  by item category, consuming zero grid cells.
+- Drives the spatial grid dimensions from the equipped Case item — the
+  player upgrades their case to gain more grid.
+- Exposes charm slots on the case, with bonuses applied through the same
+  passive-effect path armor uses.
+- Tags items with a value and sell/buy flags. Treasures take gem sockets
+  that raise combined sell value. Weapons accept persistent upgrade tags.
+- Persists everything cleanly: grid placement, list sections, sockets,
+  upgrades, equipped case, charms, currency.
+- Coalesces change events so a batch acquire fires per-item events plus
+  exactly one aggregate.
+- Survives transfers between containers via stable IDs, not raw pointers.
 
----
+## How a designer uses it
 
-## 1. Goals & Scope
-A spatial, **sectioned**, case-driven inventory + container framework for a single-player
-RE4R-style survival horror game, with a decoupled **merchant/economy** and **case/charm**
-layer. Inventory remains the **single owner of item lifetime**; equipment, weapons,
-attachments, crafting, merchant, and UI reference items and react through a small API +
-events — never reaching into each other.
+- A new item category is a new fragment plus a definition asset.
+- A new case is a data asset (sets the grid size and the charm slot count).
+- A new charm is a data asset with the passive payload.
+- A new treasure is a data asset; gem sockets are authored as part of the
+  Treasure fragment.
+- A new recipe is a data asset registered with the combination subsystem.
+- Items route to the right section automatically by their CategoryTags. No
+  component edit.
+- Giving an item anywhere in the game goes through the acquire library
+  facade — single entry point.
 
-**In scope (v1):**
-- Spatial "Tetris" grid — multi-cell rectangles, 90° rotation, tight packing (KEEP)
-- Sectioned container — one spatial grid section + non-spatial list sections for **Key
-  Items** and **Treasures**, each routed by item category (CHANGE)
-- Case as an item — the equipped case sets the grid dimensions and exposes **charm slots**;
-  charms grant passive bonuses (ADD)
-- Definition + Instance + Fragment model; stacks; per-instance state; partial-fill; transfer (KEEP)
-- Economy hooks — per-item value, sellable/buyable flags, treasure **gem-sockets**,
-  currency containers, weapon **upgrade** state (ADD)
-- Stable, save-safe, location-independent item references (CHANGE — handle vs raw pointer)
-- Coalesced change events; capacity preview; attaché UMG queries (KEEP)
-- One container type reused for player case, **item box/stash**, and loot (CHANGE — box is subsystem-owned)
-- NPC support; first-pickup ceremony; save/load (KEEP)
+## Concepts
 
-**Out of scope in v1 (must stay cheap to add):** the merchant *screen* UI and request/reward
-logic (economy *hooks* are in scope; the shop flow is separate), multiplayer/replication,
-equipment holster lifecycle (`NexusEquipment*`), attachment runtime/visuals
-(`NexusAttachment*`; inventory only persists chosen attachments as instance state),
-economy balancing.
+### Item definition
 
-## 2. Key Design Decisions
+UNexusItemDefinition. Authors identity, category tags, base value, sellable
+and buyable flags, and the fragments that drive behaviour.
 
-| Decision | Choice | KEEP/CHANGE/ADD |
-|---|---|---|
-| Capacity | Spatial Tetris grid, rotation, multi-cell | KEEP |
-| Container shape | Multiple sections: 1 spatial grid + N list sections (Key Items, Treasures); routed by `CategoryTags` | CHANGE |
-| Grid size source | Equipped **case** item drives `GridWidth×Height`; not a fixed component property | CHANGE |
-| Charms | Case has charm slots; charms grant passive bonuses via the armor/`PassiveEquipment` path | ADD |
-| Economy | Value/sellable on definition; **Treasure** fragment w/ gem sockets; currency as counted container; weapon upgrade = persistent instance stat tags | ADD |
-| Crafting/ammo | Separate combination subsystem + recipe assets calling the public API | ADD |
-| Cross-system ref | Stable item **ID/handle**, not raw `UNexusItemInstance*` | CHANGE |
-| Coupling | One-way: every system → inventory; inventory is a leaf | KEEP (principle) |
-| Item box | Save/subsystem-owned, level-independent, shared across save rooms | CHANGE |
-| Persistence | Flat descriptors + stable ID | KEEP |
+### Item instance
 
-## 3. Architectural Components
-- **`UNexusItemDefinition`** (KEEP + ADD fields): add `BaseValue`, `bSellable`/`bBuyable`;
-  section routing comes free from existing `CategoryTags`.
-- **`UNexusItemInstance`** (KEEP): already carries the per-instance `StatTags` and
-  `Attachments` maps that weapon **upgrades** and treasure **gem-sockets** write into — no
-  structural change, just new tag keys.
-- **Fragments** (KEEP + ADD): existing `Stackable/Equippable/Weapon/Consumable/KeyItem/
-  PassiveEquipment`, plus:
-  - **`Treasure`** — base value, optional gem **sockets** (each accepts a gem category;
-    filled sockets raise combined sell value), optional set-bonus tag.
-  - **`Case`** — `GridWidth×Height`, charm-slot count/types, default-case flag.
-  - **`Charm`** — passive bonus payload (granted tags/abilities), reusing the
-    `PassiveEquipment` effect path so charms and armor share one mechanism.
-  - Item value/sellable/buyable on the definition (or a `Valuable` fragment); weapon upgrade
-    = persistent instance `StatTags` (no new storage).
-- **`UNexusInventoryComponent`** (CHANGE): gains a **section model** — each section is
-  `{ SectionTag, Placement = Spatial|List, accepted CategoryTags }`. The Spatial section's
-  dimensions are pulled from the equipped case. Public API gains section-aware overloads but
-  keeps the simple ones (default to the right section by category).
-- **`UNexusItemContainerSubsystem`** (ADD): owns the **item box** (save-game/subsystem-
-  scoped, level-independent) and the **stable-ID → instance resolver** across all containers.
-- **`UNexusMerchantSubsystem` + offer/upgrade assets** (ADD, separate): buy/sell/upgrade by
-  calling the public inventory API and reading value/upgrade data.
-- **`UNexusItemCombinationSubsystem` + recipe assets** (ADD, separate): ammo crafting, herb
-  mixing, gem→treasure socketing — recipes that only read/write inventory via the public API.
-- **`UNexusInventoryAcquireLibrary`** (KEEP): still the one "give an item" façade; now routes
-  to the correct section by category.
+UNexusItemInstance. The per-pickup state. Carries per-instance stat tags
+(weapon upgrades, treasure socket values) and the attachment map. No new
+storage was needed when upgrades and gem sockets were added — they ride the
+existing tag map.
 
-## 4. Item Lifecycle
-Acquire → route to section by `CategoryTags` → (Spatial: merge-then-first-fit with rotation;
-List: append) → coalesced events. Transfer, consume, save/load as in the existing core.
-**New:** equipping a different **case** re-lays-out the spatial section; items that no longer
-fit follow the designer **spill policy** (see Open Questions).
+### Fragments
 
-## 5. Capacity Model
-- **Spatial section:** `GridWidth×Height` **comes from the equipped case**; one overlap test
-  underlies all placement/queries (single source of truth). Rotation in scope.
-- **List sections (Key Items, Treasures):** no spatial footprint; ordered/auto-arranged
-  lists, optionally counted. Do **not** consume grid space.
-- Weight: out (space + case size is the constraint). Charms modify effective behavior, not
-  raw cell count, unless a charm explicitly grants grid.
+The pieces that compose an item:
 
-## 6–7. Definitions / Stacks / State
-KEEP. Weapon **upgrades** and treasure **gem values** are new `StatTag` keys on the instance
-— they persist and broadcast automatically, no new storage. Gunpowder/resources/recipes are
-ordinary stackable grid items. A stack merges only when it carries no per-instance
-customization (no stat tags, no attachments) — one predicate shared by the merge path and
-`CanStackWith`.
+- Stackable — items that merge by count when identical.
+- Equippable — in-hand items (weapons, flashlights).
+- Weapon — weapon-specific authoring on top of equippable.
+- Consumable — health, ammo refill, status cures.
+- KeyItem — routes to the Key Items list section.
+- PassiveEquipment — armor and charm payload (granted abilities, granted tags).
+- Treasure — sell value, optional gem sockets, optional set-bonus tag.
+- Case — grid width, grid height, charm slot count and types, default-case flag.
+- Charm — passive-bonus payload that reuses the PassiveEquipment effect path.
+- Valuable (or fields on the definition) — base value, sellable, buyable.
 
-## 8. Cross-System Integration (decoupling contract)
-- Inventory stays the **leaf** — never includes equipment/merchant/attachment/UI types.
-- **Case/charm bonuses** route through the **same** passive-effect path as armor (grant
-  tags/abilities to the host ASC), so equipment and inventory share one mechanism.
-- Merchant/crafting/upgrade systems **only** call the public add/remove/value API and read
-  fragments — they never mutate `Items` directly.
-- Cross-system links (equipment slot, quest, hotbar, a gem socketed in a treasure) resolve by
-  **stable ID** via the container subsystem.
-- `OnItemRemoved` is the consistency contract: dependents subscribe and react; inventory
-  fires and is done.
+### Inventory component
 
-## 9. NPC Support
-Enemies use the same component (smaller / single-section / locked UI); reserve ammo +
-`bDropOnDeath` loot live in inventory; reload, drop, loot, acquire all discover it via
-`FindComponentByClass`. No AI-only path. NPCs ignore case/charm/merchant sections.
+Owns the section model. Each section is a tuple of section tag, placement
+(Spatial or List), and accepted category tags. The Spatial section's
+dimensions come from the equipped case. The public API has section-aware
+overloads, plus simpler overloads that route to the right section by
+category.
 
-## 10. Save / Load
-KEEP for the player case; **CHANGE** scope: the **item box and currency persist at
-save-game/subsystem scope** (not on a world actor), surviving level transitions and shared
-across save rooms. Equipped-case selection, charm sockets, treasure gem sockets, and weapon
-upgrades ride the existing per-instance descriptor + stable-ID model. Missing-definition
-items are dropped, never restored as null. Restore re-broadcasts each item as `OnItemAdded`
-inside one broadcast scope.
+### Container subsystem
 
-## 11. UI Hooks
-Section-aware queries (grid vs treasure/key lists); one overlap test for all
-placement/queries; capacity preview that matches actual placement; context menu built from
-**fragment-contributed actions** (Use / Combine / Sell / Examine / Discard / Socket Gem). Case
-screen shows grid + charm slots. Merchant screen is a separate consumer of the value/upgrade
-hooks. Auto-sort / "Optimize" on the spatial section is in scope (see Open Questions for
-timing). Component stays UI-shape-agnostic.
+UNexusItemContainerSubsystem. Owns the item box — save-scoped, level-
+independent, shared across save rooms. Also owns the stable-ID to instance
+resolver across all containers.
 
-> **Broadcast contract:** every mutator runs inside a deferral scope; events flush when the
-> outermost scope exits, coalescing a batch into per-item events + exactly one aggregate. The
-> flush re-checks membership so a "changed" for an item a prior listener removed in the same
-> batch is suppressed (no phantom events). No mutator broadcasts mid-operation.
+### Merchant subsystem
 
-## 12. Extension Points (must stay cheap)
-- New item category → new fragment + a definition asset. No component change.
-- New case / charm / treasure / recipe → a new data asset.
-- Merchant requests / rewards → extend the merchant subsystem; inventory untouched.
-- Weight as primary → enable the flag + set a capacity; the clamp path already exists.
-- Durability / examine / quick-heal → a new stat tag and/or a fragment-contributed action.
-- Replication → component-shaped; descriptor model + ID identity translate cleanly.
+UNexusMerchantSubsystem. Owns buy, sell, and upgrade flows. Calls only the
+public inventory API and reads value and upgrade data. Inventory owns no
+shop logic.
 
-## 13. Acceptance Criteria (definition of done / review yardstick)
-1. `UNexusInventoryComponent` depends on no equipment/merchant/attachment/UI type — one-way.
-2. New item category/case/charm/treasure/recipe = data only, no component code change.
-3. The spatial section's dimensions come from the equipped case item; changing the case
-   re-lays-out the section (per the chosen spill policy).
-4. Key items and treasures occupy list sections and consume zero grid cells.
-5. Spatial acquire merges into mergeable like-stacks → first-fits with rotation; list acquire
-   appends; capacity preview exactly equals what acquire will place.
-6. An instance with stat tags/attachments/sockets never auto-merges (one predicate gates both
-   merge and can-stack).
-7. Treasure gem-socketing raises combined sell value and persists per-instance.
-8. Merchant buy/sell/upgrade only calls the public API + reads value/upgrade data; inventory
-   exposes value & sellable but owns no shop logic.
-9. Charm bonuses apply through the same passive-effect path as armor (host ASC), not a
-   parallel system.
-10. Cross-system references are stable IDs resolving the same instance after save→load and
-    after a container transfer.
-11. The item box is subsystem/save-scoped, level-independent, shared across save rooms — not a
-    world-actor component.
-12. Save/load restores grid placement, list sections, sockets, upgrades, equipped case,
-    charms, and currency; missing-definition items are dropped.
-13. Every mutator coalesces through the deferred broadcast scope — a multi-item add produces
-    per-item events + exactly one aggregate, no phantom event for an item removed mid-batch.
-14. The same container class serves the player case and the box/loot, differing only by
-    section config + equipped case.
-15. Giving an item anywhere in the game goes through the acquire façade (one entry point).
+### Combination subsystem
 
-## 14. Non-Goals (so a reviewer doesn't flag them as missing)
+UNexusItemCombinationSubsystem with recipe assets. Ammo crafting, herb
+mixing, gem-into-treasure socketing. Recipes only read and write inventory
+through the public API.
+
+### Acquire library
+
+UNexusInventoryAcquireLibrary. The single "give an item" facade. Routes
+to the correct section by category. Every pickup, reward, debug spawn, and
+starter item flows through it.
+
+## Capacity model
+
+- The Spatial section's grid is GridWidth times GridHeight, sourced from
+  the equipped case. One overlap test underlies every placement and query.
+- Items can rotate 90 degrees. A capacity preview matches what acquire will
+  actually place.
+- List sections (Key Items, Treasures) consume zero grid cells. They're
+  ordered, auto-arranged, optionally counted.
+- Weight is out of scope. The grid plus case size is the constraint. A
+  charm could grant grid, but charms generally modify behaviour, not raw
+  cell count.
+
+## Item lifecycle
+
+1. Acquire. Acquire library routes by CategoryTags.
+2. Spatial route: merge into a mergeable like-stack, else first-fit with
+   rotation. List route: append.
+3. Events coalesce through a deferral scope; the outermost scope's flush
+   emits per-item events plus exactly one aggregate.
+4. A stack merges only when it carries no per-instance customization (no
+   stat tags, no attachments). One predicate shared by the merge path and
+   CanStackWith.
+5. Transfer, consume, drop. Cross-system links survive by stable ID.
+6. Case-swap: the spatial section re-lays-out for the new dimensions.
+   Items that no longer fit follow the designer-set spill policy (auto-send
+   to the box, block the swap, or drop to the world — open question).
+
+## Economy
+
+- Per-item base value plus sellable / buyable flags on the definition.
+- Treasure fragment with optional gem sockets. Each socket accepts a gem
+  category; filled sockets raise combined sell value. Optional set-bonus
+  tag rewards completing a treasure set.
+- Currency. Pesetas or spinels. Modelled as a counted container or a
+  non-grid wallet (open question).
+- Weapon upgrades persist as instance stat tags. No new storage; the
+  resolution already folds them.
+- Merchant buy / sell / upgrade only calls public APIs and reads value and
+  upgrade data. The inventory exposes value and sellable but owns no shop
+  logic.
+
+## Case and charms
+
+- The equipped case sets the spatial grid dimensions.
+- The case exposes charm slots. Each slot has a type and accepts a charm of
+  that type.
+- A charm grants passive abilities and owned tags through the host's ASC —
+  the same passive-effect path armor uses.
+- One mechanism, two surfaces. Equipment routes armor; inventory routes
+  charms; both wind up on the host ASC the same way.
+
+## Decoupling contract
+
+- Inventory is the leaf. It never includes equipment, merchant, attachment,
+  or UI types.
+- Merchant, crafting, and upgrade systems only call public add / remove /
+  value APIs and read fragments. They never mutate Items directly.
+- Cross-system references (a quest item link, a hotbar slot, a gem
+  socketed in a treasure) resolve by stable ID via the container subsystem.
+- OnItemRemoved is the consistency contract. Dependents subscribe and react;
+  inventory fires and is done.
+
+## NPC support
+
+NPCs use the same component (smaller, single-section, locked UI). Reserve
+ammo and drop-on-death loot live in inventory. Reload, drop, loot, and
+acquire all discover the component via FindComponentByClass on the actor.
+No AI-only path. NPCs ignore case, charm, and merchant sections.
+
+## Save and load
+
+- The player case persists per the existing pattern.
+- The item box and the currency wallet persist at save-game / subsystem
+  scope. They survive level transitions and are shared across save rooms —
+  not on a world actor.
+- Equipped-case selection, charm sockets, treasure gem sockets, and weapon
+  upgrades ride the existing per-instance descriptor plus stable-ID model.
+- Missing-definition items are dropped, never restored as null.
+- Restore re-broadcasts each item as OnItemAdded inside one broadcast scope.
+
+## Broadcast contract
+
+Every mutator runs inside a deferral scope. Events flush when the outermost
+scope exits, coalescing a batch into per-item events plus exactly one
+aggregate. The flush re-checks membership, so a "changed" event for an
+item a prior listener removed in the same batch is suppressed. No mutator
+broadcasts mid-operation.
+
+## UI hooks
+
+- Section-aware queries (grid vs treasure / key lists).
+- One overlap test for all placement and queries.
+- Capacity preview that matches actual placement.
+- Context menu built from fragment-contributed actions — Use, Combine,
+  Sell, Examine, Discard, Socket Gem.
+- The case screen shows the grid plus the charm slots.
+- The merchant screen is a separate consumer of the value and upgrade hooks.
+- Auto-sort or "Optimize" on the spatial section is in scope (timing is
+  an open question).
+
+The component stays UI-shape-agnostic. Attaché grid, list, radial — all work.
+
+## What's out of scope (v1)
+
 - Network replication.
-- Crafting recipe logic *inside* the component (it lives in a subsystem; only primitives in scope).
-- Item box / loot transfer **UI** (the container-adoption primitive is in scope; the screen is not).
-- Equipment slotting & holster lifecycle (`NexusEquipment*`).
-- Weapon attachment authoring/runtime/visuals (`NexusAttachment*`); inventory only persists
-  the chosen attachments as opaque instance state.
-- Merchant **screen** UI flow, request/reward logic, economy balancing.
+- Crafting recipe logic inside the component (it lives in a subsystem;
+  only primitives are in scope).
+- Item box and loot transfer UI (the container-adoption primitive is in
+  scope; the screen is not).
+- Equipment slotting and holster lifecycle (separate system).
+- Weapon attachment runtime and visuals (separate system; inventory only
+  persists the chosen attachments as opaque instance state).
+- Merchant screen UI flow, request and reward logic, economy balancing.
 - Weight as the primary scarcity axis (supported, off by default).
 
-## 15. Open Questions (resolve before implementing — do not guess)
-- **Case-swap spill policy:** when a smaller case can't hold current items, do excess items
-  (a) auto-send to the box, (b) block the swap, or (c) drop to the world?
-- **Currency model:** are Pesetas/Spinels a special counted item *in* the grid, a non-grid
-  wallet on the inventory, or owned by the merchant/save subsystem?
-- **Auto-sort / "Optimize"** on the spatial section: in scope for v1 or later?
-- **Item box scope:** per-save-slot only, or also per-chapter/region variants?
+## Open questions
+
+- Case-swap spill policy. When a smaller case can't hold current items, do
+  excess items auto-send to the box, block the swap, or drop to the world?
+- Currency model. Pesetas and spinels — a special counted item in the grid,
+  a non-grid wallet on the inventory, or owned by the merchant or save
+  subsystem?
+- Auto-sort / Optimize on the spatial section: v1 or later?
+- Item box scope: per-save-slot only, or per-chapter / region variants?

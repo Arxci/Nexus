@@ -19,7 +19,24 @@ class UStruct;
  * and names, and the source header path. UE only emits ToolTip metadata when
  * the C++ has a doxygen-style doc comment above the symbol, so descriptions
  * reflect how well the runtime code is documented.
+ *
+ * After the per-type walk a second pass derives cross-type information
+ * designers care about — which subclasses inherit from a given class, which
+ * classes hold a property of that type ("Used By"), and aggregate
+ * documentation-coverage counters that drive the browser's header band.
  */
+
+/** Coarse role used by the UI to colour-chip each entry and to drive type filters. */
+enum class ENexusDocKind : uint8
+{
+	Class,
+	Component,
+	Subsystem,
+	Library,        // UBlueprintFunctionLibrary
+	Interface,
+	Actor,
+	Struct,
+};
 
 /** One input or return value on a function. */
 struct FNexusDocParam
@@ -72,6 +89,9 @@ struct FNexusDocFunction
 
 	/** Pre-rendered "ReturnType FunctionName(Type Name, Type Name) const" for the header. */
 	FString Signature;
+
+	/** True when UHT recorded a doxygen doc block on this function. */
+	bool bHasDocs() const { return !Tooltip.IsEmpty(); }
 };
 
 /** One UPROPERTY declared on a class or struct. */
@@ -92,6 +112,15 @@ struct FNexusDocProperty
 	bool bSaveGame = false;
 	bool bIsDelegate = false;     // BlueprintAssignable multicast — surfaced as an "Event"
 	bool bIsReplicated = false;
+
+	/**
+	 * Resolved type-name of the underlying UStruct / UClass when the property
+	 * references a Nexus reflected type. Empty for primitives or types from
+	 * other modules. Used by the cross-reference pass to wire "Used By" links.
+	 */
+	FString ReferencedTypeName;
+
+	bool bHasDocs() const { return !Tooltip.IsEmpty(); }
 };
 
 /** One UCLASS / UScriptStruct entry. */
@@ -123,14 +152,53 @@ struct FNexusDocClass
 	TArray<FNexusDocProperty> Properties;
 	/** BlueprintAssignable multicast delegates surfaced as a separate "Events" list. */
 	TArray<FNexusDocProperty> Events;
+
+	/**
+	 * Filled in a post-pass: every Nexus type whose parent type is this one
+	 * (direct children only — the UI walks the chain transitively when it
+	 * needs the full subtree).
+	 */
+	TArray<FString> DerivedTypeNames;
+
+	/**
+	 * Filled in a post-pass: every Nexus type that has a UPROPERTY whose
+	 * resolved class / struct type is this one. Designers use this to find
+	 * "where does Nexus actually consume this thing?"
+	 */
+	TArray<FString> ReferencedByTypeNames;
+
+	bool bHasDocs() const { return !Tooltip.IsEmpty(); }
+
+	/** Distilled type kind for chips and filters. Mirrors the bool flags. */
+	ENexusDocKind Kind() const
+	{
+		if (bIsStruct)           { return ENexusDocKind::Struct; }
+		if (bIsInterface)        { return ENexusDocKind::Interface; }
+		if (bIsSubsystem)        { return ENexusDocKind::Subsystem; }
+		if (bIsFunctionLibrary)  { return ENexusDocKind::Library; }
+		if (bIsComponent)        { return ENexusDocKind::Component; }
+		if (bIsActor)            { return ENexusDocKind::Actor; }
+		return ENexusDocKind::Class;
+	}
 };
 
-/** A flat collection of every documented type, plus the categories used by the UI. */
+/** A flat collection of every documented type, plus aggregate stats used by the UI. */
 struct FNexusDocCollection
 {
 	TArray<TSharedPtr<FNexusDocClass>> Classes;
 	/** Distinct category names in display order. */
 	TArray<FString> Categories;
+
+	// === Aggregate counters (computed during BuildFromNexusModule) ===========
+	int32 TotalClasses = 0;          // UCLASS count
+	int32 TotalStructs = 0;          // UScriptStruct count
+	int32 TotalFunctions = 0;        // UFUNCTIONs across all classes
+	int32 TotalProperties = 0;       // UPROPERTYs (non-delegate)
+	int32 TotalEvents = 0;           // BlueprintAssignable delegate UPROPERTYs
+
+	int32 DocumentedClasses = 0;     // classes/structs with a /** doc comment */
+	int32 DocumentedMembers = 0;     // functions + properties + events with doc comments
+	int32 TotalMembers = 0;          // Functions + Properties + Events
 };
 
 namespace NexusDocs
@@ -143,8 +211,16 @@ namespace NexusDocs
 	 */
 	FNexusDocCollection BuildFromNexusModule();
 
+	/** Quick lookup by raw C++ type name. Returns null when the name isn't a Nexus type. */
+	TSharedPtr<FNexusDocClass> FindByTypeName(const FNexusDocCollection& Collection, const FString& TypeName);
+
 	/** Designer-friendly rendering of an FProperty type. */
 	FString FriendlyType(const FProperty* Property);
 	/** Exact C++ rendering of an FProperty type. */
 	FString RawType(const FProperty* Property);
+
+	/** Short label for the type-kind chip ("CLASS", "STRUCT", "SUB", "LIB", ...). */
+	FString KindShortLabel(ENexusDocKind Kind);
+	/** Verbose label used in tooltips and the legend ("Function Library", "Subsystem", ...). */
+	FString KindLongLabel(ENexusDocKind Kind);
 }

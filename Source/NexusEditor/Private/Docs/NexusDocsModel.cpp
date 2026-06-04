@@ -216,6 +216,65 @@ namespace
 	}
 
 	/**
+	 * If a property references a UClass / UScriptStruct, return the raw type
+	 * name ("UNexusItemDefinition" / "FNexusFragment_Weapon"). The cross-
+	 * reference pass uses this to wire "Used By" links. Returns empty when the
+	 * property is a primitive, an external-module type we don't track, or a
+	 * container — containers are handled by recursing into their inner property.
+	 */
+	FString ResolveReferencedType(const FProperty* Property)
+	{
+		if (!Property)
+		{
+			return FString();
+		}
+		if (const FStructProperty* StructProp = CastField<FStructProperty>(Property))
+		{
+			return StructProp->Struct ? StructProp->Struct->GetName() : FString();
+		}
+		if (const FClassProperty* ClassProp = CastField<FClassProperty>(Property))
+		{
+			return ClassProp->MetaClass ? ClassProp->MetaClass->GetName() : FString();
+		}
+		if (const FSoftClassProperty* SoftClassProp = CastField<FSoftClassProperty>(Property))
+		{
+			return SoftClassProp->MetaClass ? SoftClassProp->MetaClass->GetName() : FString();
+		}
+		if (const FSoftObjectProperty* SoftObjProp = CastField<FSoftObjectProperty>(Property))
+		{
+			return SoftObjProp->PropertyClass ? SoftObjProp->PropertyClass->GetName() : FString();
+		}
+		if (const FWeakObjectProperty* WeakObjProp = CastField<FWeakObjectProperty>(Property))
+		{
+			return WeakObjProp->PropertyClass ? WeakObjProp->PropertyClass->GetName() : FString();
+		}
+		if (const FObjectProperty* ObjProp = CastField<FObjectProperty>(Property))
+		{
+			return ObjProp->PropertyClass ? ObjProp->PropertyClass->GetName() : FString();
+		}
+		if (const FInterfaceProperty* InterfaceProp = CastField<FInterfaceProperty>(Property))
+		{
+			return InterfaceProp->InterfaceClass ? InterfaceProp->InterfaceClass->GetName() : FString();
+		}
+		if (const FArrayProperty* ArrayProp = CastField<FArrayProperty>(Property))
+		{
+			return ResolveReferencedType(ArrayProp->Inner);
+		}
+		if (const FSetProperty* SetProp = CastField<FSetProperty>(Property))
+		{
+			return ResolveReferencedType(SetProp->ElementProp);
+		}
+		if (const FMapProperty* MapProp = CastField<FMapProperty>(Property))
+		{
+			// Both halves of a map can reference other Nexus types; prefer the
+			// value side (it's what designers usually want to follow).
+			FString FromValue = ResolveReferencedType(MapProp->ValueProp);
+			return FromValue.IsEmpty() ? ResolveReferencedType(MapProp->KeyProp) : FromValue;
+		}
+		return FString();
+	}
+
+	/**
 	 * UHT stores per-parameter tooltips in the function's "ToolTip" metadata as a
 	 * blob with "@param Name description" lines. Pull the line that matches.
 	 */
@@ -431,6 +490,7 @@ namespace
 		OutProp.RawType = RawTypeInternal(Prop);
 		OutProp.Tooltip = StripTags(Prop->GetMetaData(TEXT("ToolTip")));
 		OutProp.Category = Prop->GetMetaData(TEXT("Category"));
+		OutProp.ReferencedTypeName = ResolveReferencedType(Prop);
 
 		const EPropertyFlags Flags = Prop->GetPropertyFlags();
 		OutProp.bBlueprintReadable = (Flags & CPF_BlueprintVisible) != 0;
@@ -625,6 +685,125 @@ namespace
 			return A.DisplayName < B.DisplayName;
 		});
 	}
+
+	/**
+	 * Cross-reference pass: every Nexus type knows about its parent already
+	 * (ParentTypeName); flip that into "children" lists, and accumulate
+	 * "Used By" sets from each property's resolved type. Runs once after the
+	 * per-type walks so a single O(N + M) pass produces every back-link the
+	 * detail panel needs.
+	 */
+	void BuildCrossReferences(FNexusDocCollection& Collection)
+	{
+		TMap<FString, FNexusDocClass*> Lookup;
+		Lookup.Reserve(Collection.Classes.Num());
+		for (const TSharedPtr<FNexusDocClass>& Entry : Collection.Classes)
+		{
+			if (Entry.IsValid())
+			{
+				Lookup.Add(Entry->TypeName, Entry.Get());
+			}
+		}
+
+		// Parent → derived (only when the parent is a Nexus type itself).
+		for (const TSharedPtr<FNexusDocClass>& Entry : Collection.Classes)
+		{
+			if (!Entry.IsValid() || Entry->ParentTypeName.IsEmpty())
+			{
+				continue;
+			}
+			if (FNexusDocClass** Parent = Lookup.Find(Entry->ParentTypeName))
+			{
+				(*Parent)->DerivedTypeNames.Add(Entry->TypeName);
+			}
+		}
+
+		// Property type → referencing class. A class is added at most once per
+		// referenced type even if it has multiple properties of that type.
+		for (const TSharedPtr<FNexusDocClass>& Entry : Collection.Classes)
+		{
+			if (!Entry.IsValid())
+			{
+				continue;
+			}
+			TSet<FString> SeenRefs;
+			auto ConsumeProperty = [&Lookup, &SeenRefs, &Entry](const FNexusDocProperty& Prop)
+			{
+				if (Prop.ReferencedTypeName.IsEmpty() || Prop.ReferencedTypeName == Entry->TypeName)
+				{
+					return;
+				}
+				if (SeenRefs.Contains(Prop.ReferencedTypeName))
+				{
+					return;
+				}
+				if (FNexusDocClass** Target = Lookup.Find(Prop.ReferencedTypeName))
+				{
+					(*Target)->ReferencedByTypeNames.Add(Entry->TypeName);
+					SeenRefs.Add(Prop.ReferencedTypeName);
+				}
+			};
+			for (const FNexusDocProperty& Prop : Entry->Properties) { ConsumeProperty(Prop); }
+			for (const FNexusDocProperty& Prop : Entry->Events)     { ConsumeProperty(Prop); }
+		}
+
+		// Both link lists read better alphabetically.
+		for (const TSharedPtr<FNexusDocClass>& Entry : Collection.Classes)
+		{
+			if (Entry.IsValid())
+			{
+				Entry->DerivedTypeNames.Sort();
+				Entry->ReferencedByTypeNames.Sort();
+			}
+		}
+	}
+
+	/**
+	 * Sum the per-class counts into the collection-level summary. The browser
+	 * header band shows "X classes, Y% documented" off these.
+	 */
+	void ComputeAggregateStats(FNexusDocCollection& Collection)
+	{
+		Collection.TotalClasses = 0;
+		Collection.TotalStructs = 0;
+		Collection.TotalFunctions = 0;
+		Collection.TotalProperties = 0;
+		Collection.TotalEvents = 0;
+		Collection.DocumentedClasses = 0;
+		Collection.DocumentedMembers = 0;
+		Collection.TotalMembers = 0;
+
+		for (const TSharedPtr<FNexusDocClass>& Entry : Collection.Classes)
+		{
+			if (!Entry.IsValid())
+			{
+				continue;
+			}
+			if (Entry->bIsStruct) { ++Collection.TotalStructs; }
+			else                  { ++Collection.TotalClasses; }
+			if (Entry->bHasDocs()) { ++Collection.DocumentedClasses; }
+
+			Collection.TotalFunctions  += Entry->Functions.Num();
+			Collection.TotalProperties += Entry->Properties.Num();
+			Collection.TotalEvents     += Entry->Events.Num();
+
+			for (const FNexusDocFunction& Func : Entry->Functions)
+			{
+				++Collection.TotalMembers;
+				if (Func.bHasDocs()) { ++Collection.DocumentedMembers; }
+			}
+			for (const FNexusDocProperty& Prop : Entry->Properties)
+			{
+				++Collection.TotalMembers;
+				if (Prop.bHasDocs()) { ++Collection.DocumentedMembers; }
+			}
+			for (const FNexusDocProperty& Event : Entry->Events)
+			{
+				++Collection.TotalMembers;
+				if (Event.bHasDocs()) { ++Collection.DocumentedMembers; }
+			}
+		}
+	}
 }
 
 namespace NexusDocs
@@ -637,6 +816,52 @@ namespace NexusDocs
 	FString RawType(const FProperty* Property)
 	{
 		return RawTypeInternal(Property);
+	}
+
+	FString KindShortLabel(ENexusDocKind Kind)
+	{
+		switch (Kind)
+		{
+		case ENexusDocKind::Class:     return TEXT("CLASS");
+		case ENexusDocKind::Component: return TEXT("COMP");
+		case ENexusDocKind::Subsystem: return TEXT("SUB");
+		case ENexusDocKind::Library:   return TEXT("LIB");
+		case ENexusDocKind::Interface: return TEXT("IFACE");
+		case ENexusDocKind::Actor:     return TEXT("ACTOR");
+		case ENexusDocKind::Struct:    return TEXT("STRUCT");
+		}
+		return TEXT("?");
+	}
+
+	FString KindLongLabel(ENexusDocKind Kind)
+	{
+		switch (Kind)
+		{
+		case ENexusDocKind::Class:     return TEXT("Class");
+		case ENexusDocKind::Component: return TEXT("Actor Component");
+		case ENexusDocKind::Subsystem: return TEXT("Subsystem");
+		case ENexusDocKind::Library:   return TEXT("Function Library");
+		case ENexusDocKind::Interface: return TEXT("Interface");
+		case ENexusDocKind::Actor:     return TEXT("Actor");
+		case ENexusDocKind::Struct:    return TEXT("Struct");
+		}
+		return TEXT("Type");
+	}
+
+	TSharedPtr<FNexusDocClass> FindByTypeName(const FNexusDocCollection& Collection, const FString& TypeName)
+	{
+		if (TypeName.IsEmpty())
+		{
+			return nullptr;
+		}
+		for (const TSharedPtr<FNexusDocClass>& Entry : Collection.Classes)
+		{
+			if (Entry.IsValid() && Entry->TypeName == TypeName)
+			{
+				return Entry;
+			}
+		}
+		return nullptr;
 	}
 
 	FNexusDocCollection BuildFromNexusModule()
@@ -686,6 +911,9 @@ namespace NexusDocs
 
 		Collection.Categories = CategorySet.Array();
 		Collection.Categories.Sort();
+
+		BuildCrossReferences(Collection);
+		ComputeAggregateStats(Collection);
 		return Collection;
 	}
 }
