@@ -2,7 +2,7 @@
 
 > The component that hosts in-hand items (guns, melee, throwables) and
 > passive items (armor, charms) on any actor — player or NPC — through a
-> single data-driven slot model. RE7 / Village / RE4R-style.
+> single data-driven slot model. RE7 / Village-style.
 
 ## What the system does
 

@@ -2,7 +2,7 @@
 
 > Ranged guns AND melee weapons under one system. Composed capabilities,
 > shared lifecycle, shared host, shared animation resolution, and one
-> uniform damage packet. RE4R-class target.
+> uniform damage packet. First-person survival-horror target.
 
 ## What the system does
 
@@ -228,7 +228,7 @@ instance and health delegates.
   FNexusFragment_MeleeWeapon sharing a base?
 - Melee hit detection: anim-notify-state sweep window (capsule or sphere)
   vs per-frame overlap vs traced arc, and single-target vs cleave?
-- Aim model: over-the-shoulder steady-aim with a laser dot (no FOV change,
+- Aim model: first-person steady-aim with a laser dot (no FOV change,
   spread tightening plus recoil control) or classic ADS with FOV zoom?
 - Projectiles in v1: hitscan plus melee only with projectile as the proven
   extension point, or is a projectile weapon (grenade, bolt) required now?

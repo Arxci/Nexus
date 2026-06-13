@@ -56,3 +56,21 @@ public:
 	UNexusEquipmentLoadoutFactory();
 	virtual UObject* FactoryCreateNew(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, UObject* Context, FFeedbackContext* Warn) override;
 };
+
+UCLASS()
+class UNexusInputContextFactory : public UFactory
+{
+	GENERATED_BODY()
+public:
+	UNexusInputContextFactory();
+	virtual UObject* FactoryCreateNew(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, UObject* Context, FFeedbackContext* Warn) override;
+};
+
+UCLASS()
+class UNexusInputConfigFactory : public UFactory
+{
+	GENERATED_BODY()
+public:
+	UNexusInputConfigFactory();
+	virtual UObject* FactoryCreateNew(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, UObject* Context, FFeedbackContext* Warn) override;
+};

@@ -1,7 +1,7 @@
 # Inventory
 
 > A spatial, sectioned, case-driven inventory and container framework.
-> RE4R-class target. Owns item lifetime; every other system reads it through
+> First-person survival-horror target. Owns item lifetime; every other system reads it through
 > a small API and reacts to its events.
 
 ## What the system does

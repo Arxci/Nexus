@@ -441,7 +441,7 @@ void UNexusAbility_WeaponFire::ApplyRecoil() const
 	float Vertical   = Stat(NexusGameplayTags::Stat_Weapon_RecoilVertical,   Weapon->Ranged.Combat.RecoilVertical);
 	float Horizontal = Stat(NexusGameplayTags::Stat_Weapon_RecoilHorizontal, Weapon->Ranged.Combat.RecoilHorizontal);
 
-	// Steady-aim control: aiming reduces the felt kick (RE4R over-the-shoulder aim).
+	// Steady-aim control: aiming reduces the felt kick (first-person steady-aim).
 	if (IsAiming())
 	{
 		const float Control = FMath::Clamp(Weapon->Ranged.Combat.RecoilAimControl, 0.0f, 1.0f);

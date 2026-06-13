@@ -3,8 +3,11 @@
 #include "Kismet/KismetSystemLibrary.h"
 
 #include "Nexus/Interaction/NexusInteractableComponent.h"
+#include "Nexus/Interaction/NexusInteractableInterface.h"
 #include "Nexus/Interaction/NexusInteractionPromptLibrary.h"
+#include "Nexus/Input/NexusInputManager.h"
 #include "Nexus/NexusCollisionChannels.h"
+#include "Nexus/NexusGameplayTags.h"
 #include "Nexus/Util/NexusHeroPlayerUtility.h"
 #include "Nexus/Character/NexusCharacterBase.h"
 
@@ -76,25 +79,88 @@ UNexusAbility_Interaction::UNexusAbility_Interaction()
 void UNexusAbility_Interaction::InitializeAbility()
 {
 	StartAwarenessTimer();
+	RegisterInteractInput();
 }
 
 void UNexusAbility_Interaction::OnDisableAbility()
 {
 	Super::OnDisableAbility();
-	
+
 	if (const UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(TimerHandle_UpdateInteractables);
 	}
-	
+
 	ClearAwarenessState();
+	UnregisterInteractInput();
 }
 
 void UNexusAbility_Interaction::OnEnableAbility()
 {
 	Super::OnEnableAbility();
-	
+
 	StartAwarenessTimer();
+	RegisterInteractInput();
+}
+
+void UNexusAbility_Interaction::RegisterInteractInput()
+{
+	if (InteractListenerHandle.IsValid())
+	{
+		return; // already registered (idempotent across Initialize/OnEnable)
+	}
+	if (UNexusInputManager* Manager = UNexusInputManager::GetForActor(GetOwner()))
+	{
+		InteractListenerHandle = Manager->RegisterInputHandler(NexusGameplayTags::InputTag_Interact,
+			FNexusInputHandlerSignature::CreateUObject(this, &UNexusAbility_Interaction::HandleInteractInput), GetOwner());
+	}
+}
+
+void UNexusAbility_Interaction::UnregisterInteractInput()
+{
+	if (UNexusInputManager* Manager = UNexusInputManager::GetForActor(GetOwner()))
+	{
+		Manager->UnregisterInputHandler(InteractListenerHandle);
+	}
+	InteractListenerHandle = FNexusInputListenerHandle();
+}
+
+bool UNexusAbility_Interaction::HandleInteractInput(const FNexusInputActionPayload& Payload)
+{
+	AActor* Interactor = GetOwner();
+	if (!Interactor)
+	{
+		return false;
+	}
+
+	if (Payload.TriggerEvent == ENexusInputTriggerEvent::Started)
+	{
+		UNexusInteractableComponent* Focused = InteractionTarget.Get();
+		if (!Focused)
+		{
+			return false;
+		}
+		ActiveInteractable = Focused;
+		INexusInteractableInterface::Execute_TryStartInteraction(Focused, Interactor);
+		return true;
+	}
+
+	if (Payload.TriggerEvent == ENexusInputTriggerEvent::Completed || Payload.TriggerEvent == ENexusInputTriggerEvent::Canceled)
+	{
+		// Release-before-completion is a cancel. Target the interactable we originally started
+		// on, not the current focus — the player may have looked away mid-hold. If the hold
+		// finished and our cached interactable already auto-completed, TryStop no-ops.
+		UNexusInteractableComponent* Started = ActiveInteractable.Get();
+		ActiveInteractable = nullptr;
+		if (!Started)
+		{
+			return false;
+		}
+		INexusInteractableInterface::Execute_TryStopInteraction(Started, Interactor);
+		return true;
+	}
+
+	return false;
 }
 
 void UNexusAbility_Interaction::TickAbility(float DeltaTime)

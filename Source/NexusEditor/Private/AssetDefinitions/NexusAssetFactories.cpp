@@ -5,6 +5,8 @@
 #include "Nexus/Crafting/NexusCombinationRecipe.h"
 #include "Nexus/Levels/NexusLevelManifest.h"
 #include "Nexus/Equipment/NexusEquipmentLoadout.h"
+#include "Nexus/Input/NexusInputContext.h"
+#include "Nexus/Input/NexusInputConfig.h"
 
 // --- Item --------------------------------------------------------------------
 UNexusItemDefinitionFactory::UNexusItemDefinitionFactory()
@@ -74,4 +76,32 @@ UObject* UNexusEquipmentLoadoutFactory::FactoryCreateNew(
 	UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, UObject* Context, FFeedbackContext* Warn)
 {
 	return NewObject<UNexusEquipmentLoadout>(InParent, InClass, InName, Flags);
+}
+
+// --- Input Context -----------------------------------------------------------
+UNexusInputContextFactory::UNexusInputContextFactory()
+{
+	SupportedClass = UNexusInputContext::StaticClass();
+	bCreateNew = true;
+	bEditAfterNew = true;
+}
+
+UObject* UNexusInputContextFactory::FactoryCreateNew(
+	UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, UObject* Context, FFeedbackContext* Warn)
+{
+	return NewObject<UNexusInputContext>(InParent, InClass, InName, Flags);
+}
+
+// --- Input Config ------------------------------------------------------------
+UNexusInputConfigFactory::UNexusInputConfigFactory()
+{
+	SupportedClass = UNexusInputConfig::StaticClass();
+	bCreateNew = true;
+	bEditAfterNew = true;
+}
+
+UObject* UNexusInputConfigFactory::FactoryCreateNew(
+	UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, UObject* Context, FFeedbackContext* Warn)
+{
+	return NewObject<UNexusInputConfig>(InParent, InClass, InName, Flags);
 }

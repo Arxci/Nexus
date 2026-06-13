@@ -3,8 +3,11 @@
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 
+#include "Engine/LocalPlayer.h"
+
 #include "NexusPlayerCameraManager.h"
 #include "Nexus/Loading/NexusLoadingGateSubsystem.h"
+#include "Nexus/UI/Foundation/NexusUILayoutSubsystem.h"
 #include "Nexus/Util/NexusUIUtility.h"
 #include "Nexus/Cheats/NexusCheatManager.h"
 
@@ -35,6 +38,16 @@ void ANexusPlayerController::BeginPlay()
 		if (UNexusLoadingGateSubsystem* Gate = GI->GetSubsystem<UNexusLoadingGateSubsystem>())
 		{
 			Gate->SyncPlayerController(this);
+		}
+	}
+
+	// Create the primary UI layout for this local player (no-op on a non-local / AI controller,
+	// or if no layout class is configured).
+	if (ULocalPlayer* LP = GetLocalPlayer())
+	{
+		if (UNexusUILayoutSubsystem* UI = UNexusUILayoutSubsystem::Get(LP))
+		{
+			UI->CreateLayout(this, RootLayoutClass, PanelMap);
 		}
 	}
 }

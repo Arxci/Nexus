@@ -3,7 +3,7 @@
 > The runtime that bolts physical parts onto weapons (and any other
 > equippable) and stacks merchant tune-ups on top. Both layers fold into a
 > single effective-stat block and a single animation resolution that every
-> consumer reads. Survival-horror, RE4R-class target.
+> consumer reads. First-person survival-horror target.
 
 ## What the system does
 

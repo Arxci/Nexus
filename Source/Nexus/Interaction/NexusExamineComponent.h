@@ -5,12 +5,15 @@
 #include "Components/ActorComponent.h"
 
 #include "Nexus/Interaction/NexusExamineTypes.h"
+#include "Nexus/Input/NexusInputTypes.h"
 
 #include "NexusExamineComponent.generated.h"
 
 class UStaticMeshComponent;
 class UCameraComponent;
 class UNexusAbilitySystemComponent;
+class UNexusInputContext;
+struct FNexusInputActionPayload;
 
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnExamineStarted);
@@ -75,8 +78,27 @@ public:
 protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
+	/**
+	 * The modal, in-world context pushed while examining. Its IMC maps Look to
+	 * Input.Examine.Rotate and the interact/back key to Input.Cancel, and (being modal)
+	 * suspends the gameplay IMC so combat/locomotion verbs are suppressed — the structural
+	 * replacement for the hero's IsExamining() gate. Authored per project.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Examine|Input")
+	TObjectPtr<UNexusInputContext> ExamineContext;
+
 private:
 	bool bExamining = false;
+
+	// Push/pop the Examine context and register/unregister the rotate + cancel verb handlers.
+	void PushExamineInput();
+	void PopExamineInput();
+	bool HandleExamineRotate(const FNexusInputActionPayload& Payload);
+	bool HandleExamineCancel(const FNexusInputActionPayload& Payload);
+
+	FNexusInputContextHandle ExamineContextHandle;
+	FNexusInputListenerHandle RotateListenerHandle;
+	FNexusInputListenerHandle CancelListenerHandle;
 
 	UPROPERTY(Transient)
 	FNexusExamineData CurrentData;

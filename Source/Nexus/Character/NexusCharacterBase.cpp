@@ -8,6 +8,7 @@
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 #include "Nexus/Character/NexusCharacterMovementComponent.h"
 #include "Nexus/AbilitySystem/NexusAbility.h"
+#include "Nexus/Input/NexusInputHostComponent.h"
 #include "Nexus/NexusGameplayTags.h"
 
 ANexusCharacterBase::ANexusCharacterBase(const FObjectInitializer& ObjectInitializer)
@@ -44,6 +45,13 @@ void ANexusCharacterBase::PossessedBy(AController* NewController)
 			}
 		}
 	}
+
+	// Wire the data-driven input layer if this pawn carries the host component (player pawns do;
+	// AI pawns don't, so this is a no-op for them). The controller is already set here.
+	if (UNexusInputHostComponent* InputHost = FindComponentByClass<UNexusInputHostComponent>())
+	{
+		InputHost->NotifyControllerChanged();
+	}
 }
 
 void ANexusCharacterBase::UnPossessed()
@@ -53,6 +61,12 @@ void ANexusCharacterBase::UnPossessed()
 		NexusAbilitySystemComponent->InitAbilityActorInfo(nullptr);
 	}
 	Super::UnPossessed();
+
+	// Controller is cleared by now; the host tears its wiring down.
+	if (UNexusInputHostComponent* InputHost = FindComponentByClass<UNexusInputHostComponent>())
+	{
+		InputHost->NotifyControllerChanged();
+	}
 }
 
 void ANexusCharacterBase::BeginPlay()

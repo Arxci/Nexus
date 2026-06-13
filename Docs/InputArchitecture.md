@@ -5,7 +5,8 @@
 > Examine, Menu, Dialog, Cinematic); the bespoke ASC, equipment, and UI
 > systems subscribe to verbs instead of binding raw actions; HUD glyphs
 > follow the last-used device; rebinds persist through Enhanced Input User
-> Settings. The hero ends with zero `BindAction` calls. RE4R-class target.
+> Settings. The hero ends with zero `BindAction` calls. First-person
+> survival-horror target (RE7 / Village class).
 
 ## What the system does
 
@@ -64,10 +65,10 @@ to this codebase's bespoke ability system instead of GAS:
 - **Enhanced Input User Settings** (UE 5.3+) own rebinding: register an IMC,
   mark mappings player-mappable, capture and persist a key — no hand-rolled
   save slot.
-- **Survival-horror conventions** (RE4 Remake / Village): per-verb hold-or-
+- **Survival-horror conventions** (RE7 / Village): per-verb hold-or-
   toggle for Aim / Run / Crouch, repeated-input-as-hold to avoid mashing,
-  a dedicated 180° quick-turn, contextual hold-to-interact, weapon slot
-  shortcuts, and a paused inventory screen — all expressed as data here.
+  contextual hold-to-interact, weapon slot shortcuts, and a paused inventory
+  screen — all expressed as data here.
 
 ## Layers
 
@@ -120,11 +121,13 @@ to this codebase's bespoke ability system instead of GAS:
 
 The canonical vocabulary, reusing the project's existing `Input.*` namespace
 (`Input.Run`, `Input.Crouch`, `Input.Weapon.Fire`, `Input.Weapon.Reload`,
-`Input.Weapon.Aim`, `Input.Weapon.Melee`, `Input.Weapon.Slot1/2`,
-`Input.Weapon.SwapNext/Prev`). New verbs extend the same root:
-`Input.Move`, `Input.Look`, `Input.Interact`, `Input.QuickTurn`,
-`Input.QuickHeal`, `Input.Cancel`, `Input.Pause`, `Input.OpenInventory`,
-`Input.OpenMap`, `Input.Examine.Rotate`.
+`Input.Weapon.Aim`, `Input.Weapon.Melee`). Slot draw/swap is equipment-neutral
+(any equippable, not just weapons), so it lives under `Input.Equipment.*`
+(`Input.Equipment.Slot1/2`, `Input.Equipment.SwapNext/Prev`) — not under
+`Input.Weapon.*`. New verbs extend the same root:
+`Input.Move`, `Input.Look`, `Input.Interact`, `Input.QuickHeal`,
+`Input.Cancel`, `Input.Pause`, `Input.OpenInventory`, `Input.OpenMap`,
+`Input.Examine.Rotate`.
 
 A verb describes *what the player meant*, never the key. The same tag fires
 from KB&M and pad, across contexts, after a rebind, with no listener change.
@@ -321,13 +324,12 @@ questions.
   `Input.Examine.Rotate` into `UNexusExamineComponent::AddRotationInput`,
   combat/locomotion verbs are suppressed, Cancel pops the context. This
   replaces the hero rerouting Look and gating on `IsExamining()`.
-- **180° Quick-turn** is a single `Input.QuickTurn` verb produced by an
-  Enhanced Input chord/combo (Back-on-Move + Sprint) or a dedicated key; the
-  listener sees one verb, never the chord.
-- **Weapon slots** — `Input.Weapon.Slot1/2` (and `Input.SlotPrimary/Secondary`)
-  with tap → Normal draw, hold → Ceremony, routed to
-  `UNexusEquipmentComponent::RequestActivateSlot(SlotTag, Style)`. Swap-next /
-  prev / last map to `RequestActivateNextSlot` / `PrevSlot` / `LastSlot`.
+- **Equipment slots** — `Input.Equipment.Slot1/2` (equipment-neutral; any
+  equippable, not just weapons) with tap → Normal draw, hold → Ceremony, routed to
+  `UNexusEquipmentComponent::RequestActivateSlot(SlotTag, Style)`. The verb → slot
+  mapping is data (`SlotActivationVerbs`); slot identity stays `Equipment.Slot.*`.
+  `Input.Equipment.SwapNext/Prev` (and last) map to
+  `RequestActivateNextSlot` / `PrevSlot` / `LastSlot`.
 - **Quick-heal** is a single press routed to the consumable ability; if it
   can't run (no consumable) the ability refuses and the HUD shows why.
 - **Inventory / map / pause** are Common UI menu layers: opening pushes
@@ -455,6 +457,3 @@ registered local pawn.
   vs per-context overrides ("Reload" differs inside Vehicle).
 - **Stacked modals.** Inventory open + a dialog opening — does the second modal
   stack and pause the first (proposed) or force the first to pop?
-- **Quick-turn input.** A chord (Back + Sprint) reproducing RE's pad feel, a
-  dedicated bindable key, or both per device? Proposed: chord on pad, dedicated
-  key on KB&M, one verb either way.

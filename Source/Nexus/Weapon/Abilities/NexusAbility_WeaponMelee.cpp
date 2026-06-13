@@ -294,7 +294,7 @@ bool UNexusAbility_WeaponMelee::TickDurabilityAndMaybeBreak()
 
 	if (NewDurability > 0.0f) return false;
 
-	// Broke (RE4R-knife scarcity): remove the weapon from inventory. The equipment component
+	// Broke (knife scarcity): remove the weapon from inventory. The equipment component
 	// clears the slot in response (HandleInventoryItemRemoved), which removes this ability too.
 #if !UE_BUILD_SHIPPING
 	UE_LOG(LogNexusWeapon, Log, TEXT("[Melee] %s broke (durability exhausted)."),

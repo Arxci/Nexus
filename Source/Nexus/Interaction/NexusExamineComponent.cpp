@@ -9,6 +9,8 @@
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 #include "Nexus/Crafting/NexusItemCombinationSubsystem.h"
 #include "Nexus/Game/NexusWorldStateSubsystem.h"
+#include "Nexus/Input/NexusInputContext.h"
+#include "Nexus/Input/NexusInputManager.h"
 #include "Nexus/Inventory/NexusInventoryComponent.h"
 #include "Nexus/NexusGameplayTags.h"
 
@@ -68,6 +70,10 @@ void UNexusExamineComponent::BeginExamine(const FNexusExamineData& Data)
 		ASC->DeactivateAllAbilities();
 	}
 
+	// Swap input into the Examine sub-mode: modal context (suppresses combat/locomotion),
+	// Look re-routed to Input.Examine.Rotate, interact/back to Input.Cancel.
+	PushExamineInput();
+
 	OnExamineStarted.Broadcast();
 }
 
@@ -75,6 +81,10 @@ void UNexusExamineComponent::EndExamine()
 {
 	if (!bExamining) return;
 	bExamining = false;
+
+	// Restore input (pop the Examine context, drop the rotate/cancel handlers) before anything
+	// else so the gameplay context resumes.
+	PopExamineInput();
 
 	if (ExamineMesh)
 	{
@@ -150,6 +160,60 @@ bool UNexusExamineComponent::TryCombine(int32 RecipeIndex)
 	// Interaction only REQUESTS the combine; the subsystem owns the recipe data and
 	// the inventory mutation (consume inputs + give output through the public API).
 	return Combination->Craft(Inventory, Recipe);
+}
+
+void UNexusExamineComponent::PushExamineInput()
+{
+	UNexusInputManager* Manager = UNexusInputManager::GetForActor(GetOwner());
+	if (!Manager)
+	{
+		return; // not locally controlled — examine is a player sub-mode
+	}
+
+	if (ExamineContext)
+	{
+		ExamineContextHandle = Manager->PushContext(ExamineContext);
+	}
+	RotateListenerHandle = Manager->RegisterInputHandler(NexusGameplayTags::InputTag_Examine_Rotate,
+		FNexusInputHandlerSignature::CreateUObject(this, &UNexusExamineComponent::HandleExamineRotate), GetOwner());
+	CancelListenerHandle = Manager->RegisterInputHandler(NexusGameplayTags::InputTag_Cancel,
+		FNexusInputHandlerSignature::CreateUObject(this, &UNexusExamineComponent::HandleExamineCancel), GetOwner());
+}
+
+void UNexusExamineComponent::PopExamineInput()
+{
+	UNexusInputManager* Manager = UNexusInputManager::GetForActor(GetOwner());
+	if (!Manager)
+	{
+		return;
+	}
+	Manager->PopContext(ExamineContextHandle);
+	ExamineContextHandle = FNexusInputContextHandle();
+	Manager->UnregisterInputHandler(RotateListenerHandle);
+	Manager->UnregisterInputHandler(CancelListenerHandle);
+	RotateListenerHandle = FNexusInputListenerHandle();
+	CancelListenerHandle = FNexusInputListenerHandle();
+}
+
+bool UNexusExamineComponent::HandleExamineRotate(const FNexusInputActionPayload& Payload)
+{
+	if (Payload.TriggerEvent != ENexusInputTriggerEvent::Triggered)
+	{
+		return false;
+	}
+	AddRotationInput(Payload.AxisValue);
+	return true;
+}
+
+bool UNexusExamineComponent::HandleExamineCancel(const FNexusInputActionPayload& Payload)
+{
+	// One press of cancel/back (or the interact key, which the Examine IMC maps to Cancel) exits.
+	if (Payload.TriggerEvent != ENexusInputTriggerEvent::Started)
+	{
+		return false;
+	}
+	EndExamine();
+	return true;
 }
 
 void UNexusExamineComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)

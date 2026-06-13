@@ -15,8 +15,28 @@ namespace NexusGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Locomotion_Crouch, "Character.State.Locomotion.Crouch");
 
 	//Input-ID tags
-	UE_DEFINE_GAMEPLAY_TAG(InputTag_Run,   "Input.Run");
-	UE_DEFINE_GAMEPLAY_TAG(InputTag_Crouch,   "Input.Crouch");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Run,    "Input.Run");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Crouch, "Input.Crouch");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Move,           "Input.Move");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Look,           "Input.Look");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Interact,       "Input.Interact");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_QuickHeal,      "Input.QuickHeal");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Cancel,         "Input.Cancel");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Pause,          "Input.Pause");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_OpenInventory,  "Input.OpenInventory");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_OpenMap,        "Input.OpenMap");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Examine_Rotate, "Input.Examine.Rotate");
+
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Context_Gameplay,  "Input.Context.Gameplay");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Context_Examine,   "Input.Context.Examine");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Context_Menu,      "Input.Context.Menu");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Context_Dialog,    "Input.Context.Dialog");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Context_Cinematic, "Input.Context.Cinematic");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Context_Vehicle,   "Input.Context.Vehicle");
+
+	UE_DEFINE_GAMEPLAY_TAG(UI_Layer_Game,  "UI.Layer.Game");
+	UE_DEFINE_GAMEPLAY_TAG(UI_Layer_Menu,  "UI.Layer.Menu");
+	UE_DEFINE_GAMEPLAY_TAG(UI_Layer_Modal, "UI.Layer.Modal");
 
 	//Interaction
 	UE_DEFINE_GAMEPLAY_TAG(Interactable_Proximity_PlayerInRange,   "Interactable.Proximity.PlayerInRange");
@@ -62,10 +82,17 @@ namespace NexusGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_Weapon_Reload,   "Input.Weapon.Reload");
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_Weapon_Aim,      "Input.Weapon.Aim");
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_Weapon_Melee,    "Input.Weapon.Melee");
-	UE_DEFINE_GAMEPLAY_TAG(InputTag_Weapon_SwapNext, "Input.Weapon.SwapNext");
-	UE_DEFINE_GAMEPLAY_TAG(InputTag_Weapon_SwapPrev, "Input.Weapon.SwapPrev");
-	UE_DEFINE_GAMEPLAY_TAG(InputTag_Weapon_Slot1,    "Input.Weapon.Slot1");
-	UE_DEFINE_GAMEPLAY_TAG(InputTag_Weapon_Slot2,    "Input.Weapon.Slot2");
+
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Equipment_Primary,   "Input.Equipment.Primary");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Equipment_Secondary, "Input.Equipment.Secondary");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Equipment_SwapNext,  "Input.Equipment.SwapNext");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Equipment_SwapPrev,  "Input.Equipment.SwapPrev");
+
+	UE_DEFINE_GAMEPLAY_TAG(UI_Panel_Inventory, "UI.Panel.Inventory");
+	UE_DEFINE_GAMEPLAY_TAG(UI_Panel_Map,       "UI.Panel.Map");
+	UE_DEFINE_GAMEPLAY_TAG(UI_Panel_Pause,     "UI.Panel.Pause");
+	UE_DEFINE_GAMEPLAY_TAG(UI_Panel_Merchant,  "UI.Panel.Merchant");
+	UE_DEFINE_GAMEPLAY_TAG(UI_Panel_Save,      "UI.Panel.Save");
 
 	UE_DEFINE_GAMEPLAY_TAG(Equipment_Slot_Primary,   "Equipment.Slot.Primary");
 	UE_DEFINE_GAMEPLAY_TAG(Equipment_Slot_Secondary, "Equipment.Slot.Secondary");

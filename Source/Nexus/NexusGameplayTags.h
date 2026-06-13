@@ -16,9 +16,35 @@ namespace NexusGameplayTags
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Character_State_Locomotion_Run);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Character_State_Locomotion_Crouch);
 
-	//Input-ID tags
+	//Input-ID tags — verbs the data-driven input layer resolves from raw input. The
+	// vocabulary consumers subscribe to (never the key). Reuses this flat Input.* root
+	// (Lyra's style); new verbs extend it rather than a parallel namespace.
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Run);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Crouch);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Move);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Look);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Interact);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_QuickHeal);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Cancel);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Pause);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_OpenInventory);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_OpenMap);
+	// Examine sub-mode look reroute — Look becomes this verb while Input.Context.Examine is active.
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Examine_Rotate);
+
+	// Context-stack identity. Each UNexusInputContext carries one; the manager pushes/pops by it.
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Context_Gameplay);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Context_Examine);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Context_Menu);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Context_Dialog);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Context_Cinematic);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Context_Vehicle);
+
+	// UI layer identity — the named Common UI activatable-widget stacks on the primary layout.
+	// Game = HUD (always-on, Game input mode); Menu = full-screen screens; Modal = confirm/popups.
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(UI_Layer_Game);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(UI_Layer_Menu);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(UI_Layer_Modal);
 
 	//Interaction
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Interactable_Proximity_PlayerInRange);
@@ -67,15 +93,29 @@ namespace NexusGameplayTags
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Character_State_Weapon_Swapping);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Character_State_Weapon_Meleeing);
 
-	// Weapon input
+	// Weapon input — actions performed with the held weapon.
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Weapon_Fire);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Weapon_Reload);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Weapon_Aim);
 	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Weapon_Melee);
-	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Weapon_SwapNext);
-	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Weapon_SwapPrev);
-	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Weapon_Slot1);
-	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Weapon_Slot2);
+
+	// Equipment input — slot draw + swap. Equipment-neutral (any equippable, not just weapons),
+	// so deliberately NOT under Input.Weapon.*. Verbs are named for the slots they draw by
+	// default (matching Equipment.Slot.*); the verb -> slot mapping stays data
+	// (UNexusEquipmentComponent::SlotActivationVerbs) so it's still remappable.
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Equipment_Primary);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Equipment_Secondary);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Equipment_SwapNext);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Equipment_SwapPrev);
+
+	// UI panel identity — the shared vocabulary for "open UI by tag." Gameplay/interaction
+	// posts one of these via UNexusUIRequestSubsystem; the layout maps it to a widget + layer.
+	// Add more as you build screens.
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(UI_Panel_Inventory);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(UI_Panel_Map);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(UI_Panel_Pause);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(UI_Panel_Merchant);
+	NEXUS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(UI_Panel_Save);
 
 	// Equipment slot identity. Slots are data-driven (UNexusEquipmentLoadout); these
 	// are common roots shipped in C++ and used as runtime keys by the equipment component.

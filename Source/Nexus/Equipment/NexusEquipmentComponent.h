@@ -10,7 +10,11 @@
 
 #include "EMSCompSaveInterface.h"
 
+#include "Nexus/Input/NexusInputTypes.h"
+
 #include "NexusEquipmentComponent.generated.h"
+
+struct FNexusInputActionPayload;
 
 class UAnimMontage;
 class UAnimInstance;
@@ -322,6 +326,17 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment|Config")
 	TArray<FNexusStarterEquipped> StarterEquipment;
 
+	/**
+	 * Maps a slot-activation input verb (Input.Equipment.Primary/Secondary) to the slot it draws. The
+	 * verb -> slot mapping stays here as data, not in the hero. The slot input action uses a
+	 * Hold trigger, so a tap (Canceled) draws Normal and a hold past the threshold (Triggered)
+	 * draws the Ceremony variant — reproducing the hero's old slot tap/hold without timed code.
+	 * Populated locally; an AI pawn never registers these handlers.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment|Input",
+		meta = (Categories = "Input"))
+	TMap<FGameplayTag, FGameplayTag> SlotActivationVerbs;
+
 	/** Live per-slot state, keyed by SlotTag. Only occupied slots have an entry. */
 	UPROPERTY()
 	TMap<FGameplayTag, FNexusEquipmentSlotState> SlotStates;
@@ -340,6 +355,14 @@ protected:
 	FGameplayTag ActiveSlot;
 
 private:
+	// Input — slot draw + weapon swap verbs. Registered only when locally controlled.
+	void RegisterInputListeners();
+	void UnregisterInputListeners();
+	bool HandleSlotInput(const FNexusInputActionPayload& Payload);
+	bool HandleSwapInput(const FNexusInputActionPayload& Payload);
+
+	TArray<FNexusInputListenerHandle> InputListenerHandles;
+
 	// Host access — everything goes through the interfaces, never a concrete class.
 	INexusEquipmentInterface*     GetHost() const;
 	UAnimInstance*                GetHostAnimInstance() const;

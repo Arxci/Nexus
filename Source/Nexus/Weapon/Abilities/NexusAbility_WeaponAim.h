@@ -11,7 +11,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWeaponAimProgress, float, AimAlph
 
 
 /**
- * Over-the-shoulder steady-aim (the RE4R model — no FOV zoom). A held ability that,
+ * First-person steady-aim (no FOV zoom). A held ability that,
  * while active, owns Character.State.Weapon.Aiming — which tightens the Fire spread
  * and engages recoil control (both already read the tag) — and ramps an aim alpha
  * 0 -> 1 over the effective Stat.Weapon.ADSTime so the camera, arms anim, reticle and

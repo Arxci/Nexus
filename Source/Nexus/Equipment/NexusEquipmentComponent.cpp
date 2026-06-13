@@ -18,6 +18,7 @@
 #include "Nexus/AbilitySystem/NexusAbility.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
 #include "Nexus/AbilitySystem/NexusAbilitySystemInterface.h"
+#include "Nexus/Input/NexusInputManager.h"
 #include "GameFramework/Pawn.h"
 
 #include "Nexus/Inventory/NexusInventoryComponent.h"
@@ -31,6 +32,11 @@
 UNexusEquipmentComponent::UNexusEquipmentComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
+
+	// Default slot-verb -> slot mapping (overridable per character). Slot1 draws the primary,
+	// Slot2 the secondary, matching the hero's old SlotPrimary/SlotSecondary bindings.
+	SlotActivationVerbs.Add(NexusGameplayTags::InputTag_Equipment_Primary,   NexusGameplayTags::Equipment_Slot_Primary);
+	SlotActivationVerbs.Add(NexusGameplayTags::InputTag_Equipment_Secondary, NexusGameplayTags::Equipment_Slot_Secondary);
 }
 
 void UNexusEquipmentComponent::BeginPlay()
@@ -56,10 +62,14 @@ void UNexusEquipmentComponent::BeginPlay()
 			World->GetTimerManager().SetTimerForNextTick(this, &UNexusEquipmentComponent::ApplyStarterEquipment);
 		}
 	}
+
+	RegisterInputListeners();
 }
 
 void UNexusEquipmentComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	UnregisterInputListeners();
+
 	if (UNexusInventoryComponent* Inventory = GetInventory())
 	{
 		Inventory->OnItemRemoved.RemoveDynamic(this, &UNexusEquipmentComponent::HandleInventoryItemRemoved);
@@ -91,6 +101,82 @@ void UNexusEquipmentComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	EquippableLoadHandles.Empty();
 
 	Super::EndPlay(EndPlayReason);
+}
+
+void UNexusEquipmentComponent::RegisterInputListeners()
+{
+	// Player-only: no manager on an AI pawn, so nothing registers and slots stay AI-driven.
+	UNexusInputManager* Manager = UNexusInputManager::GetForActor(GetOwner());
+	if (!Manager)
+	{
+		return;
+	}
+
+	for (const TPair<FGameplayTag, FGameplayTag>& Pair : SlotActivationVerbs)
+	{
+		if (!Pair.Key.IsValid())
+		{
+			continue;
+		}
+		InputListenerHandles.Add(Manager->RegisterInputHandler(Pair.Key,
+			FNexusInputHandlerSignature::CreateUObject(this, &UNexusEquipmentComponent::HandleSlotInput), GetOwner()));
+	}
+
+	InputListenerHandles.Add(Manager->RegisterInputHandler(NexusGameplayTags::InputTag_Equipment_SwapNext,
+		FNexusInputHandlerSignature::CreateUObject(this, &UNexusEquipmentComponent::HandleSwapInput), GetOwner()));
+	InputListenerHandles.Add(Manager->RegisterInputHandler(NexusGameplayTags::InputTag_Equipment_SwapPrev,
+		FNexusInputHandlerSignature::CreateUObject(this, &UNexusEquipmentComponent::HandleSwapInput), GetOwner()));
+}
+
+void UNexusEquipmentComponent::UnregisterInputListeners()
+{
+	if (UNexusInputManager* Manager = UNexusInputManager::GetForActor(GetOwner()))
+	{
+		for (const FNexusInputListenerHandle& Handle : InputListenerHandles)
+		{
+			Manager->UnregisterInputHandler(Handle);
+		}
+	}
+	InputListenerHandles.Reset();
+}
+
+bool UNexusEquipmentComponent::HandleSlotInput(const FNexusInputActionPayload& Payload)
+{
+	const FGameplayTag* SlotTag = SlotActivationVerbs.Find(Payload.InputTag);
+	if (!SlotTag || !SlotTag->IsValid())
+	{
+		return false;
+	}
+
+	// The slot action uses a Hold trigger: a tap fires Canceled (released before the hold
+	// threshold) -> Normal draw; holding past the threshold fires Triggered -> Ceremony draw.
+	// Pressing the already-active slot routes through RequestActivateSlot's toggle to empty hands.
+	if (Payload.TriggerEvent == ENexusInputTriggerEvent::Canceled)
+	{
+		return RequestActivateSlot(*SlotTag, EUnholsterStyle::Normal);
+	}
+	if (Payload.TriggerEvent == ENexusInputTriggerEvent::Triggered)
+	{
+		return RequestActivateSlot(*SlotTag, EUnholsterStyle::Ceremony);
+	}
+	return false;
+}
+
+bool UNexusEquipmentComponent::HandleSwapInput(const FNexusInputActionPayload& Payload)
+{
+	if (Payload.TriggerEvent != ENexusInputTriggerEvent::Started)
+	{
+		return false;
+	}
+	if (Payload.InputTag == NexusGameplayTags::InputTag_Equipment_SwapNext)
+	{
+		return RequestActivateNextSlot();
+	}
+	if (Payload.InputTag == NexusGameplayTags::InputTag_Equipment_SwapPrev)
+	{
+		return RequestActivatePrevSlot();
+	}
+	return false;
 }
 
 

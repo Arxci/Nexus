@@ -3,7 +3,7 @@
 > The player's verb on the world. One Interact input resolves — by data on
 > the focused object — into Pick Up, Open, Examine, Read, Use, Unlock,
 > Search, or Talk. Effects route through public APIs of other systems.
-> First-person, survival-horror, RE4R-style.
+> First-person, survival-horror.
 
 ## What the system does
 

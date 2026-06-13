@@ -105,7 +105,7 @@ struct NEXUS_API FWeaponCombat
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat|Feel", meta = (ClampMin = "0.0"))
 	float RecoilHorizontal = 0.0f;
 
-	/** Felt-recoil multiplier while aiming (RE4R steady-aim control). 1 = no reduction, 0 = fully controlled. */
+	/** Felt-recoil multiplier while aiming (steady-aim control). 1 = no reduction, 0 = fully controlled. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat|Feel", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float RecoilAimControl = 0.5f;
 
@@ -291,7 +291,7 @@ struct NEXUS_API FWeaponMeleeSpec
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Melee|Heavy", meta = (ClampMin = "1.0"))
 	float HeavyStaminaMultiplier = 2.0f;
 
-	/** Melee weapons degrade with use and BREAK (are removed) at zero durability — RE4R-knife scarcity. */
+	/** Melee weapons degrade with use and BREAK (are removed) at zero durability — knife scarcity. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Melee|Durability")
 	bool bUsesDurability = true;
 
@@ -329,7 +329,7 @@ struct NEXUS_API FWeaponMeleeSpec
 
 
 /**
- * One purchasable tier on a weapon upgrade track (RE4R-style: Power Lv.1..N).
+ * One purchasable tier on a weapon upgrade track (discrete tiers: Power Lv.1..N).
  * Value is the CUMULATIVE upgrade delta over base at this tier — not a per-step
  * increment — so the merchant can derive the current tier from the persisted
  * stat and the displayed total is unambiguous. Cost is the currency to advance
@@ -407,7 +407,7 @@ struct NEXUS_API FNexusFragment_Weapon : public FNexusItemFragment
 	TArray<FNexusStatClamp> StatClamps;
 
 	/**
-	 * Merchant tune-up tracks (RE4R-style). The merchant offers the next tier per
+	 * Merchant tune-up tracks (discrete tiers). The merchant offers the next tier per
 	 * track and caps at the last; the purchased delta persists on the instance and
 	 * folds into the effective-stat resolution. One track per upgradeable stat.
 	 */

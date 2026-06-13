@@ -13,6 +13,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogNexusCharacter, Log, All);
 DECLARE_LOG_CATEGORY_EXTERN(LogNexusCombat, Log, All);
 DECLARE_LOG_CATEGORY_EXTERN(LogNexusEquipment, Log, All);
 DECLARE_LOG_CATEGORY_EXTERN(LogNexusGame, Log, All);
+DECLARE_LOG_CATEGORY_EXTERN(LogNexusInput, Log, All);
 DECLARE_LOG_CATEGORY_EXTERN(LogNexusInteraction, Log, All);
 DECLARE_LOG_CATEGORY_EXTERN(LogNexusInventory, Log, All);
 DECLARE_LOG_CATEGORY_EXTERN(LogNexusLevelLoader, Log, All);

@@ -6,6 +6,7 @@ DEFINE_LOG_CATEGORY(LogNexusCharacter);
 DEFINE_LOG_CATEGORY(LogNexusCombat);
 DEFINE_LOG_CATEGORY(LogNexusEquipment);
 DEFINE_LOG_CATEGORY(LogNexusGame);
+DEFINE_LOG_CATEGORY(LogNexusInput);
 DEFINE_LOG_CATEGORY(LogNexusInteraction);
 DEFINE_LOG_CATEGORY(LogNexusInventory);
 DEFINE_LOG_CATEGORY(LogNexusLevelLoader);

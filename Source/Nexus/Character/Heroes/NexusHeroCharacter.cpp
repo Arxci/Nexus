@@ -1,4 +1,4 @@
-﻿#include "NexusHeroCharacter.h"
+#include "NexusHeroCharacter.h"
 
 #include "Components/CapsuleComponent.h"
 #include "Components/SceneComponent.h"
@@ -6,19 +6,15 @@
 #include "Camera/CameraComponent.h"
 
 #include "GameFramework/SpringArmComponent.h"
-
-#include "EnhancedInputComponent.h"
-#include "EnhancedInputSubsystems.h"
-#include "InputAction.h"
+#include "GameFramework/PlayerController.h"
 
 #include "Nexus/NexusGameplayTags.h"
 #include "Nexus/Character/NexusCharacterMovementComponent.h"
 #include "Nexus/Player/NexusPlayerCameraManager.h"
 #include "Nexus/Equipment/NexusEquipmentComponent.h"
-#include "Nexus/AbilitySystem/NexusAbilitySystemComponent.h"
-#include "Nexus/Character/Abilities/NexusAbility_Interaction.h"
-#include "Nexus/Interaction/NexusInteractableComponent.h"
-#include "Nexus/Interaction/NexusInteractableInterface.h"
+#include "Nexus/Input/NexusInputManager.h"
+#include "Nexus/Input/NexusInputHostComponent.h"
+#include "Nexus/Input/NexusLocomotionInputComponent.h"
 #include "Nexus/Interaction/NexusExamineComponent.h"
 
 ANexusHeroCharacter::ANexusHeroCharacter(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
@@ -31,7 +27,7 @@ ANexusHeroCharacter::ANexusHeroCharacter(const FObjectInitializer& ObjectInitial
 	GetMesh()->SetCollisionProfileName(FName("NoCollision"));
 	GetMesh()->SetCastShadow(false);
 	GetMesh()->SetFirstPersonPrimitiveType(EFirstPersonPrimitiveType::FirstPerson);
-	
+
 	// View origin rides the capsule at eye height — it is NOT welded to the head bone.
 	// Look (pitch/yaw) comes from control rotation via the spring arm; the head bone's
 	// motion is layered back onto the view as a camera-only offset in
@@ -80,19 +76,19 @@ ANexusHeroCharacter::ANexusHeroCharacter(const FObjectInitializer& ObjectInitial
 	FirstPersonArms->SetRelativeRotation(FRotator(0.f, 0.f, -90.0f));
 
 	ExamineComponent = CreateDefaultSubobject<UNexusExamineComponent>(TEXT("ExamineComponent"));
+
+	// The whole input layer for this pawn: the host owns the binder + manager registration;
+	// the locomotion component subscribes to Move / Look. The hero binds nothing.
+	InputHostComponent = CreateDefaultSubobject<UNexusInputHostComponent>(TEXT("InputHostComponent"));
+	LocomotionInputComponent = CreateDefaultSubobject<UNexusLocomotionInputComponent>(TEXT("LocomotionInputComponent"));
 }
 
 void ANexusHeroCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
-	{
-		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
-		{
-			Subsystem->AddMappingContext(DefaultMappingContext, 0); 
-		}
-	}
+	// Input mapping contexts are no longer added here — UNexusInputManager applies each
+	// active context's IMC when the host registers this pawn and pushes its default contexts.
 
 	if (NexusEquipmentComponent)
 	{
@@ -114,43 +110,6 @@ void ANexusHeroCharacter::UpdateArmsVisibility()
 	FirstPersonArms->SetVisibility(bItemInHand);
 }
 
-void ANexusHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
-{
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
-	
-	if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent))
-	{
-		EnhancedInputComponent = EIC;
-		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ANexusHeroCharacter::Move);
-		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ANexusHeroCharacter::Look);
-		EnhancedInputComponent->BindAction(RunAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnRunInputStarted);
-		EnhancedInputComponent->BindAction(RunAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnRunInputCompleted);
-		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnCrouchInputStarted);
-		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnCrouchInputCompleted);
-		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnFireInputStarted);
-		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnFireInputCompleted);
-		EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnReloadInputStarted);
-		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnAimInputStarted);
-		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnAimInputCompleted);
-		EnhancedInputComponent->BindAction(MeleeAction, ETriggerEvent::Started, this, &ANexusHeroCharacter::OnMeleeInputStarted);
-		// Hold trigger per slot action: Canceled (released before the hold threshold) =
-		// tap = Normal draw; Triggered (held past the threshold) = Ceremony draw.
-		EnhancedInputComponent->BindAction(SlotPrimaryAction, ETriggerEvent::Canceled, this, &ANexusHeroCharacter::OnSlotPrimaryTap);
-		EnhancedInputComponent->BindAction(SlotPrimaryAction, ETriggerEvent::Triggered, this, &ANexusHeroCharacter::OnSlotPrimaryHold);
-		EnhancedInputComponent->BindAction(SlotSecondaryAction, ETriggerEvent::Canceled, this, &ANexusHeroCharacter::OnSlotSecondaryTap);
-		EnhancedInputComponent->BindAction(SlotSecondaryAction, ETriggerEvent::Triggered, this, &ANexusHeroCharacter::OnSlotSecondaryHold);
-		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started,   this, &ANexusHeroCharacter::OnInteractInputStarted);
-		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Completed, this, &ANexusHeroCharacter::OnInteractInputCompleted);
-
-		if (LookAction)   EIC->BindActionValue(LookAction);
-		if (MoveAction)   EIC->BindActionValue(MoveAction);
-		if (RunAction)    EIC->BindActionValue(RunAction);
-		if (CrouchAction) EIC->BindActionValue(CrouchAction);
-		if (FireAction)   EIC->BindActionValue(FireAction);
-		if (AimAction)    EIC->BindActionValue(AimAction);
-	}
-}
-
 
 //Utility
 FVector ANexusHeroCharacter::GetRelativeAcceleration() const
@@ -159,20 +118,7 @@ FVector ANexusHeroCharacter::GetRelativeAcceleration() const
 	{
 		return NexusCharacterMovement->GetRelativeAcceleration();
 	}
-	return {0, 0, 0};	
-}
-
-UNexusInteractableComponent* ANexusHeroCharacter::GetFocusedInteractable() const
-{
-	if (!NexusAbilitySystemComponent) return nullptr;
-	const UNexusAbility_Interaction* InteractAbility = Cast<UNexusAbility_Interaction>(
-		NexusAbilitySystemComponent->FindAbilityByClass(UNexusAbility_Interaction::StaticClass()));
-	return InteractAbility ? InteractAbility->GetFocusedInteractable() : nullptr;
-}
-
-bool ANexusHeroCharacter::IsExamining() const
-{
-	return ExamineComponent && ExamineComponent->IsExamining();
+	return {0, 0, 0};
 }
 
 FVector ANexusHeroCharacter::GetAcceleration() const
@@ -181,219 +127,37 @@ FVector ANexusHeroCharacter::GetAcceleration() const
 	{
 		return NexusCharacterMovement->GetAcceleration();
 	}
-	return {0, 0, 0};	
+	return {0, 0, 0};
 }
 
 bool ANexusHeroCharacter::GetIsTurning() const
 {
-	return GetLookInput().X != 0;	
+	return GetLookInput().X != 0;
 }
 
+// Input — re-sourced from the manager's per-verb cache (see header note).
 FVector2D ANexusHeroCharacter::GetLookInput() const
 {
-	return EnhancedInputComponent ? EnhancedInputComponent->GetBoundActionValue(LookAction).Get<FVector2D>() : FVector2D::ZeroVector;
+	const UNexusInputManager* Manager = UNexusInputManager::GetForPawn(this);
+	return Manager ? Manager->GetCachedAxis(NexusGameplayTags::InputTag_Look) : FVector2D::ZeroVector;
 }
 
 FVector2D ANexusHeroCharacter::GetMoveInput() const
 {
-	return EnhancedInputComponent ? EnhancedInputComponent->GetBoundActionValue(MoveAction).Get<FVector2D>() : FVector2D::ZeroVector;
+	const UNexusInputManager* Manager = UNexusInputManager::GetForPawn(this);
+	return Manager ? Manager->GetCachedAxis(NexusGameplayTags::InputTag_Move) : FVector2D::ZeroVector;
 }
 
 bool ANexusHeroCharacter::GetRunInput() const
 {
-	return EnhancedInputComponent ? EnhancedInputComponent->GetBoundActionValue(RunAction).Get<bool>() : false;
+	const UNexusInputManager* Manager = UNexusInputManager::GetForPawn(this);
+	return Manager ? Manager->GetCachedBool(NexusGameplayTags::InputTag_Run) : false;
 }
 
 bool ANexusHeroCharacter::GetCrouchInput() const
 {
-	return EnhancedInputComponent ? EnhancedInputComponent->GetBoundActionValue(CrouchAction).Get<bool>() : false;
-}
-
-// Player Input
-void ANexusHeroCharacter::OnInteractInputStarted()
-{
-	// While examining, the interact button exits the sub-mode instead of starting
-	// a new interaction.
-	if (ExamineComponent && ExamineComponent->IsExamining())
-	{
-		ExamineComponent->EndExamine();
-		return;
-	}
-
-	UNexusInteractableComponent* Focused = GetFocusedInteractable();
-	if (!Focused) return;
-	ActiveInteractable = Focused;
-	INexusInteractableInterface::Execute_TryStartInteraction(Focused, this);
-}
-
-void ANexusHeroCharacter::OnInteractInputCompleted()
-{
-	// Release-before-completion is a cancel. Target the interactable we
-	// originally started on, not the currently focused one — the player may
-	// have looked away mid-hold, and that other interactable shouldn't get a
-	// Stop call it never received a matching Start for. If the hold finished
-	// and our cached interactable already auto-completed, its CurrentInteractor
-	// was cleared, so TryStopInteraction will no-op — safe to fire unconditionally.
-	UNexusInteractableComponent* Started = ActiveInteractable.Get();
-	ActiveInteractable = nullptr;
-	if (!Started) return;
-	INexusInteractableInterface::Execute_TryStopInteraction(Started, this);
-}
-
-void ANexusHeroCharacter::OnFireInputStarted()
-{
-	if (IsExamining()) return;
-	if (!NexusAbilitySystemComponent) return;
-	NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Weapon_Fire);
-}
-
-void ANexusHeroCharacter::OnFireInputCompleted()
-{
-	// Releasing the trigger ends a held full-auto; semi / shotgun already ended after their
-	// shot (no-op), and a burst ignores the release and finishes its count.
-	if (!NexusAbilitySystemComponent) return;
-	NexusAbilitySystemComponent->TryDeactivateAbilityByTag(NexusGameplayTags::Ability_Weapon_Fire);
-}
-
-void ANexusHeroCharacter::OnReloadInputStarted()
-{
-	if (IsExamining()) return;
-	if (!NexusAbilitySystemComponent) return;
-	NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Weapon_Reload);
-}
-
-void ANexusHeroCharacter::OnAimInputStarted()
-{
-	if (IsExamining()) return;
-	if (!NexusAbilitySystemComponent) return;
-	if (AimInputMode == EInputMode::Hold)
-	{
-		NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Weapon_Aim);
-		return;
-	}
-	HandleToggleAbilityInput(NexusGameplayTags::Ability_Weapon_Aim, NexusGameplayTags::Ability_Weapon_Intent_Unaim);
-}
-
-void ANexusHeroCharacter::OnAimInputCompleted()
-{
-	if (AimInputMode != EInputMode::Hold) return;
-	if (!NexusAbilitySystemComponent) return;
-	NexusAbilitySystemComponent->TryDeactivateAbilityByTag(NexusGameplayTags::Ability_Weapon_Aim);
-}
-
-void ANexusHeroCharacter::OnMeleeInputStarted()
-{
-	// One press = a light swing (knife primary, or a ranged weapon's contextual bash). The
-	// ability supports a heavy variant via SetHeavyNext for a designer-added heavy binding.
-	if (IsExamining()) return;
-	if (!NexusAbilitySystemComponent) return;
-	NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Weapon_Melee);
-}
-
-void ANexusHeroCharacter::OnSlotPrimaryTap()    { HandleSlotInput(NexusGameplayTags::Equipment_Slot_Primary,   EUnholsterStyle::Normal); }
-void ANexusHeroCharacter::OnSlotPrimaryHold()   { HandleSlotInput(NexusGameplayTags::Equipment_Slot_Primary,   EUnholsterStyle::Ceremony); }
-void ANexusHeroCharacter::OnSlotSecondaryTap()  { HandleSlotInput(NexusGameplayTags::Equipment_Slot_Secondary, EUnholsterStyle::Normal); }
-void ANexusHeroCharacter::OnSlotSecondaryHold() { HandleSlotInput(NexusGameplayTags::Equipment_Slot_Secondary, EUnholsterStyle::Ceremony); }
-
-void ANexusHeroCharacter::HandleSlotInput(FGameplayTag SlotTag, EUnholsterStyle Style)
-{
-	if (IsExamining()) return;
-	if (!NexusEquipmentComponent) return;
-
-	// Pressing the already-active slot routes through RequestActivateSlot's toggle to
-	// empty hands; otherwise this draws SlotTag with the requested style.
-	NexusEquipmentComponent->RequestActivateSlot(SlotTag, Style);
-}
-
-void ANexusHeroCharacter::OnCrouchInputStarted()
-{
-	if (IsExamining()) return;
-	if (!NexusAbilitySystemComponent) return;
-	if (CrouchInputMode == EInputMode::Hold)
-	{
-		NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Crouch);
-		return;
-	}
-	HandleToggleAbilityInput(NexusGameplayTags::Ability_Locomotion_Crouch, NexusGameplayTags::Ability_Locomotion_Intent_UnCrouch);
-}
-
-
-void ANexusHeroCharacter::OnCrouchInputCompleted()
-{
-	if (CrouchInputMode != EInputMode::Hold) return;
-	if (!NexusAbilitySystemComponent) return;
-
-	NexusAbilitySystemComponent->TryDeactivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Crouch);
-}
-
-void ANexusHeroCharacter::OnRunInputStarted()
-{
-	if (IsExamining()) return;
-	if (!NexusAbilitySystemComponent) return;
-	if (RunInputMode == EInputMode::Hold)
-	{
-		NexusAbilitySystemComponent->TryActivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Run);
-		return;
-	}
-	HandleToggleAbilityInput(NexusGameplayTags::Ability_Locomotion_Run, NexusGameplayTags::Ability_Locomotion_Intent_Walk);
-}
-
-void ANexusHeroCharacter::OnRunInputCompleted()
-{
-	if (RunInputMode != EInputMode::Hold) return;
-	if (!NexusAbilitySystemComponent) return;
-
-	NexusAbilitySystemComponent->TryDeactivateAbilityByTag(NexusGameplayTags::Ability_Locomotion_Run);
-}
-
-void ANexusHeroCharacter::Move(const FInputActionValue& Value)
-{
-	if (IsExamining()) return;
-
-	const FVector2D MovementVector = Value.Get<FVector2D>();
-	if (Controller == nullptr) return;
-
-	const FRotator Rotation = Controller->GetControlRotation();
-	const FRotator YawRotation(0, Rotation.Yaw, 0);
-	const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-	const FVector RightDirection   = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
-
-	AddMovementInput(ForwardDirection, MovementVector.Y);
-	AddMovementInput(RightDirection,   MovementVector.X);
-}
-
-void ANexusHeroCharacter::Look(const FInputActionValue& Value)
-{
-	const FVector2D LookAxisVector = Value.Get<FVector2D>();
-
-	// While examining, look-input rotates the inspected item instead of the camera.
-	if (ExamineComponent && ExamineComponent->IsExamining())
-	{
-		ExamineComponent->AddRotationInput(LookAxisVector);
-		return;
-	}
-
-	if (Controller != nullptr)
-	{
-		AddControllerYawInput(LookAxisVector.X);
-		AddControllerPitchInput(LookAxisVector.Y);
-	}
-}
-
-void ANexusHeroCharacter::HandleToggleAbilityInput(const FGameplayTag AbilityTag, const FGameplayTag DeactivateIntentTag)
-{
-	if (NexusAbilitySystemComponent->HasTag(DeactivateIntentTag))
-	{
-		NexusAbilitySystemComponent->RemoveLooseGameplayTag(DeactivateIntentTag);
-	}
-	else if (NexusAbilitySystemComponent->IsAbilityActiveByTag(AbilityTag))
-	{
-		NexusAbilitySystemComponent->TryDeactivateAbilityByTag(AbilityTag);
-	}
-	else
-	{
-		NexusAbilitySystemComponent->TryActivateAbilityByTag(AbilityTag);
-	}
+	const UNexusInputManager* Manager = UNexusInputManager::GetForPawn(this);
+	return Manager ? Manager->GetCachedBool(NexusGameplayTags::InputTag_Crouch) : false;
 }
 
 
@@ -404,7 +168,6 @@ void ANexusHeroCharacter::ActorPreLoad_Implementation()
 
 	if (const APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
-		
 		if (ANexusPlayerCameraManager* CManager = Cast<ANexusPlayerCameraManager>(PC->PlayerCameraManager))
 		{
 			CManager->StartCameraFade(0, 1, 0.01f, FLinearColor::Black, true, true);
@@ -419,19 +182,17 @@ void ANexusHeroCharacter::ActorLoaded_Implementation()
 
 	if (const APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
-		
 		if (ANexusPlayerCameraManager* CManager = Cast<ANexusPlayerCameraManager>(PC->PlayerCameraManager))
 		{
 			CManager->StartCameraFadeWithDelay(1, 0, 0.5f, 1.0f, FLinearColor::Black, true, true);
 		}
 	}
 
-	if (!NexusAbilitySystemComponent) return;
-
-	//Flush out intent for hold input modes
-	if (RunInputMode == EInputMode::Hold && !GetRunInput()) NexusAbilitySystemComponent->ForceEndAbilityByTag(
-			NexusGameplayTags::Ability_Locomotion_Run);
-
-	if (CrouchInputMode == EInputMode::Hold && !GetCrouchInput()) NexusAbilitySystemComponent->ForceEndAbilityByTag(
-			NexusGameplayTags::Ability_Locomotion_Crouch);
+	// In-progress holds don't persist: end any hold-style ability (Run/Crouch/Aim) restored
+	// active that the player isn't holding now. The manager owns the per-verb mode, so this is
+	// one generic call instead of the old per-EInputMode branches.
+	if (UNexusInputManager* Manager = UNexusInputManager::GetForPawn(this))
+	{
+		Manager->ReconcileHoldVerbsAfterLoad();
+	}
 }

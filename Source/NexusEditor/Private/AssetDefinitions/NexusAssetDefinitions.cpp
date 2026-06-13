@@ -5,6 +5,8 @@
 #include "Nexus/Crafting/NexusCombinationRecipe.h"
 #include "Nexus/Levels/NexusLevelManifest.h"
 #include "Nexus/Equipment/NexusEquipmentLoadout.h"
+#include "Nexus/Input/NexusInputContext.h"
+#include "Nexus/Input/NexusInputConfig.h"
 
 #define LOCTEXT_NAMESPACE "NexusAssetDefinitions"
 
@@ -48,5 +50,17 @@ FText UAssetDefinition_NexusLoadout::GetAssetDisplayName() const { return LOCTEX
 FLinearColor UAssetDefinition_NexusLoadout::GetAssetColor() const { return FLinearColor(0.20f, 0.75f, 0.75f); } // teal
 TSoftClassPtr<UObject> UAssetDefinition_NexusLoadout::GetAssetClass() const { return UNexusEquipmentLoadout::StaticClass(); }
 TConstArrayView<FAssetCategoryPath> UAssetDefinition_NexusLoadout::GetAssetCategories() const { return NexusAssetDef::NexusCategory(); }
+
+// --- Input Context -----------------------------------------------------------
+FText UAssetDefinition_NexusInputContext::GetAssetDisplayName() const { return LOCTEXT("InputContext", "Nexus Input Context"); }
+FLinearColor UAssetDefinition_NexusInputContext::GetAssetColor() const { return FLinearColor(0.95f, 0.85f, 0.25f); } // gold
+TSoftClassPtr<UObject> UAssetDefinition_NexusInputContext::GetAssetClass() const { return UNexusInputContext::StaticClass(); }
+TConstArrayView<FAssetCategoryPath> UAssetDefinition_NexusInputContext::GetAssetCategories() const { return NexusAssetDef::NexusCategory(); }
+
+// --- Input Config ------------------------------------------------------------
+FText UAssetDefinition_NexusInputConfig::GetAssetDisplayName() const { return LOCTEXT("InputConfig", "Nexus Input Config"); }
+FLinearColor UAssetDefinition_NexusInputConfig::GetAssetColor() const { return FLinearColor(0.80f, 0.62f, 0.15f); } // amber
+TSoftClassPtr<UObject> UAssetDefinition_NexusInputConfig::GetAssetClass() const { return UNexusInputConfig::StaticClass(); }
+TConstArrayView<FAssetCategoryPath> UAssetDefinition_NexusInputConfig::GetAssetCategories() const { return NexusAssetDef::NexusCategory(); }
 
 #undef LOCTEXT_NAMESPACE

@@ -118,7 +118,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Merchant")
 	bool UninstallAttachment(UNexusAssemblyComponent* Assembly, FGameplayTag SlotID);
 
-	// Upgrades (RE4R-style discrete tiers)
+	// Upgrades (discrete tiers)
 	/** Where Instance sits on StatTag's upgrade track and what the next tier costs (for the gunsmith UI). */
 	UFUNCTION(BlueprintPure, Category = "Merchant")
 	FNexusWeaponUpgradeState GetUpgradeState(const UNexusItemInstance* Instance, FGameplayTag StatTag) const;
