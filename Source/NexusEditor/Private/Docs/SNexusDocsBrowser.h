@@ -27,20 +27,26 @@ template <typename ItemType> class SListView;
  *    count and a click-to-collapse caret.
  *  - Right pane: a header card (display name, kind chip, kind tooltip,
  *    parent/derived links, "Used By" callers, source path with Open Source
- *    and Copy buttons), a Table of Contents jump bar, a member quick-filter,
- *    member sort toggle (by Category vs by Name), and the Functions / Events
- *    / Properties sections rendered as cards. Function rows show a
- *    Blueprint-style signature, badges (Pure / Callable / Event / Server /
- *    Latent / Static), description, parameters with descriptions, and the
- *    return value.
+ *    and Copy buttons), a Summary chip row that scrolls to each section, a
+ *    member quick-filter, member sort toggle (by Category vs by Name), and the
+ *    Functions / Events / Properties sections rendered as cards. Function rows
+ *    show a Blueprint-style signature, badges (Pure / Callable / Event /
+ *    Server / Latent / Static), description, parameters with descriptions, and
+ *    the return value.
  *  - Footer: a collapsible Reading Guide that explains the type chips, the
  *    function badges, and links out to the architecture markdown files in
- *    Docs/.
+ *    Docs/ (rendered inline, with full bold / italic / code / list support, by
+ *    the NexusMarkdown reader).
+ *
+ * The header band's "Export Markdown" button writes the whole reference to a
+ * single committable Markdown file (NexusDocs::ExportMarkdown) under Saved/.
  *
  * The model is rebuilt on construction and on "Refresh"; both walks are O(every
  * UCLASS) but cheap (sub-100ms in a project this size). A "Show internal API"
  * toggle includes classes whose public surface area has no BlueprintCallable /
  * BlueprintPure members, so engineers can still browse the full module.
+ * Pinned types, navigation history, and the last-viewed type persist per-user
+ * across editor restarts.
  */
 class SNexusDocsBrowser : public SCompoundWidget
 {
@@ -86,6 +92,9 @@ private:
 	FString MemberFilter;
 	EMemberSort MemberSort = EMemberSort::ByCategory;
 
+	/** Type name the detail pane currently shows; used to reset the member filter only on a real change. */
+	FString DetailedTypeName;
+
 	/** Markdown architecture docs discovered under <Project>/Docs at construction time. */
 	struct FArchDoc
 	{
@@ -100,6 +109,22 @@ private:
 	TSharedPtr<SSearchBox> SearchBox;
 	TSharedPtr<SSearchBox> MemberFilterBox;
 	TSharedPtr<STextBlock> StatsText;
+
+	/**
+	 * The Functions / Events / Properties stack. Held so the member quick-filter
+	 * can repopulate just this container instead of rebuilding the whole detail
+	 * pane — which would otherwise replace (and unfocus) the filter box on every
+	 * keystroke. The rest of the detail pane (header, inheritance, filter row)
+	 * stays put.
+	 */
+	TSharedPtr<class SVerticalBox> MembersContainer;
+
+	/** Section widgets captured while building the detail pane, so the Summary chips can scroll to them. */
+	TWeakPtr<SWidget> FunctionsAnchor;
+	TWeakPtr<SWidget> EventsAnchor;
+	TWeakPtr<SWidget> PropertiesAnchor;
+	TWeakPtr<SWidget> InheritanceAnchor;
+	TWeakPtr<SWidget> ReferencesAnchor;
 
 	/**
 	 * Per-(colour, radius) cache of `FSlateBrush`es with `DrawAs = RoundedBox`
@@ -130,6 +155,8 @@ private:
 	EActiveTimerReturnType TickSearchDebounce(double InCurrentTime, float InDeltaTime);
 	double LastSearchKeystrokeTime = 0.0;
 	bool bSearchTimerActive = false;
+	/** One-shot: put keyboard focus in the search box once the widget is laid out. */
+	EActiveTimerReturnType FocusSearchBox(double InCurrentTime, float InDeltaTime);
 	FReply OnRefreshClicked();
 	FReply OnExpandAllClicked();
 	FReply OnCollapseAllClicked();
@@ -163,6 +190,12 @@ private:
 
 	// === Right pane =========================================================
 	void RefreshDetailPane();
+	/** Rebuild only the Functions/Events/Properties stack — keeps the member-filter box alive and focused. */
+	void RefreshMemberSections();
+	/** Populate the member-section stack for one class into the given container (filtered + sorted). */
+	void PopulateMemberSections(const TSharedRef<class SVerticalBox>& Into, const FNexusDocClass& Entry);
+	/** Scroll the detail pane so one of the captured section anchors sits at the top. */
+	void ScrollToAnchor(TWeakPtr<SWidget> Anchor);
 	TSharedRef<SWidget> BuildEmptyState();
 	TSharedRef<SWidget> BuildClassDetail(const FNexusDocClass& Entry);
 	TSharedRef<SWidget> BuildClassHeader(const FNexusDocClass& Entry);
@@ -183,8 +216,10 @@ private:
 	// === Markdown viewer ====================================================
 	/** Open a popup window that renders one of the discovered architecture docs inline. */
 	void OpenArchDocViewer(const FString& AbsolutePath, const FString& DisplayName);
-	/** Parse a markdown string into a stacked Slate widget (headings, lists, paragraphs, quotes, code). */
-	TSharedRef<SWidget> RenderMarkdown(const FString& Markdown);
+
+	// === Export =============================================================
+	/** Write the whole reference to a Markdown file under Saved/NexusDocs and reveal it. */
+	FReply OnExportMarkdownClicked();
 
 	// === Helpers ============================================================
 	/** Pretty stats line for the header band. */

@@ -225,4 +225,14 @@ namespace NexusDocs
 	FString KindShortLabel(ENexusDocKind Kind);
 	/** Verbose label used in tooltips and the legend ("Function Library", "Subsystem", ...). */
 	FString KindLongLabel(ENexusDocKind Kind);
+
+	/**
+	 * Render the whole collection as one self-contained Markdown document:
+	 * a coverage summary, then a section per category, then a sub-section per
+	 * type listing its description, inheritance, functions (with signatures,
+	 * parameters, and returns), properties, and events. Pure and deterministic
+	 * so it can be diffed, committed, or published as a static reference, and
+	 * so it can be exercised from tests without any Slate / editor UI.
+	 */
+	FString ExportMarkdown(const FNexusDocCollection& Collection);
 }

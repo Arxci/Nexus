@@ -870,6 +870,137 @@ namespace NexusDocs
 		return nullptr;
 	}
 
+	namespace
+	{
+		/** Append one function's full Markdown block (signature, prose, params, return). */
+		void AppendFunctionMarkdown(const FNexusDocFunction& Func, FString& Out)
+		{
+			Out += FString::Printf(TEXT("#### %s\n\n"), *Func.DisplayName);
+
+			TArray<FString> Flags;
+			if (Func.bIsBlueprintPure)      { Flags.Add(TEXT("Pure")); }
+			else if (Func.bIsBlueprintEvent){ Flags.Add(TEXT("Event")); }
+			else if (Func.bIsBlueprintCallable){ Flags.Add(TEXT("Callable")); }
+			if (Func.bIsStatic)             { Flags.Add(TEXT("Static")); }
+			if (Func.bIsLatent)             { Flags.Add(TEXT("Latent")); }
+			if (Func.bIsNetMulticast)       { Flags.Add(TEXT("Multicast")); }
+			else if (Func.bIsServer)        { Flags.Add(TEXT("Server")); }
+			else if (Func.bIsClient)        { Flags.Add(TEXT("Client")); }
+			if (!Flags.IsEmpty())
+			{
+				Out += FString::Printf(TEXT("*%s*\n\n"), *FString::Join(Flags, TEXT(" · ")));
+			}
+
+			Out += FString::Printf(TEXT("```\n%s\n```\n\n"), *Func.Signature);
+			if (!Func.Tooltip.IsEmpty())
+			{
+				Out += Func.Tooltip + TEXT("\n\n");
+			}
+			for (const FNexusDocParam& Param : Func.Parameters)
+			{
+				Out += FString::Printf(TEXT("- `%s` (%s)%s%s\n"),
+					*Param.Name,
+					*Param.DisplayType,
+					Param.bHasDefault ? *FString::Printf(TEXT(" — default `%s`"), *Param.DefaultValue) : TEXT(""),
+					Param.Tooltip.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" — %s"), *Param.Tooltip));
+			}
+			if (!Func.ReturnValue.Name.IsEmpty())
+			{
+				Out += FString::Printf(TEXT("- *returns* %s%s\n"),
+					*Func.ReturnValue.DisplayType,
+					Func.ReturnValue.Tooltip.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" — %s"), *Func.ReturnValue.Tooltip));
+			}
+			Out += TEXT("\n");
+		}
+
+		/** Append one property/event's Markdown bullet. */
+		void AppendPropertyMarkdown(const FNexusDocProperty& Prop, bool bIsEvent, FString& Out)
+		{
+			const FString Type = bIsEvent ? FString(TEXT("Multicast Event")) : Prop.DisplayType;
+			Out += FString::Printf(TEXT("- **%s** — %s%s\n"),
+				*Prop.DisplayName,
+				*Type,
+				Prop.Tooltip.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(". %s"), *Prop.Tooltip));
+		}
+	}
+
+	FString ExportMarkdown(const FNexusDocCollection& Collection)
+	{
+		FString Out;
+		Out.Reserve(64 * 1024);
+
+		Out += TEXT("# Nexus API Reference\n\n");
+		Out += TEXT("> Auto-generated from the runtime C++ reflection database by the Nexus API Reference tool. ")
+			   TEXT("Do not edit by hand — re-export instead.\n\n");
+
+		const int32 AllTypes = Collection.TotalClasses + Collection.TotalStructs;
+		const int32 ClassCoverage = AllTypes > 0
+			? FMath::RoundToInt(100.0f * Collection.DocumentedClasses / AllTypes) : 0;
+		const int32 MemberCoverage = Collection.TotalMembers > 0
+			? FMath::RoundToInt(100.0f * Collection.DocumentedMembers / Collection.TotalMembers) : 0;
+		Out += FString::Printf(
+			TEXT("**%d** types · **%d** functions · **%d** properties · **%d** events. ")
+			TEXT("Documentation coverage: %d%% of types, %d%% of members.\n\n"),
+			AllTypes, Collection.TotalFunctions, Collection.TotalProperties, Collection.TotalEvents,
+			ClassCoverage, MemberCoverage);
+
+		for (const FString& Category : Collection.Categories)
+		{
+			Out += FString::Printf(TEXT("---\n\n## %s\n\n"), *Category);
+			for (const TSharedPtr<FNexusDocClass>& Entry : Collection.Classes)
+			{
+				if (!Entry.IsValid() || Entry->Category != Category)
+				{
+					continue;
+				}
+				Out += FString::Printf(TEXT("### %s\n\n"), *Entry->DisplayName);
+				Out += FString::Printf(TEXT("`%s` · %s"), *Entry->TypeName, *KindLongLabel(Entry->Kind()));
+				if (!Entry->ParentTypeName.IsEmpty())
+				{
+					Out += FString::Printf(TEXT(" · inherits `%s`"), *Entry->ParentTypeName);
+				}
+				if (!Entry->HeaderPath.IsEmpty())
+				{
+					Out += FString::Printf(TEXT(" · `Nexus/%s`"), *Entry->HeaderPath);
+				}
+				Out += TEXT("\n\n");
+				if (!Entry->Tooltip.IsEmpty())
+				{
+					Out += Entry->Tooltip + TEXT("\n\n");
+				}
+
+				if (Entry->Functions.Num() > 0)
+				{
+					Out += TEXT("**Functions**\n\n");
+					for (const FNexusDocFunction& Func : Entry->Functions)
+					{
+						AppendFunctionMarkdown(Func, Out);
+					}
+				}
+				if (Entry->Events.Num() > 0)
+				{
+					Out += TEXT("**Events**\n\n");
+					for (const FNexusDocProperty& Event : Entry->Events)
+					{
+						AppendPropertyMarkdown(Event, /*bIsEvent=*/true, Out);
+					}
+					Out += TEXT("\n");
+				}
+				if (Entry->Properties.Num() > 0)
+				{
+					Out += TEXT("**Properties**\n\n");
+					for (const FNexusDocProperty& Prop : Entry->Properties)
+					{
+						AppendPropertyMarkdown(Prop, /*bIsEvent=*/false, Out);
+					}
+					Out += TEXT("\n");
+				}
+			}
+		}
+
+		return Out;
+	}
+
 	FNexusDocCollection BuildFromNexusModule()
 	{
 		FNexusDocCollection Collection;

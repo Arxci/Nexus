@@ -1,82 +1,131 @@
-# NexusEditor module — content validator + dashboard
+# NexusEditor — authoring, inspection & auditing suite
 
-This is an **editor-only** module that adds two authoring tools, both driven by one
-shared audit core (`FNexusContentAudit`):
+`NexusEditor` is the **editor-only** companion module to the runtime `Nexus`
+module. It hosts the Nexus tool suite — asset creation, content auditing, and
+the **API Reference** documentation browser — behind a single Workbench window
+and a `Tools → Nexus` submenu.
 
-- **Idea #2 — cross-asset validator** (`UNexusContentGraphValidator`): hooks into the
-  editor's *Validate Assets* / validate-on-save / cook-time checks and flags problems a
-  single asset can't see on its own — **duplicate identity tags** and **attachment
-  `RequiredTags` that no attachment in the project provides**.
-- **Idea #3 — content dashboard** (`SNexusContentDashboard`): a dockable window
-  (**Tools → Nexus Content Dashboard**) with three tables: audit findings, items (with
-  their resolved base `Stat.*` values), and attachments (provided/required/conflict tags
-  + a per-row issue summary). Double-click any row to open the asset; **Refresh** re-runs
-  the audit.
+It lives in its own module (never the runtime `Nexus` module) because it links
+editor-only modules — `UnrealEd`, `Slate`, `ToolMenus`, `DataValidation`,
+`PropertyEditor`, … — that must never ship in a packaged game build.
 
-It lives in its own module (not the runtime `Nexus` module) because it links editor-only
-modules (`UnrealEd`, `DataValidation`, `Slate`, `ToolMenus`) that must never ship in a
-packaged build.
+> **Wiring:** the module is part of the source tree and is loaded through
+> `Source/NexusEditor.Target.cs` (`ExtraModuleNames` lists `NexusEditor`). There
+> is **no** `.uproject` edit to make — regenerate project files and build the
+> editor target and it's there. (Older copies of this README described a
+> manual zip-and-register step; that no longer applies.)
 
-## Setup (one-time)
+## Opening the tools
 
-1. **Unzip at your repo root** so the files land under `Source/NexusEditor/...` and the
-   updated `Source/NexusEditor.Target.cs` overwrites the old one.
+- **Toolbar:** the **Nexus** split-button on the Level Editor toolbar. Primary
+  click opens the **Workbench**; the drop-down lists every tool.
+- **Menu:** **Tools → Nexus**, grouped into *Authoring*, *Inspection*, and
+  *Auditing*.
+- Every tool is also a tear-off **nomad tab**, so it can be docked anywhere.
 
-2. **Register the module in your `.uproject`.** (Your `.uproject` isn't in the repo —
-   it's gitignored — so I couldn't edit it.) Add a `NexusEditor` entry to the `Modules`
-   array, alongside the existing `Nexus` entry:
+The catalogue of tools is a single source of truth in
+`Private/Shared/NexusEditorTools.cpp`; the menu, the toolbar drop-down, and the
+Workbench sidebar all walk that list, so adding a tool is a one-place edit.
 
-   ```json
-   "Modules": [
-       {
-           "Name": "Nexus",
-           "Type": "Runtime",
-           "LoadingPhase": "Default"
-       },
-       {
-           "Name": "NexusEditor",
-           "Type": "Editor",
-           "LoadingPhase": "PostEngineInit"
-       }
-   ]
-   ```
+---
 
-3. **Regenerate project files** (right-click the `.uproject` → *Generate Visual
-   Studio / Rider project files*).
+## API Reference (the documentation browser)
 
-4. **Build the editor target.**
+**Tools → Nexus → API Reference** (`SNexusDocsBrowser`). A designer-friendly,
+auto-generated reference for every Nexus `UCLASS` / `UScriptStruct` and its
+Blueprint-exposed surface. Nothing is hand-maintained: the tool walks the live
+reflection database, so it can never drift from the code. Descriptions come from
+the `/** doc comments */` UHT already harvests, which means **the reference is
+exactly as good as the runtime code is documented** — and the header band tells
+you, at a glance, what that coverage is.
 
-## Using it
+### Layout
 
-- **Validator:** right-click an item/attachment (or a folder) → **Asset Actions →
-  Validate Assets**, or enable *Project Settings → Editor → Data Validation → Validate on
-  Save*. Duplicate identities and unsatisfiable attachment requirements fail validation.
-  (This complements the per-asset `IsDataValid` checks from the first pass — those catch
-  single-asset issues; this catches cross-asset ones.)
-- **Dashboard:** **Tools → Nexus Content Dashboard**.
+- **Header band** — title, a live coverage summary (`N types · M functions ·
+  …% documented`), back/forward history, a *Show internal API* toggle, a
+  *Refresh*, and **Export Markdown** (see below). Below it, a row of type-filter
+  pills (All / Components / Subsystems / Libraries / Interfaces / Actors / …).
+- **Left pane** — a debounced search box and a tree grouped by source folder
+  (Combat, Inventory, Weapon, …). Each leaf carries a consistent coloured **type
+  chip** (`COMP` / `SUB` / `STRUCT` / …) so the tree scans by colour. A `★
+  Pinned` section floats favourites to the top.
+- **Right pane** — a header card (display name, kind chip, parent / derived
+  links, **Used By** callers, source path with *Open Source* + *Copy*), a
+  **Summary** chip row that scrolls straight to a section, a per-class member
+  quick-filter and sort toggle, and the **Functions / Events / Properties**
+  rendered as cards with Blueprint-style signatures, badges (Pure / Callable /
+  Event / Server / Latent / Static / Replicated / …), parameters, and returns.
+- **Footer** — a collapsible **Reading Guide** explaining the chips and badges,
+  plus shortcuts to the hand-written architecture docs under `<Project>/Docs`.
 
-## Heads-up: this is untested editor C++
+### Navigation & state
 
-Unlike the first validation pass (a tiny, well-trodden API surface), this module is a few
-hundred lines against editor/Slate APIs I couldn't compile here. Expect maybe one or two
-small fixups for your exact engine version. The two most likely spots:
+- Type names in *Inherits*, *Derived*, *Used By*, and on property cards are
+  **clickable links** — chase a relationship without going back to the tree.
+- **Pinned** types, **navigation history**, and the **last-viewed type** persist
+  per-user (`GEditorPerProjectIni`, `[NexusWorkbench]`), so the tool reopens
+  where you left off. The search box takes focus on open.
+- **Refresh** re-walks the reflection DB — use it after recompiling C++.
 
-1. **Validator signatures** (`UNexusContentGraphValidator.h/.cpp`). These use the **UE
-   5.4+** form (`CanValidateAsset_Implementation(const FAssetData&, UObject*,
-   FDataValidationContext&)` etc.). On **5.3 and earlier** the signatures are the older
-   `(UObject*)` / `(UObject*, TArray<FText>&)` forms — there's a comment in the header
-   with the exact replacement if the build complains about `override`.
-2. **A Slate style name or two** (e.g. the `"Brushes.Header"` brush or `"Bold"` font in
-   `SNexusContentDashboard.cpp`). A wrong style key renders blank/default and logs a
-   warning — it won't fail the build.
+### Export
 
-If a link error mentions a missing symbol, add the relevant module to
-`PrivateDependencyModuleNames` in `NexusEditor.Build.cs`.
+**Export Markdown** writes the whole reference to a single committable file at
+`Saved/NexusDocs/NexusAPIReference.md` (coverage summary, then a section per
+category, then a sub-section per type with signatures, parameters, properties,
+and events) and offers a *Show in folder* link. Use it to diff API changes in
+review or publish a static reference. The generator
+(`NexusDocs::ExportMarkdown`) is pure and deterministic.
 
-## Extending it
+### In-editor architecture-doc reader
 
-All the logic is in `FNexusContentAudit` (`Private/Audit/`). Add a check there, push a
-`FNexusAuditFinding`, and it shows up in the dashboard automatically; expose it as a
-focused helper and the validator can call it per-asset too. Ideas: weak-but-buyable
-economy checks, recipes whose inputs/outputs reference deleted items, per-stat columns in
-the items table instead of the single compact string.
+The architecture notes in `<Project>/Docs/*.md` open **inline** in an editor
+window, rendered by the small `NexusMarkdown` reader: ATX headings, ordered and
+unordered (nested) lists, blockquotes, fenced code, horizontal rules, and inline
+**bold** / *italic* / `code` / ~~strike~~ / links. It deliberately covers only
+the subset those docs use and degrades gracefully on anything else.
+
+---
+
+## Other tools (one line each)
+
+| Tool | Category | What it does |
+|------|----------|--------------|
+| **Asset Creator** | Authoring | Stamp items / attachments / recipes / manifests with templates and smart defaults. |
+| **Assembly Preview** | Inspection | Resolved weapon stats across attachments and upgrade tiers. |
+| **Crafting Tree** | Inspection | Recipes and their input / output dependency chains. |
+| **Attachment Matrix** | Inspection | Provides / requires / conflicts compatibility grid. |
+| **Inventory** | Inspection | Audit footprints and pack a real attaché case. |
+| **Icon Sheet** | Inspection | Every item icon at its grid footprint, framed by category. |
+| **Live Inventory** | Inspection | Inspect & drive the player's real inventory during PIE. |
+| **Content Dashboard** | Auditing | Cross-asset audit findings + item / attachment tables. |
+| **Tag Audit** | Auditing | Orphaned identity tags no asset references. |
+| **Economy View** | Auditing | Value-per-cell balance sheet with outliers flagged. |
+| **Content Insights** | Auditing | Reachability, scarcity, localization, where-used, buildability. |
+
+The cross-asset validator (`UNexusContentGraphValidator`) also hooks the
+editor's *Validate Assets* / validate-on-save / cook checks, flagging duplicate
+identity tags and unsatisfiable attachment `RequiredTags`.
+
+## Code map
+
+| Area | Path |
+|------|------|
+| API Reference UI | `Private/Docs/SNexusDocsBrowser.{h,cpp}` |
+| API Reference model (pure reflection walk + Markdown export) | `Private/Docs/NexusDocsModel.{h,cpp}` |
+| Markdown reader (inline + block rendering) | `Private/Docs/NexusMarkdown.{h,cpp}` |
+| Shared widget kit / style / persistence | `Private/Shared/NexusEditor*.h` |
+| Tool registry (menu / toolbar / Workbench) | `Private/Shared/NexusEditorTools.cpp` |
+| Module entry point + menus | `Private/NexusEditorModule.cpp` |
+
+## Tests
+
+Editor automation specs live under `Private/Tests/`. The documentation back end
+is covered by `NexusDocsModelTests.cpp` — reflection-walk invariants (counter
+consistency, name-cache round-trip, cross-reference symmetry), the Markdown
+exporter, and the `NexusMarkdown::ToSlateMarkup` inline transform (escaping,
+emphasis flanking, interleaved runs). Run them from **Tools → Test Automation**,
+or:
+
+```
+Automation RunTests Nexus.Docs
+```

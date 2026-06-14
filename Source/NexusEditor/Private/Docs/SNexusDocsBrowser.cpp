@@ -1,11 +1,13 @@
 ﻿#include "Docs/SNexusDocsBrowser.h"
 
+#include "Docs/NexusMarkdown.h"
 #include "Shared/NexusEditorWidgets.h"
 
 #include "Framework/Application/SlateApplication.h"
 #include "Shared/NexusEditorPersistence.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "HAL/FileManager.h"
+#include "HAL/PlatformApplicationMisc.h"
 #include "HAL/PlatformProcess.h"
 #include "Misc/Paths.h"
 #include "SourceCodeNavigation.h"
@@ -229,6 +231,23 @@ void SNexusDocsBrowser::Construct(const FArguments& InArgs)
 							.ToolTipText(LOCTEXT("RefreshTip", "Re-scan the reflection database. Use after recompiling C++."))
 							.OnClicked(this, &SNexusDocsBrowser::OnRefreshClicked)
 						]
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						.Padding(8.0f, 0.0f, 0.0f, 0.0f)
+						[
+							SNew(SButton)
+							.ButtonStyle(&FAppStyle::Get().GetWidgetStyle<FButtonStyle>("SimpleButton"))
+							.ToolTipText(LOCTEXT("ExportTip", "Write the whole reference to a single Markdown file under Saved/NexusDocs and reveal it — for sharing, diffing, or committing."))
+							.OnClicked(this, &SNexusDocsBrowser::OnExportMarkdownClicked)
+							[
+								SNew(SHorizontalBox)
+								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+								[ SNew(SImage).Image(FAppStyle::Get().GetBrush("Icons.Save")) ]
+								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f, 0.0f, 0.0f)
+								[ SNew(STextBlock).Text(LOCTEXT("ExportMarkdown", "Export Markdown")) ]
+							]
+						]
 					]
 
 					// Type-filter pills -----------------------------------------
@@ -356,6 +375,32 @@ void SNexusDocsBrowser::Construct(const FArguments& InArgs)
 	];
 
 	ExpandAll(RootNodes);
+
+	// Resume where the user left off: re-select the last-viewed type if it still
+	// exists in the freshly-walked collection.
+	const FString LastType = NexusEditorPersistence::GetString(TEXT("DocsLastType"));
+	if (!LastType.IsEmpty())
+	{
+		if (TSharedPtr<FNexusDocClass> Last = NexusDocs::FindByTypeName(Collection, LastType))
+		{
+			SelectedClass = Last;
+			SelectAndExpandForClass(Last);
+			RefreshDetailPane();
+		}
+	}
+
+	// Drop the cursor into the search box once the widget has been laid out, so a
+	// designer can start typing a class name the instant the tool opens.
+	RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateSP(this, &SNexusDocsBrowser::FocusSearchBox));
+}
+
+EActiveTimerReturnType SNexusDocsBrowser::FocusSearchBox(double /*InCurrentTime*/, float /*InDeltaTime*/)
+{
+	if (SearchBox.IsValid())
+	{
+		FSlateApplication::Get().SetKeyboardFocus(SearchBox, EFocusCause::SetDirectly);
+	}
+	return EActiveTimerReturnType::Stop;
 }
 
 // =============================================================================
@@ -713,20 +758,11 @@ FReply SNexusDocsBrowser::OnRefreshClicked()
 	RebuildModel();
 	RebuildTree();
 	DiscoverArchDocs();
-	// The selected class survives the rebuild only if its UStruct* is still alive
-	// in the new collection — re-resolve by type name.
+	// The selected class survives the rebuild only if its type is still present in
+	// the new collection — re-resolve by name through the rebuilt lookup cache.
 	if (SelectedClass.IsValid())
 	{
-		const FString PreviousName = SelectedClass->TypeName;
-		SelectedClass.Reset();
-		for (const TSharedPtr<FNexusDocClass>& Entry : Collection.Classes)
-		{
-			if (Entry.IsValid() && Entry->TypeName == PreviousName)
-			{
-				SelectedClass = Entry;
-				break;
-			}
-		}
+		SelectedClass = NexusDocs::FindByTypeName(Collection, SelectedClass->TypeName);
 	}
 	RefreshDetailPane();
 	return FReply::Handled();
@@ -1034,7 +1070,10 @@ FReply SNexusDocsBrowser::OnTogglePinned(FString TypeName)
 void SNexusDocsBrowser::OnMemberFilterChanged(const FText& NewText)
 {
 	MemberFilter = NewText.ToString();
-	RefreshDetailPane();
+	// Repopulate ONLY the member-section stack. Rebuilding the whole detail pane
+	// (as this used to) re-created the filter SSearchBox on every keystroke, which
+	// dropped focus and wiped the text after a single character.
+	RefreshMemberSections();
 }
 
 bool SNexusDocsBrowser::MemberMatchesFilter(const FString& Name, const FString& Tooltip, const FString& Category) const
@@ -1058,6 +1097,29 @@ void SNexusDocsBrowser::RefreshDetailPane()
 	{
 		return;
 	}
+
+	// Section anchors and the member container belong to the pane we're about to
+	// discard; clear them so a stale weak ref can't be scrolled to.
+	MembersContainer.Reset();
+	FunctionsAnchor.Reset();
+	EventsAnchor.Reset();
+	PropertiesAnchor.Reset();
+
+	// Reset the per-class member filter only when the selection actually changed,
+	// so it doesn't fight a user who is mid-type, but never leaks an old filter
+	// onto a different class (which left the box looking empty while it filtered).
+	if (SelectedClass.IsValid() && SelectedClass->TypeName != DetailedTypeName)
+	{
+		MemberFilter.Reset();
+		DetailedTypeName = SelectedClass->TypeName;
+		// Remember the last-viewed type so the tool reopens where the user left off.
+		NexusEditorPersistence::SetString(TEXT("DocsLastType"), DetailedTypeName);
+	}
+	else if (!SelectedClass.IsValid())
+	{
+		DetailedTypeName.Reset();
+	}
+
 	DetailScroll->ClearChildren();
 	if (SelectedClass.IsValid())
 	{
@@ -1072,6 +1134,27 @@ void SNexusDocsBrowser::RefreshDetailPane()
 		[
 			BuildEmptyState()
 		];
+	}
+}
+
+void SNexusDocsBrowser::RefreshMemberSections()
+{
+	if (MembersContainer.IsValid() && SelectedClass.IsValid())
+	{
+		MembersContainer->ClearChildren();
+		PopulateMemberSections(MembersContainer.ToSharedRef(), *SelectedClass);
+	}
+}
+
+void SNexusDocsBrowser::ScrollToAnchor(TWeakPtr<SWidget> Anchor)
+{
+	if (!DetailScroll.IsValid())
+	{
+		return;
+	}
+	if (TSharedPtr<SWidget> Target = Anchor.Pin())
+	{
+		DetailScroll->ScrollDescendantIntoView(Target, /*InAnimateScroll=*/true);
 	}
 }
 
@@ -1382,24 +1465,15 @@ TSharedRef<SWidget> SNexusDocsBrowser::BuildTypeLink(const FString& TypeName)
 
 TSharedRef<SWidget> SNexusDocsBrowser::BuildCopyButton(const FString& ToolTipText, FString TextToCopy)
 {
-	// Compact "show this value so you can copy it" button. Surfaces the text in
-	// a long-lived notification rather than pushing it straight to the OS
-	// clipboard, so this module doesn't have to depend on ApplicationCore (which
-	// owns FPlatformApplicationMisc::ClipboardCopy). The notification stays up
-	// long enough for the user to read or screenshot the value.
+	// Compact "copy this value to the clipboard" button, with a short confirmation
+	// toast so the action is visibly acknowledged.
 	return SNew(SButton)
 		.ButtonStyle(&FAppStyle::Get().GetWidgetStyle<FButtonStyle>("SimpleButton"))
 		.ToolTipText(FText::FromString(ToolTipText))
 		.OnClicked_Lambda([TextToCopy]()
 		{
-			FNotificationInfo Info(FText::Format(
-				LOCTEXT("ShowValueFmt", "{0}"),
-				FText::FromString(TextToCopy)));
-			Info.ExpireDuration = 8.0f;
-			Info.bUseSuccessFailIcons = false;
-			Info.bUseLargeFont = false;
-			Info.SubText = LOCTEXT("ShowValueHint", "Select and Ctrl+C from this notification to copy.");
-			FSlateNotificationManager::Get().AddNotification(Info);
+			FPlatformApplicationMisc::ClipboardCopy(*TextToCopy);
+			Notify(FText::Format(LOCTEXT("CopiedFmt", "Copied: {0}"), FText::FromString(TextToCopy)));
 			return FReply::Handled();
 		})
 		[
@@ -1605,10 +1679,9 @@ TSharedRef<SWidget> SNexusDocsBrowser::BuildClassHeader(const FNexusDocClass& En
 
 TSharedRef<SWidget> SNexusDocsBrowser::BuildJumpRow(const FNexusDocClass& Entry)
 {
-	// At-a-glance pill row above the sections. Non-interactive — these are
-	// glanceable counts so designers can immediately tell whether a class is
-	// "lots of properties, a few functions" vs "huge API surface" before
-	// scrolling into it.
+	// At-a-glance pill row above the sections: each chip shows a member count and,
+	// clicked, scrolls the detail pane to that section. Designers get both a
+	// glance ("lots of properties, a few functions") and one-click navigation.
 	TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox);
 	Row->AddSlot()
 		.AutoWidth()
@@ -1621,34 +1694,50 @@ TSharedRef<SWidget> SNexusDocsBrowser::BuildJumpRow(const FNexusDocClass& Entry)
 			.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 		];
 
-	auto AddChip = [this, &Row](const FText& Label, int32 Count, FLinearColor Color)
+	// Anchor is a pointer to one of the TWeakPtr<SWidget> members (set later while
+	// the sections are built); the chip reads it lazily on click.
+	auto AddChip = [this, &Row](const FText& Label, int32 Count, FLinearColor Color, TWeakPtr<SWidget>* Anchor)
 	{
 		if (Count <= 0)
 		{
 			return;
 		}
+		TSharedRef<SWidget> Pill =
+			SNew(SBorder)
+			.BorderImage(GetPillBrush(Color, 6.0f))
+			.Padding(FMargin(8.0f, 2.0f))
+			[
+				SNew(STextBlock)
+				.Text(FText::Format(LOCTEXT("AnchorFmt", "{0} ({1})"), Label, FText::AsNumber(Count)))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+				.ColorAndOpacity(FLinearColor::White)
+			];
+
 		Row->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
 			.Padding(0.0f, 0.0f, 6.0f, 0.0f)
 			[
-				SNew(SBorder)
-				.BorderImage(GetPillBrush(Color, 6.0f))
-				.Padding(FMargin(8.0f, 2.0f))
+				SNew(SButton)
+				.ButtonStyle(&FAppStyle::Get().GetWidgetStyle<FButtonStyle>("NoBorder"))
+				.ContentPadding(FMargin(0.0f))
+				.ToolTipText(FText::Format(LOCTEXT("JumpToSectionFmt", "Jump to {0}"), Label))
+				.OnClicked_Lambda([this, Anchor]()
+				{
+					ScrollToAnchor(*Anchor);
+					return FReply::Handled();
+				})
 				[
-					SNew(STextBlock)
-					.Text(FText::Format(LOCTEXT("AnchorFmt", "{0} ({1})"), Label, FText::AsNumber(Count)))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-					.ColorAndOpacity(FLinearColor::White)
+					Pill
 				]
 			];
 	};
 
-	AddChip(LOCTEXT("AnchorFuncs",  "Functions"),  Entry.Functions.Num(),  BadgeBlue);
-	AddChip(LOCTEXT("AnchorEvents", "Events"),     Entry.Events.Num(),     BadgeOrange);
-	AddChip(LOCTEXT("AnchorProps",  "Properties"), Entry.Properties.Num(), BadgeGreen);
-	AddChip(LOCTEXT("AnchorDerived","Derived"),    Entry.DerivedTypeNames.Num(), BadgeIndigo);
-	AddChip(LOCTEXT("AnchorUsedBy", "Used By"),    Entry.ReferencedByTypeNames.Num(), BadgeGray);
+	AddChip(LOCTEXT("AnchorFuncs",  "Functions"),  Entry.Functions.Num(),             BadgeBlue,   &FunctionsAnchor);
+	AddChip(LOCTEXT("AnchorEvents", "Events"),     Entry.Events.Num(),                BadgeOrange, &EventsAnchor);
+	AddChip(LOCTEXT("AnchorProps",  "Properties"), Entry.Properties.Num(),            BadgeGreen,  &PropertiesAnchor);
+	AddChip(LOCTEXT("AnchorDerived","Derived"),    Entry.DerivedTypeNames.Num(),      BadgeIndigo, &InheritanceAnchor);
+	AddChip(LOCTEXT("AnchorUsedBy", "Used By"),    Entry.ReferencedByTypeNames.Num(), BadgeGray,   &ReferencesAnchor);
 
 	Row->AddSlot().FillWidth(1.0f)[ SNullWidget::NullWidget ];
 
@@ -1802,7 +1891,7 @@ TSharedRef<SWidget> SNexusDocsBrowser::BuildMemberFilterRow()
 			.OnCheckStateChanged_Lambda([this, Value](ECheckBoxState)
 			{
 				MemberSort = Value;
-				RefreshDetailPane();
+				RefreshMemberSections();
 			})
 			[
 				SNew(STextBlock)
@@ -1863,7 +1952,8 @@ TSharedRef<SWidget> SNexusDocsBrowser::BuildClassDetail(const FNexusDocClass& En
 			BuildClassHeader(Entry)
 		];
 
-	// On-this-page anchors.
+	// Summary chip row — built first, but its chips read the section anchors
+	// lazily on click, by which point PopulateMemberSections has set them.
 	Sections->AddSlot()
 		.AutoHeight()
 		.Padding(FMargin(20.0f, 14.0f, 20.0f, 8.0f))
@@ -1871,23 +1961,27 @@ TSharedRef<SWidget> SNexusDocsBrowser::BuildClassDetail(const FNexusDocClass& En
 			BuildJumpRow(Entry)
 		];
 
-	// Inheritance + references row.
+	// Inheritance + references rows, captured as scroll anchors for the chips.
 	if (!Entry.ParentTypeName.IsEmpty() || Entry.DerivedTypeNames.Num() > 0)
 	{
+		TSharedRef<SWidget> Inheritance = BuildInheritanceSection(Entry);
+		InheritanceAnchor = Inheritance;
 		Sections->AddSlot()
 			.AutoHeight()
 			.Padding(FMargin(20.0f, 4.0f, 20.0f, 8.0f))
 			[
-				BuildInheritanceSection(Entry)
+				Inheritance
 			];
 	}
 	if (Entry.ReferencedByTypeNames.Num() > 0)
 	{
+		TSharedRef<SWidget> References = BuildReferencesSection(Entry);
+		ReferencesAnchor = References;
 		Sections->AddSlot()
 			.AutoHeight()
 			.Padding(FMargin(20.0f, 4.0f, 20.0f, 8.0f))
 			[
-				BuildReferencesSection(Entry)
+				References
 			];
 	}
 
@@ -1902,6 +1996,32 @@ TSharedRef<SWidget> SNexusDocsBrowser::BuildClassDetail(const FNexusDocClass& En
 			];
 	}
 
+	// The Functions / Events / Properties stack lives in a container we keep, so
+	// the member quick-filter and sort toggle can repopulate just this part
+	// without tearing down (and unfocusing) the filter box above it.
+	Sections->AddSlot()
+		.AutoHeight()
+		[
+			SAssignNew(MembersContainer, SVerticalBox)
+		];
+	PopulateMemberSections(MembersContainer.ToSharedRef(), Entry);
+
+	// --- Architecture docs (always on, helps designers discover them) -------
+	if (ArchDocs.Num() > 0)
+	{
+		Sections->AddSlot()
+			.AutoHeight()
+			.Padding(FMargin(20.0f, 8.0f, 20.0f, 20.0f))
+			[
+				BuildArchDocsRow()
+			];
+	}
+
+	return Sections;
+}
+
+void SNexusDocsBrowser::PopulateMemberSections(const TSharedRef<SVerticalBox>& Into, const FNexusDocClass& Entry)
+{
 	// Helper: sort a copied array per the current MemberSort.
 	auto SortFuncs = [this](TArray<FNexusDocFunction> Items) -> TArray<FNexusDocFunction>
 	{
@@ -1926,17 +2046,21 @@ TSharedRef<SWidget> SNexusDocsBrowser::BuildClassDetail(const FNexusDocClass& En
 		return Items;
 	};
 
-	auto AddSection = [&Sections](const FText& Title, int32 ShowingCount, int32 TotalCount)
+	// Adds a "Functions (3 of 5 shown)" band and returns it so the caller can
+	// register it as the scroll target for the matching Summary chip.
+	auto AddSection = [&Into](const FText& Title, int32 ShowingCount, int32 TotalCount) -> TSharedRef<SWidget>
 	{
 		const FString Header = (ShowingCount == TotalCount)
 			? FString::Printf(TEXT("%s (%d)"), *Title.ToString(), TotalCount)
 			: FString::Printf(TEXT("%s (%d of %d shown)"), *Title.ToString(), ShowingCount, TotalCount);
-		Sections->AddSlot()
+		TSharedRef<SWidget> HeaderWidget = NexusEditorWidgets::SectionHeader(FText::FromString(Header));
+		Into->AddSlot()
 			.AutoHeight()
 			.Padding(FMargin(20.0f, 10.0f, 20.0f, 4.0f))
 			[
-				NexusEditorWidgets::SectionHeader(FText::FromString(Header))
+				HeaderWidget
 			];
+		return HeaderWidget;
 	};
 
 	// --- Functions ----------------------------------------------------------
@@ -1952,7 +2076,7 @@ TSharedRef<SWidget> SNexusDocsBrowser::BuildClassDetail(const FNexusDocClass& En
 				ShownFuncs.Add(Func);
 			}
 		}
-		AddSection(LOCTEXT("FunctionsHeader", "Functions"), ShownFuncs.Num(), Funcs.Num());
+		FunctionsAnchor = AddSection(LOCTEXT("FunctionsHeader", "Functions"), ShownFuncs.Num(), Funcs.Num());
 
 		TSharedRef<SVerticalBox> FuncStack = SNew(SVerticalBox);
 		if (ShownFuncs.Num() == 0)
@@ -1978,7 +2102,7 @@ TSharedRef<SWidget> SNexusDocsBrowser::BuildClassDetail(const FNexusDocClass& En
 					];
 			}
 		}
-		Sections->AddSlot()
+		Into->AddSlot()
 			.AutoHeight()
 			.Padding(FMargin(20.0f, 0.0f, 20.0f, 8.0f))
 			[
@@ -1999,7 +2123,7 @@ TSharedRef<SWidget> SNexusDocsBrowser::BuildClassDetail(const FNexusDocClass& En
 				ShownEvents.Add(Event);
 			}
 		}
-		AddSection(LOCTEXT("EventsHeader", "Events"), ShownEvents.Num(), Events.Num());
+		EventsAnchor = AddSection(LOCTEXT("EventsHeader", "Events"), ShownEvents.Num(), Events.Num());
 
 		TSharedRef<SVerticalBox> EventStack = SNew(SVerticalBox);
 		if (ShownEvents.Num() == 0)
@@ -2025,7 +2149,7 @@ TSharedRef<SWidget> SNexusDocsBrowser::BuildClassDetail(const FNexusDocClass& En
 					];
 			}
 		}
-		Sections->AddSlot()
+		Into->AddSlot()
 			.AutoHeight()
 			.Padding(FMargin(20.0f, 0.0f, 20.0f, 8.0f))
 			[
@@ -2046,7 +2170,7 @@ TSharedRef<SWidget> SNexusDocsBrowser::BuildClassDetail(const FNexusDocClass& En
 				ShownProps.Add(Prop);
 			}
 		}
-		AddSection(LOCTEXT("PropertiesHeader", "Properties"), ShownProps.Num(), Props.Num());
+		PropertiesAnchor = AddSection(LOCTEXT("PropertiesHeader", "Properties"), ShownProps.Num(), Props.Num());
 
 		TSharedRef<SVerticalBox> PropStack = SNew(SVerticalBox);
 		if (ShownProps.Num() == 0)
@@ -2072,7 +2196,7 @@ TSharedRef<SWidget> SNexusDocsBrowser::BuildClassDetail(const FNexusDocClass& En
 					];
 			}
 		}
-		Sections->AddSlot()
+		Into->AddSlot()
 			.AutoHeight()
 			.Padding(FMargin(20.0f, 0.0f, 20.0f, 20.0f))
 			[
@@ -2083,7 +2207,7 @@ TSharedRef<SWidget> SNexusDocsBrowser::BuildClassDetail(const FNexusDocClass& En
 	// --- Empty surface fallback ---------------------------------------------
 	if (Entry.Functions.Num() == 0 && Entry.Properties.Num() == 0 && Entry.Events.Num() == 0)
 	{
-		Sections->AddSlot()
+		Into->AddSlot()
 			.AutoHeight()
 			.Padding(FMargin(20.0f, 8.0f, 20.0f, 20.0f))
 			[
@@ -2098,19 +2222,6 @@ TSharedRef<SWidget> SNexusDocsBrowser::BuildClassDetail(const FNexusDocClass& En
 				]
 			];
 	}
-
-	// --- Architecture docs (always on, helps designers discover them) -------
-	if (ArchDocs.Num() > 0)
-	{
-		Sections->AddSlot()
-			.AutoHeight()
-			.Padding(FMargin(20.0f, 8.0f, 20.0f, 20.0f))
-			[
-				BuildArchDocsRow()
-			];
-	}
-
-	return Sections;
 }
 
 TSharedRef<SWidget> SNexusDocsBrowser::BuildFunctionCard(const FNexusDocFunction& Func)
@@ -2641,7 +2752,7 @@ TSharedRef<SWidget> SNexusDocsBrowser::BuildReadingGuide()
 }
 
 // =============================================================================
-// In-editor markdown reader
+// In-editor markdown reader + export
 // =============================================================================
 
 void SNexusDocsBrowser::OpenArchDocViewer(const FString& AbsolutePath, const FString& DisplayName)
@@ -2701,7 +2812,7 @@ void SNexusDocsBrowser::OpenArchDocViewer(const FString& AbsolutePath, const FSt
 				+ SScrollBox::Slot()
 				.Padding(FMargin(28.0f, 20.0f))
 				[
-					RenderMarkdown(Content)
+					NexusMarkdown::BuildDocument(Content)
 				]
 			]
 		]);
@@ -2709,213 +2820,39 @@ void SNexusDocsBrowser::OpenArchDocViewer(const FString& AbsolutePath, const FSt
 	FSlateApplication::Get().AddWindow(Window);
 }
 
-TSharedRef<SWidget> SNexusDocsBrowser::RenderMarkdown(const FString& Markdown)
+FReply SNexusDocsBrowser::OnExportMarkdownClicked()
 {
-	// Hand-rolled, intentionally-minimal markdown renderer. The architecture
-	// docs only use a small subset (#/##/### headings, blockquotes, bullets,
-	// fenced code, plain paragraphs, horizontal rules) so a full markdown
-	// parser would be massive overkill — and we don't want to pull in
-	// SlateRichText markup either (it's a different syntax). The parser walks
-	// lines, accumulates paragraph text across consecutive non-blank lines,
-	// and flushes a Slate widget for every block-level element.
-	TSharedRef<SVerticalBox> Body = SNew(SVerticalBox);
+	const FString Markdown = NexusDocs::ExportMarkdown(Collection);
 
-	TArray<FString> Lines;
-	Markdown.ParseIntoArrayLines(Lines, /*bCullEmpty=*/false);
+	const FString OutDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("NexusDocs"));
+	IFileManager::Get().MakeDirectory(*OutDir, /*Tree=*/true);
+	const FString OutPath = FPaths::Combine(OutDir, TEXT("NexusAPIReference.md"));
 
-	FString CurrentParagraph;
-	TArray<FString> CurrentCodeLines;
-	bool bInCodeBlock = false;
-
-	auto FlushParagraph = [&Body, &CurrentParagraph]()
+	if (!FFileHelper::SaveStringToFile(Markdown, *OutPath))
 	{
-		if (CurrentParagraph.IsEmpty()) { return; }
-		Body->AddSlot()
-			.AutoHeight()
-			.Padding(0.0f, 4.0f, 0.0f, 6.0f)
-			[
-				SNew(STextBlock)
-				.Text(FText::FromString(CurrentParagraph))
-				.AutoWrapText(true)
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
-			];
-		CurrentParagraph.Reset();
-	};
-
-	auto FlushCodeBlock = [&Body, &CurrentCodeLines]()
-	{
-		if (CurrentCodeLines.Num() == 0) { return; }
-		const FString Joined = FString::Join(CurrentCodeLines, TEXT("\n"));
-		Body->AddSlot()
-			.AutoHeight()
-			.Padding(0.0f, 6.0f, 0.0f, 6.0f)
-			[
-				SNew(SBorder)
-				.BorderImage(FAppStyle::Get().GetBrush("Brushes.Panel"))
-				.Padding(FMargin(12.0f, 8.0f))
-				[
-					SNew(STextBlock)
-					.Text(FText::FromString(Joined))
-					.Font(FCoreStyle::GetDefaultFontStyle("Mono", 10))
-					.AutoWrapText(true)
-				]
-			];
-		CurrentCodeLines.Reset();
-	};
-
-	for (const FString& RawLine : Lines)
-	{
-		FString Trimmed = RawLine;
-		Trimmed.TrimStartInline();
-
-		// Fenced code blocks (```), regardless of language tag.
-		if (Trimmed.StartsWith(TEXT("```")))
-		{
-			if (bInCodeBlock)
-			{
-				FlushCodeBlock();
-				bInCodeBlock = false;
-			}
-			else
-			{
-				FlushParagraph();
-				bInCodeBlock = true;
-			}
-			continue;
-		}
-		if (bInCodeBlock)
-		{
-			CurrentCodeLines.Add(RawLine);
-			continue;
-		}
-
-		// Blank line ends the current paragraph.
-		if (Trimmed.IsEmpty())
-		{
-			FlushParagraph();
-			continue;
-		}
-
-		// Horizontal rule.
-		if (Trimmed == TEXT("---") || Trimmed == TEXT("***") || Trimmed == TEXT("___"))
-		{
-			FlushParagraph();
-			Body->AddSlot()
-				.AutoHeight()
-				.Padding(0.0f, 10.0f, 0.0f, 10.0f)
-				[
-					SNew(SBorder)
-					.BorderImage(FAppStyle::Get().GetBrush("Brushes.Panel"))
-					.Padding(FMargin(0.0f, 1.0f))
-					[
-						SNullWidget::NullWidget
-					]
-				];
-			continue;
-		}
-
-		// Headings — `### foo` / `## foo` / `# foo`.
-		auto IsHeading = [](const FString& Line, int32 Level) -> bool
-		{
-			if (Line.Len() < Level + 1) { return false; }
-			for (int32 i = 0; i < Level; ++i) { if (Line[i] != TEXT('#')) { return false; } }
-			return Line[Level] == TEXT(' ');
-		};
-		if (IsHeading(Trimmed, 3))
-		{
-			FlushParagraph();
-			Body->AddSlot()
-				.AutoHeight()
-				.Padding(0.0f, 14.0f, 0.0f, 4.0f)
-				[
-					SNew(STextBlock)
-					.Text(FText::FromString(Trimmed.RightChop(4)))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
-					.AutoWrapText(true)
-				];
-			continue;
-		}
-		if (IsHeading(Trimmed, 2))
-		{
-			FlushParagraph();
-			Body->AddSlot()
-				.AutoHeight()
-				.Padding(0.0f, 18.0f, 0.0f, 4.0f)
-				[
-					SNew(STextBlock)
-					.Text(FText::FromString(Trimmed.RightChop(3)))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 14))
-					.AutoWrapText(true)
-				];
-			continue;
-		}
-		if (IsHeading(Trimmed, 1))
-		{
-			FlushParagraph();
-			Body->AddSlot()
-				.AutoHeight()
-				.Padding(0.0f, 20.0f, 0.0f, 6.0f)
-				[
-					SNew(STextBlock)
-					.Text(FText::FromString(Trimmed.RightChop(2)))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 18))
-					.AutoWrapText(true)
-				];
-			continue;
-		}
-
-		// Bullet — `- ` or `* ` or `+ `.
-		const bool bIsBullet = Trimmed.StartsWith(TEXT("- "))
-			|| Trimmed.StartsWith(TEXT("* "))
-			|| Trimmed.StartsWith(TEXT("+ "));
-		if (bIsBullet)
-		{
-			FlushParagraph();
-			FString BulletText = Trimmed.RightChop(2);
-			Body->AddSlot()
-				.AutoHeight()
-				.Padding(20.0f, 2.0f, 0.0f, 2.0f)
-				[
-					SNew(STextBlock)
-					.Text(FText::FromString(FString::Printf(TEXT("•  %s"), *BulletText)))
-					.AutoWrapText(true)
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
-				];
-			continue;
-		}
-
-		// Block quote — `> `.
-		if (Trimmed.StartsWith(TEXT("> ")))
-		{
-			FlushParagraph();
-			Body->AddSlot()
-				.AutoHeight()
-				.Padding(20.0f, 6.0f, 0.0f, 6.0f)
-				[
-					SNew(STextBlock)
-					.Text(FText::FromString(Trimmed.RightChop(2)))
-					.Font(FCoreStyle::GetDefaultFontStyle("Italic", 10))
-					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
-					.AutoWrapText(true)
-				];
-			continue;
-		}
-
-		// Default: accumulate as paragraph text. Join soft-wrapped lines with
-		// spaces so renderer-side word-wrap takes over.
-		if (!CurrentParagraph.IsEmpty())
-		{
-			CurrentParagraph.AppendChar(TEXT(' '));
-		}
-		CurrentParagraph.Append(Trimmed);
-	}
-	FlushParagraph();
-	if (bInCodeBlock)
-	{
-		FlushCodeBlock();
+		Notify(FText::Format(LOCTEXT("ExportFailFmt", "Couldn't write {0}."), FText::FromString(OutPath)));
+		return FReply::Handled();
 	}
 
-	return Body;
+	const FString FullPath = FPaths::ConvertRelativePathToFull(OutPath);
+
+	// Success toast with a "Show in folder" link straight to the file.
+	FNotificationInfo Info(FText::Format(
+		LOCTEXT("ExportOkFmt", "Exported the API reference to {0}"), FText::FromString(FullPath)));
+	Info.ExpireDuration = 8.0f;
+	Info.bUseSuccessFailIcons = true;
+	Info.Hyperlink = FSimpleDelegate::CreateLambda([FullPath]()
+	{
+		FPlatformProcess::ExploreFolder(*FullPath);
+	});
+	Info.HyperlinkText = LOCTEXT("RevealExport", "Show in folder");
+
+	TSharedPtr<SNotificationItem> Item = FSlateNotificationManager::Get().AddNotification(Info);
+	if (Item.IsValid())
+	{
+		Item->SetCompletionState(SNotificationItem::CS_Success);
+	}
+	return FReply::Handled();
 }
 
 // =============================================================================

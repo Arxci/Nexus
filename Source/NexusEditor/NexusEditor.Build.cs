@@ -32,6 +32,7 @@ public class NexusEditor : ModuleRules
 			"Nexus",          // the runtime data-asset types we audit / create
 			"Slate",
 			"SlateCore",
+			"ApplicationCore", // FPlatformApplicationMisc::ClipboardCopy (real Copy buttons in the docs browser)
 			"UnrealEd",       // asset editor subsystem, GEditor, save utils, UFactory
 			"ToolMenus",      // Tools-menu entries
 			"DataValidation", // UEditorValidatorBase
