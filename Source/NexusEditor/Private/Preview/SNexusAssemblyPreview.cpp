@@ -1,6 +1,8 @@
 #include "Preview/SNexusAssemblyPreview.h"
 #include "Preview/SNexusStatRadar.h"
 
+#include "NexusEditorModule.h"
+
 #include "AssetRegistry/ARFilter.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
@@ -280,6 +282,12 @@ void SNexusAssemblyPreview::OnWeaponChanged(TSharedPtr<FWeaponOption> InOption, 
 	{
 		SelectedWeapon = InOption;
 		Recompute();
+
+		// Surface the chosen weapon in the Workbench Inspector.
+		if (SelectedWeapon->Weapon.IsValid())
+		{
+			FNexusEditorModule::SetSelection(SelectedWeapon->Weapon.Get(), FNexusEditorModule::PreviewTabName);
+		}
 	}
 }
 

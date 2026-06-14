@@ -126,6 +126,10 @@ private:
 
 	// === Search / refresh / toggle ==========================================
 	void OnSearchTextChanged(const FText& NewText);
+	/** Debounce: rebuild the tree ~200ms after the last keystroke, not on every character. */
+	EActiveTimerReturnType TickSearchDebounce(double InCurrentTime, float InDeltaTime);
+	double LastSearchKeystrokeTime = 0.0;
+	bool bSearchTimerActive = false;
 	FReply OnRefreshClicked();
 	FReply OnExpandAllClicked();
 	FReply OnCollapseAllClicked();

@@ -6,6 +6,7 @@
 
 class ITableRow;
 class STableViewBase;
+class SEditableTextBox;
 class SNexusInventoryCanvas;
 class SWidget;
 class UNexusItemDefinition;
@@ -43,6 +44,7 @@ private:
 
 	TSharedRef<ITableRow> OnGeneratePaletteRow(TSharedPtr<FPaletteEntry> Entry, const TSharedRef<STableViewBase>& Owner);
 	void OnPaletteActivated(TSharedPtr<FPaletteEntry> Entry);
+	void OnPaletteSelectionChanged(TSharedPtr<FPaletteEntry> Entry, ESelectInfo::Type SelectInfo);
 	void OnSearchChanged(const FText& Text);
 
 	FReply OnAddSelectedClicked();
@@ -52,6 +54,14 @@ private:
 	FReply OnRefreshClicked();
 
 	TSharedRef<SWidget> MakeCaseSizeMenu();
+	/** Menu of authored Case items; choosing one sizes the grid to its GridSize. */
+	TSharedRef<SWidget> MakeCaseItemMenu();
+	/** Menu of Level Manifests; choosing one fills the grid with that manifest's items. */
+	TSharedRef<SWidget> MakeFillMenu();
+	/** Save the current packing under the name in the layout box (per-user, named slots). */
+	FReply OnSaveLayoutClicked();
+	/** Menu of saved layout names; choosing one restores it. */
+	TSharedRef<SWidget> MakeLoadLayoutMenu();
 	void SetCaseSize(int32 Width, int32 Height);
 
 	void AddEntryToCanvas(const TSharedPtr<FPaletteEntry>& Entry);
@@ -63,6 +73,7 @@ private:
 	TArray<TSharedPtr<FPaletteEntry>> FilteredPalette;
 	TSharedPtr<SListView<TSharedPtr<FPaletteEntry>>> PaletteList;
 	TSharedPtr<SNexusInventoryCanvas> Canvas;
+	TSharedPtr<SEditableTextBox> LayoutNameBox;
 
 	FString Filter;
 	int32 CaseWidth = 10;

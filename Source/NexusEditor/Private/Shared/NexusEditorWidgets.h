@@ -62,6 +62,52 @@ namespace NexusEditorWidgets
 		return Brush;
 	}
 
+	/** Panel band used to wrap a tool's toolbar row, so every tool's toolbar sits the same. */
+	inline TSharedRef<SWidget> Toolbar(const TSharedRef<SWidget>& Content)
+	{
+		return SNew(SBorder)
+			.BorderImage(FAppStyle::Get().GetBrush("Brushes.Panel"))
+			.Padding(FMargin(10.0f, 6.0f))
+			[
+				Content
+			];
+	}
+
+	/** Centred, subdued, wrapping prompt for "nothing here yet" states. */
+	inline TSharedRef<SWidget> EmptyState(const FText& Message)
+	{
+		return SNew(SBox)
+			.HAlign(HAlign_Center)
+			.VAlign(VAlign_Center)
+			.Padding(24.0f)
+			[
+				SNew(STextBlock)
+				.Text(Message)
+				.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+				.AutoWrapText(true)
+				.Justification(ETextJustify::Center)
+			];
+	}
+
+	/**
+	 * A small tinted pill for a tag / flag / status word. Pass a semantic colour
+	 * (NexusEditorStyle::Provides(), CategoryColor(...), ...); the fill is a translucent
+	 * wash of it and the text is the solid colour.
+	 */
+	inline TSharedRef<SWidget> Chip(const FText& Text, const FLinearColor& Color)
+	{
+		return SNew(SBorder)
+			.BorderImage(FAppStyle::Get().GetBrush("WhiteBrush"))
+			.BorderBackgroundColor(FLinearColor(Color.R, Color.G, Color.B, 0.18f))
+			.Padding(FMargin(6.0f, 1.0f))
+			[
+				SNew(STextBlock)
+				.Text(Text)
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+				.ColorAndOpacity(FSlateColor(Color))
+			];
+	}
+
 	/** A single padded, eliding table cell with a full-value tooltip. */
 	inline TSharedRef<SWidget> Cell(
 		const FString& Text,

@@ -1,12 +1,10 @@
-#include "Hub/SNexusHub.h"
+#include "Home/SNexusHomePage.h"
 
 #include "NexusEditorModule.h"
 #include "Manifest/NexusManifestBuilder.h"
 #include "Shared/NexusEditorTools.h"
 #include "Shared/NexusEditorWidgets.h"
 
-#include "Framework/Application/SlateApplication.h"
-#include "Framework/Docking/TabManager.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Nexus/Levels/NexusLevelManifest.h"
 #include "Styling/AppStyle.h"
@@ -23,24 +21,24 @@
 #include "Widgets/Notifications/SNotificationList.h"
 #include "Widgets/Text/STextBlock.h"
 
-#define LOCTEXT_NAMESPACE "NexusHub"
+#define LOCTEXT_NAMESPACE "NexusHomePage"
 
 namespace
 {
 	/**
 	 * One tool card: a click-anywhere button with an icon, bold title, and a one-liner.
-	 * Used uniformly for every tool in the Hub so the suite reads as one product.
+	 * Clicking raises the activate callback so the Workbench swaps panels in place.
 	 */
-	TSharedRef<SWidget> MakeToolCard(const NexusEditorTools::FToolEntry& Entry)
+	TSharedRef<SWidget> MakeToolCard(const NexusEditorTools::FToolEntry& Entry, const FNexusOnActivateTool& OnActivate)
 	{
 		const FName Captured = Entry.TabName;
 		return SNew(SButton)
 			.ButtonStyle(&FAppStyle::Get().GetWidgetStyle<FButtonStyle>("HoverHintOnly"))
 			.ContentPadding(FMargin(10.0f, 8.0f))
 			.ToolTipText(Entry.Tooltip)
-			.OnClicked_Lambda([Captured]()
+			.OnClicked_Lambda([Captured, OnActivate]()
 			{
-				FGlobalTabmanager::Get()->TryInvokeTab(Captured);
+				OnActivate.ExecuteIfBound(Captured);
 				return FReply::Handled();
 			})
 			[
@@ -87,7 +85,7 @@ namespace
 	}
 
 	/** Build one categorised section: a section header above a vertical stack of cards. */
-	TSharedRef<SWidget> MakeCategorySection(NexusEditorTools::ECategory Category)
+	TSharedRef<SWidget> MakeCategorySection(NexusEditorTools::ECategory Category, const FNexusOnActivateTool& OnActivate)
 	{
 		TSharedRef<SVerticalBox> Stack = SNew(SVerticalBox);
 		for (const NexusEditorTools::FToolEntry& Entry : NexusEditorTools::All())
@@ -98,7 +96,7 @@ namespace
 					.AutoHeight()
 					.Padding(0.0f, 2.0f)
 					[
-						MakeToolCard(Entry)
+						MakeToolCard(Entry, OnActivate)
 					];
 			}
 		}
@@ -118,8 +116,10 @@ namespace
 	}
 }
 
-void SNexusHub::Construct(const FArguments& InArgs)
+void SNexusHomePage::Construct(const FArguments& InArgs)
 {
+	OnActivateTool = InArgs._OnActivateTool;
+
 	ChildSlot
 	[
 		SNew(SBorder)
@@ -140,7 +140,7 @@ void SNexusHub::Construct(const FArguments& InArgs)
 					.AutoHeight()
 					[
 						SNew(STextBlock)
-						.Text(LOCTEXT("HubTitle", "Nexus Authoring Suite"))
+						.Text(LOCTEXT("HomeTitle", "Nexus Authoring Suite"))
 						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 14))
 					]
 					+ SVerticalBox::Slot()
@@ -148,7 +148,7 @@ void SNexusHub::Construct(const FArguments& InArgs)
 					.Padding(0.0f, 2.0f, 0.0f, 0.0f)
 					[
 						SNew(STextBlock)
-						.Text(LOCTEXT("HubTagline", "Tools for items, attachments, weapons, recipes, and content health."))
+						.Text(LOCTEXT("HomeTagline", "Tools for items, attachments, weapons, recipes, and content health — pick one to start, edit on the right."))
 						.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 					]
 				]
@@ -167,8 +167,8 @@ void SNexusHub::Construct(const FArguments& InArgs)
 					.VAlign(VAlign_Center)
 					[
 						SNew(STextBlock)
-						.Text(this, &SNexusHub::GetAuditSummaryText)
-						.ColorAndOpacity(this, &SNexusHub::GetAuditSummaryColor)
+						.Text(this, &SNexusHomePage::GetAuditSummaryText)
+						.ColorAndOpacity(this, &SNexusHomePage::GetAuditSummaryColor)
 					]
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
@@ -178,7 +178,7 @@ void SNexusHub::Construct(const FArguments& InArgs)
 						SNew(SButton)
 						.Text(LOCTEXT("RunAudit", "Run Audit"))
 						.ToolTipText(LOCTEXT("RunAuditTip", "Scan every Nexus item and attachment and refresh the summary."))
-						.OnClicked(this, &SNexusHub::OnRefreshAuditClicked)
+						.OnClicked(this, &SNexusHomePage::OnRefreshAuditClicked)
 					]
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
@@ -188,7 +188,11 @@ void SNexusHub::Construct(const FArguments& InArgs)
 						SNew(SButton)
 						.Text(LOCTEXT("OpenDashboard", "Open Dashboard"))
 						.ToolTipText(LOCTEXT("OpenDashboardTip", "Open the Content Dashboard to drill into findings."))
-						.OnClicked(this, &SNexusHub::OnOpenDashboardClicked)
+						.OnClicked_Lambda([this]()
+						{
+							Activate(FNexusEditorModule::DashboardTabName);
+							return FReply::Handled();
+						})
 					]
 				]
 			]
@@ -199,11 +203,11 @@ void SNexusHub::Construct(const FArguments& InArgs)
 			[
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot().AutoHeight()
-				[ MakeCategorySection(NexusEditorTools::ECategory::Authoring) ]
+				[ MakeCategorySection(NexusEditorTools::ECategory::Authoring, OnActivateTool) ]
 				+ SVerticalBox::Slot().AutoHeight()
-				[ MakeCategorySection(NexusEditorTools::ECategory::Inspection) ]
+				[ MakeCategorySection(NexusEditorTools::ECategory::Inspection, OnActivateTool) ]
 				+ SVerticalBox::Slot().AutoHeight()
-				[ MakeCategorySection(NexusEditorTools::ECategory::Auditing) ]
+				[ MakeCategorySection(NexusEditorTools::ECategory::Auditing, OnActivateTool) ]
 			]
 
 			// === Footer: cross-cutting actions ==================================
@@ -219,40 +223,37 @@ void SNexusHub::Construct(const FArguments& InArgs)
 				.AutoHeight()
 				.Padding(0.0f, 6.0f, 0.0f, 0.0f)
 				[
-					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					.Padding(0.0f, 0.0f, 8.0f, 0.0f)
+					SNew(SButton)
+					.OnClicked_Lambda([]()
+					{
+						FString Message;
+						UNexusLevelManifest* Manifest = FNexusManifestBuilder::BuildFromCurrentLevel(Message);
+
+						FNotificationInfo Info(FText::FromString(Message));
+						Info.ExpireDuration = 7.0f;
+						FSlateNotificationManager::Get().AddNotification(Info);
+
+						if (Manifest)
+						{
+							FNexusEditorModule::OpenCreatorWith(Manifest);
+						}
+						return FReply::Handled();
+					})
+					.ToolTipText(LOCTEXT("BuildManifestTip", "Scan the open level for items/attachments and create or update its manifest, then open it in the Creator."))
 					[
-						SNew(SButton)
-						.ButtonStyle(&FAppStyle::Get().GetWidgetStyle<FButtonStyle>("PrimaryButton"))
-						.OnClicked(this, &SNexusHub::OnOpenWorkbenchClicked)
-						.ToolTipText(LOCTEXT("OpenWorkbenchTip", "Open every Nexus tool inside a single Workbench window."))
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						.Padding(0.0f, 0.0f, 6.0f, 0.0f)
 						[
-							SNew(STextBlock).Text(LOCTEXT("OpenWorkbench", "Open Workbench"))
+							SNew(SImage).Image(FAppStyle::Get().GetBrush("Icons.Save"))
 						]
-					]
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					[
-						SNew(SButton)
-						.OnClicked(this, &SNexusHub::OnBuildLevelManifestClicked)
-						.ToolTipText(LOCTEXT("BuildManifestTip", "Scan the open level for items/attachments and create or update its manifest, then open it in the Creator."))
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
 						[
-							SNew(SHorizontalBox)
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.VAlign(VAlign_Center)
-							.Padding(0.0f, 0.0f, 6.0f, 0.0f)
-							[
-								SNew(SImage).Image(FAppStyle::Get().GetBrush("Icons.Save"))
-							]
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.VAlign(VAlign_Center)
-							[
-								SNew(STextBlock).Text(LOCTEXT("BuildManifest", "Build Level Manifest"))
-							]
+							SNew(STextBlock).Text(LOCTEXT("BuildManifest", "Build Level Manifest"))
 						]
 					]
 				]
@@ -261,42 +262,19 @@ void SNexusHub::Construct(const FArguments& InArgs)
 	];
 }
 
-FReply SNexusHub::OnRefreshAuditClicked()
+FReply SNexusHomePage::OnRefreshAuditClicked()
 {
 	LastAudit = FNexusContentAudit::Run();
 	bHasAuditResult = true;
 	return FReply::Handled();
 }
 
-FReply SNexusHub::OnOpenDashboardClicked()
+void SNexusHomePage::Activate(FName TabName)
 {
-	FGlobalTabmanager::Get()->TryInvokeTab(FNexusEditorModule::DashboardTabName);
-	return FReply::Handled();
+	OnActivateTool.ExecuteIfBound(TabName);
 }
 
-FReply SNexusHub::OnOpenWorkbenchClicked()
-{
-	FGlobalTabmanager::Get()->TryInvokeTab(FNexusEditorModule::WorkbenchTabName);
-	return FReply::Handled();
-}
-
-FReply SNexusHub::OnBuildLevelManifestClicked()
-{
-	FString Message;
-	UNexusLevelManifest* Manifest = FNexusManifestBuilder::BuildFromCurrentLevel(Message);
-
-	FNotificationInfo Info(FText::FromString(Message));
-	Info.ExpireDuration = 7.0f;
-	FSlateNotificationManager::Get().AddNotification(Info);
-
-	if (Manifest)
-	{
-		FNexusEditorModule::OpenCreatorWith(Manifest);
-	}
-	return FReply::Handled();
-}
-
-FText SNexusHub::GetAuditSummaryText() const
+FText SNexusHomePage::GetAuditSummaryText() const
 {
 	if (!bHasAuditResult)
 	{
@@ -310,7 +288,7 @@ FText SNexusHub::GetAuditSummaryText() const
 		FText::AsNumber(LastAudit.Attachments.Num()));
 }
 
-FSlateColor SNexusHub::GetAuditSummaryColor() const
+FSlateColor SNexusHomePage::GetAuditSummaryColor() const
 {
 	if (!bHasAuditResult)
 	{

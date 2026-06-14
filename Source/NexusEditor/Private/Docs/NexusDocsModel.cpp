@@ -854,6 +854,12 @@ namespace NexusDocs
 		{
 			return nullptr;
 		}
+		// O(1) via the name cache when it's been built (it is, post-BuildFromNexusModule).
+		if (const TSharedPtr<FNexusDocClass>* Found = Collection.ByName.Find(TypeName))
+		{
+			return *Found;
+		}
+		// Fallback scan (cache not yet populated, e.g. mid-build).
 		for (const TSharedPtr<FNexusDocClass>& Entry : Collection.Classes)
 		{
 			if (Entry.IsValid() && Entry->TypeName == TypeName)
@@ -911,6 +917,17 @@ namespace NexusDocs
 
 		Collection.Categories = CategorySet.Array();
 		Collection.Categories.Sort();
+
+		// Build the name cache before cross-referencing, so the Used-By / parent passes get
+		// O(1) FindByTypeName instead of an O(N) scan per link.
+		Collection.ByName.Reserve(Collection.Classes.Num());
+		for (const TSharedPtr<FNexusDocClass>& Entry : Collection.Classes)
+		{
+			if (Entry.IsValid())
+			{
+				Collection.ByName.Add(Entry->TypeName, Entry);
+			}
+		}
 
 		BuildCrossReferences(Collection);
 		ComputeAggregateStats(Collection);

@@ -35,6 +35,10 @@ private:
 		FString Name;
 		FIntPoint Grid = FIntPoint(1, 1);
 		bool bWeapon = false;
+		/** Audit flag: this footprint looks wrong (degenerate dimension or area outlier). */
+		bool bFlagged = false;
+		/** Human reason for the flag, shown in the row tooltip and footprint header. */
+		FString FlagReason;
 		/** The item's real UI icon, ready to draw; null when the item has no Icon set. */
 		TSharedPtr<FSlateBrush> IconBrush;
 	};
@@ -43,6 +47,8 @@ private:
 	static TSharedPtr<FSlateBrush> MakeIconBrush(const UNexusItemDefinition* Item);
 
 	void Rebuild();
+	/** Flag rows whose footprint area is a far outlier from the roster median (likely typos). */
+	void FlagAreaOutliers();
 	void RebuildGridVisual(const TSharedPtr<FGridRow>& Row);
 
 	TSharedRef<ITableRow> OnGenerateRow(TSharedPtr<FGridRow> Row, const TSharedRef<STableViewBase>& Owner);

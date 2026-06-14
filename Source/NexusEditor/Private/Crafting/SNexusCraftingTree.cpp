@@ -26,28 +26,13 @@
 
 #include "Settings/NexusEditorSettings.h"
 #include "Shared/NexusEditorAssetWatcher.h"
+#include "Shared/NexusEditorUtils.h"
 
 #define LOCTEXT_NAMESPACE "NexusCraftingTree"
 
 namespace
 {
 	constexpr int32 MaxDepth = 16;
-
-	template <typename T>
-	void GatherAssets(TArray<T*>& Out)
-	{
-		const IAssetRegistry& AssetRegistry =
-			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
-		FARFilter Filter;
-		Filter.ClassPaths.Add(T::StaticClass()->GetClassPathName());
-		Filter.bRecursiveClasses = true;
-		TArray<FAssetData> Assets;
-		AssetRegistry.GetAssets(Filter, Assets);
-		for (const FAssetData& Data : Assets)
-		{
-			if (T* Object = Cast<T>(Data.GetAsset())) { Out.Add(Object); }
-		}
-	}
 
 	FString ItemName(const UNexusItemDefinition* Item)
 	{
@@ -131,7 +116,7 @@ void SNexusCraftingTree::Rebuild()
 	RootNodes.Reset();
 
 	TArray<UNexusCombinationRecipe*> Recipes;
-	GatherAssets(Recipes);
+	NexusEditorUtil::GatherAssets(Recipes);
 
 	// EVERY recipe that produces each item — alternative recipes used to be silently
 	// dropped (first-wins), hiding real content. Now they all surface as variant nodes.

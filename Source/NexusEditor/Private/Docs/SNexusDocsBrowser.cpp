@@ -3,6 +3,7 @@
 #include "Shared/NexusEditorWidgets.h"
 
 #include "Framework/Application/SlateApplication.h"
+#include "Shared/NexusEditorPersistence.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformProcess.h"
@@ -105,6 +106,16 @@ namespace
 void SNexusDocsBrowser::Construct(const FArguments& InArgs)
 {
 	RebuildModel();
+
+	// Restore pinned types + navigation history across editor restarts (per-user).
+	{
+		TArray<FString> PinnedList;
+		NexusEditorPersistence::GetString(TEXT("DocsPinned")).ParseIntoArray(PinnedList, TEXT(";"), /*CullEmpty=*/ true);
+		Pinned.Append(PinnedList);
+		NexusEditorPersistence::GetString(TEXT("DocsHistory")).ParseIntoArray(History, TEXT(";"), /*CullEmpty=*/ true);
+		HistoryIndex = History.Num() - 1;
+	}
+
 	RebuildTree();
 	DiscoverArchDocs();
 
@@ -660,11 +671,6 @@ void SNexusDocsBrowser::OnSelectionChanged(FNodePtr Node, ESelectInfo::Type Sele
 		return;
 	}
 	SelectedClass = Node->ClassEntry;
-	MemberFilter.Reset();
-	if (MemberFilterBox.IsValid())
-	{
-		MemberFilterBox->SetText(FText::GetEmpty());
-	}
 	// Direct user clicks (Mouse / OnKeyPress) record history; programmatic
 	// selection paths use NavigateToType which records its own entries.
 	if (SelectInfo == ESelectInfo::OnMouseClick || SelectInfo == ESelectInfo::OnKeyPress)
@@ -681,7 +687,25 @@ void SNexusDocsBrowser::OnSelectionChanged(FNodePtr Node, ESelectInfo::Type Sele
 void SNexusDocsBrowser::OnSearchTextChanged(const FText& NewText)
 {
 	CurrentSearch = NewText.ToString();
-	RebuildTree();
+	LastSearchKeystrokeTime = FSlateApplication::Get().GetCurrentTime();
+	// Coalesce keystrokes: (re)start one idle timer rather than rebuilding the whole tree
+	// on every character (the rebuild walks every type).
+	if (!bSearchTimerActive)
+	{
+		bSearchTimerActive = true;
+		RegisterActiveTimer(0.05f, FWidgetActiveTimerDelegate::CreateSP(this, &SNexusDocsBrowser::TickSearchDebounce));
+	}
+}
+
+EActiveTimerReturnType SNexusDocsBrowser::TickSearchDebounce(double InCurrentTime, float /*InDeltaTime*/)
+{
+	if (InCurrentTime - LastSearchKeystrokeTime >= 0.2)
+	{
+		bSearchTimerActive = false;
+		RebuildTree();
+		return EActiveTimerReturnType::Stop;
+	}
+	return EActiveTimerReturnType::Continue;
 }
 
 FReply SNexusDocsBrowser::OnRefreshClicked()
@@ -766,6 +790,15 @@ void SNexusDocsBrowser::PushHistory(const FString& TypeName)
 	}
 	History.Add(TypeName);
 	HistoryIndex = History.Num() - 1;
+
+	// Cap and persist (per-user) so history survives an editor restart.
+	constexpr int32 MaxHistory = 50;
+	if (History.Num() > MaxHistory)
+	{
+		History.RemoveAt(0, History.Num() - MaxHistory);
+		HistoryIndex = History.Num() - 1;
+	}
+	NexusEditorPersistence::SetString(TEXT("DocsHistory"), FString::Join(History, TEXT(";")));
 }
 
 void SNexusDocsBrowser::NavigateToType(const FString& TypeName)
@@ -777,11 +810,6 @@ void SNexusDocsBrowser::NavigateToType(const FString& TypeName)
 		return;
 	}
 	SelectedClass = Found;
-	MemberFilter.Reset();
-	if (MemberFilterBox.IsValid())
-	{
-		MemberFilterBox->SetText(FText::GetEmpty());
-	}
 	PushHistory(TypeName);
 
 	// If the target type is hidden by the active type filter, drop the filter
@@ -808,11 +836,6 @@ FReply SNexusDocsBrowser::OnBackClicked()
 	--HistoryIndex;
 	const FString TypeName = History[HistoryIndex];
 	SelectedClass = NexusDocs::FindByTypeName(Collection, TypeName);
-	MemberFilter.Reset();
-	if (MemberFilterBox.IsValid())
-	{
-		MemberFilterBox->SetText(FText::GetEmpty());
-	}
 	SelectAndExpandForClass(SelectedClass);
 	RefreshDetailPane();
 	return FReply::Handled();
@@ -827,11 +850,6 @@ FReply SNexusDocsBrowser::OnForwardClicked()
 	++HistoryIndex;
 	const FString TypeName = History[HistoryIndex];
 	SelectedClass = NexusDocs::FindByTypeName(Collection, TypeName);
-	MemberFilter.Reset();
-	if (MemberFilterBox.IsValid())
-	{
-		MemberFilterBox->SetText(FText::GetEmpty());
-	}
 	SelectAndExpandForClass(SelectedClass);
 	RefreshDetailPane();
 	return FReply::Handled();
@@ -1003,6 +1021,7 @@ FReply SNexusDocsBrowser::OnTogglePinned(FString TypeName)
 		Pinned.Add(TypeName);
 		Notify(FText::Format(LOCTEXT("PinnedFmt", "Pinned {0} — find it in the ★ Pinned section."), FText::FromString(TypeName)));
 	}
+	NexusEditorPersistence::SetString(TEXT("DocsPinned"), FString::Join(Pinned.Array(), TEXT(";")));
 	RebuildTree();
 	RefreshDetailPane();
 	return FReply::Handled();

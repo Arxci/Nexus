@@ -32,6 +32,9 @@ namespace NexusEditorTools
 		/** FAppStyle brush name. */
 		FName IconName;
 		ECategory Category;
+		/** False for tools that bring their own details panel (the Creator); the Workbench then
+		 *  suppresses the shared Inspector for them instead of showing two editors side by side. */
+		bool bUsesSharedInspector = true;
 	};
 
 	/** Tools in display order. */

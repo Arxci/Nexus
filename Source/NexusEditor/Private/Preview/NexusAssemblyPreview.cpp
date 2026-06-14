@@ -9,28 +9,12 @@
 #include "Nexus/Weapon/Fragments/NexusFragment_Weapon.h"
 #include "Nexus/Equipment/Attachments/NexusStatResolver.h"
 
-namespace
-{
-	const FNexusFragment_Weapon* FindWeapon(const UNexusItemDefinition* Item)
-	{
-		if (!Item) { return nullptr; }
-		for (const TInstancedStruct<FNexusItemFragment>& Frag : Item->Fragments)
-		{
-			if (!Frag.IsValid()) { continue; }
-			const UScriptStruct* Type = Frag.GetScriptStruct();
-			if (Type && Type->IsChildOf(FNexusFragment_Weapon::StaticStruct()))
-			{
-				return Frag.GetPtr<const FNexusFragment_Weapon>();
-			}
-		}
-		return nullptr;
-	}
-}
+#include "Shared/NexusEditorUtils.h"
 
 int32 FNexusAssemblyPreview::GetMaxUpgradeTier(const UNexusItemDefinition* Weapon)
 {
 	int32 Max = 0;
-	if (const FNexusFragment_Weapon* WeaponFragment = FindWeapon(Weapon))
+	if (const FNexusFragment_Weapon* WeaponFragment = NexusEditorUtil::FindWeaponFragment(Weapon))
 	{
 		for (const FNexusWeaponUpgradeTrack& Track : WeaponFragment->UpgradeTracks)
 		{
@@ -81,7 +65,7 @@ TArray<FNexusResolvedStat> FNexusAssemblyPreview::Resolve(
 
 	// 3. Upgrade-tier additive delta (cumulative Value at the selected tier).
 	TMap<FGameplayTag, float> UpgradeAdd;
-	if (const FNexusFragment_Weapon* WeaponFragment = FindWeapon(Weapon))
+	if (const FNexusFragment_Weapon* WeaponFragment = NexusEditorUtil::FindWeaponFragment(Weapon))
 	{
 		for (const FNexusWeaponUpgradeTrack& Track : WeaponFragment->UpgradeTracks)
 		{

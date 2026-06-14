@@ -9,6 +9,7 @@
 
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Inventory/NexusItemFragment.h"
+#include "Nexus/Inventory/Fragments/Case/NexusFragment_Case.h"
 #include "Nexus/Weapon/Fragments/NexusFragment_Weapon.h"
 
 /**
@@ -90,10 +91,60 @@ namespace NexusEditorUtil
 		return nullptr;
 	}
 
+	/** Mutable view of the first weapon fragment on an item, or null. For tools that write stats. */
+	inline FNexusFragment_Weapon* FindMutableWeaponFragment(UNexusItemDefinition* Item)
+	{
+		if (!Item)
+		{
+			return nullptr;
+		}
+		for (TInstancedStruct<FNexusItemFragment>& Frag : Item->Fragments)
+		{
+			if (!Frag.IsValid())
+			{
+				continue;
+			}
+			const UScriptStruct* Type = Frag.GetScriptStruct();
+			if (Type && Type->IsChildOf(FNexusFragment_Weapon::StaticStruct()))
+			{
+				return Frag.GetMutablePtr<FNexusFragment_Weapon>();
+			}
+		}
+		return nullptr;
+	}
+
 	/** True when the item carries a weapon fragment (it's a gun/melee weapon). */
 	inline bool HasWeaponFragment(const UNexusItemDefinition* Item)
 	{
 		return FindWeaponFragment(Item) != nullptr;
+	}
+
+	/** The Case fragment on an item, or null. A Case item *is* the container (drives grid size). */
+	inline const FNexusFragment_Case* FindCaseFragment(const UNexusItemDefinition* Item)
+	{
+		if (!Item)
+		{
+			return nullptr;
+		}
+		for (const TInstancedStruct<FNexusItemFragment>& Frag : Item->Fragments)
+		{
+			if (!Frag.IsValid())
+			{
+				continue;
+			}
+			const UScriptStruct* Type = Frag.GetScriptStruct();
+			if (Type && Type->IsChildOf(FNexusFragment_Case::StaticStruct()))
+			{
+				return Frag.GetPtr<const FNexusFragment_Case>();
+			}
+		}
+		return nullptr;
+	}
+
+	/** True when the item is an attaché case (the container itself). */
+	inline bool HasCaseFragment(const UNexusItemDefinition* Item)
+	{
+		return FindCaseFragment(Item) != nullptr;
 	}
 
 	/** Display label for an item/attachment: its DisplayName, falling back to the asset name. */

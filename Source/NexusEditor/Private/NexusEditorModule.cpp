@@ -7,12 +7,15 @@
 #include "Matrix/SNexusAttachmentMatrix.h"
 #include "Grid/SNexusGridPreview.h"
 #include "Sandbox/SNexusInventorySandbox.h"
+#include "Inventory/SNexusInventoryWorkspace.h"
 #include "Tags/SNexusTagAudit.h"
 #include "Economy/SNexusEconomyView.h"
 #include "Docs/SNexusDocsBrowser.h"
-#include "Hub/SNexusHub.h"
+#include "Insights/SNexusIconSheet.h"
+#include "Insights/SNexusContentInsights.h"
 #include "Workbench/SNexusWorkbench.h"
 #include "Manifest/NexusManifestBuilder.h"
+#include "Shared/NexusEditorSelection.h"
 #include "Shared/NexusEditorTools.h"
 
 #include "Editor.h"
@@ -30,7 +33,6 @@
 
 #define LOCTEXT_NAMESPACE "NexusEditor"
 
-const FName FNexusEditorModule::HubTabName(TEXT("NexusHub"));
 const FName FNexusEditorModule::WorkbenchTabName(TEXT("NexusWorkbench"));
 const FName FNexusEditorModule::DashboardTabName(TEXT("NexusContentDashboard"));
 const FName FNexusEditorModule::CreatorTabName(TEXT("NexusAssetCreator"));
@@ -39,22 +41,23 @@ const FName FNexusEditorModule::CraftingTabName(TEXT("NexusCraftingTree"));
 const FName FNexusEditorModule::MatrixTabName(TEXT("NexusAttachmentMatrix"));
 const FName FNexusEditorModule::GridTabName(TEXT("NexusGridPreview"));
 const FName FNexusEditorModule::SandboxTabName(TEXT("NexusInventorySandbox"));
+const FName FNexusEditorModule::InventoryTabName(TEXT("NexusInventoryWorkspace"));
 const FName FNexusEditorModule::TagAuditTabName(TEXT("NexusTagAudit"));
 const FName FNexusEditorModule::EconomyTabName(TEXT("NexusEconomyView"));
 const FName FNexusEditorModule::DocsTabName(TEXT("NexusDocsBrowser"));
+const FName FNexusEditorModule::IconSheetTabName(TEXT("NexusIconSheet"));
+const FName FNexusEditorModule::InsightsTabName(TEXT("NexusContentInsights"));
 TWeakPtr<SNexusCreatorWindow> FNexusEditorModule::ActiveCreator;
+TUniquePtr<FNexusSelectionService> FNexusEditorModule::SelectionService;
 
 void FNexusEditorModule::StartupModule()
 {
-	// Each tool is a nomad tab, hidden from the generic Window menu; we surface them
-	// from a dedicated Tools → Nexus submenu and from the Hub / Workbench launchers.
-	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
-			HubTabName,
-			FOnSpawnTab::CreateRaw(this, &FNexusEditorModule::SpawnHubTab))
-		.SetDisplayName(LOCTEXT("HubTitle", "Nexus Hub"))
-		.SetTooltipText(LOCTEXT("HubTooltip", "Launcher for every Nexus authoring tool."))
-		.SetMenuType(ETabSpawnerMenuType::Hidden);
+	// Shared selection model, available to every tool for the module's lifetime.
+	SelectionService = MakeUnique<FNexusSelectionService>();
 
+	// Each tool is a nomad tab, hidden from the generic Window menu; we surface them
+	// from a dedicated Tools → Nexus submenu and from the Workbench (its Home page
+	// folds in the old Hub's cards). Individual tabs remain as optional tear-offs.
 	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
 			WorkbenchTabName,
 			FOnSpawnTab::CreateRaw(this, &FNexusEditorModule::SpawnWorkbenchTab))
@@ -112,6 +115,13 @@ void FNexusEditorModule::StartupModule()
 		.SetMenuType(ETabSpawnerMenuType::Hidden);
 
 	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+			InventoryTabName,
+			FOnSpawnTab::CreateRaw(this, &FNexusEditorModule::SpawnInventoryTab))
+		.SetDisplayName(LOCTEXT("InventoryTitle", "Nexus Inventory"))
+		.SetTooltipText(LOCTEXT("InventoryTooltip", "Audit item footprints and pack a real attaché case — one workspace."))
+		.SetMenuType(ETabSpawnerMenuType::Hidden);
+
+	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
 			TagAuditTabName,
 			FOnSpawnTab::CreateRaw(this, &FNexusEditorModule::SpawnTagAuditTab))
 		.SetDisplayName(LOCTEXT("TagAuditTitle", "Nexus Tag Audit"))
@@ -132,6 +142,20 @@ void FNexusEditorModule::StartupModule()
 		.SetTooltipText(LOCTEXT("DocsTooltip", "Browse every Nexus class, struct, and Blueprint-callable function — designer-friendly API docs auto-generated from C++."))
 		.SetMenuType(ETabSpawnerMenuType::Hidden);
 
+	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+			IconSheetTabName,
+			FOnSpawnTab::CreateRaw(this, &FNexusEditorModule::SpawnIconSheetTab))
+		.SetDisplayName(LOCTEXT("IconSheetTitle", "Nexus Icon Sheet"))
+		.SetTooltipText(LOCTEXT("IconSheetTooltip", "Contact sheet of every item icon at its grid footprint."))
+		.SetMenuType(ETabSpawnerMenuType::Hidden);
+
+	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+			InsightsTabName,
+			FOnSpawnTab::CreateRaw(this, &FNexusEditorModule::SpawnInsightsTab))
+		.SetDisplayName(LOCTEXT("InsightsTitle", "Nexus Content Insights"))
+		.SetTooltipText(LOCTEXT("InsightsTooltip", "Reachability, scarcity, localization, where-used, and attachment-build audits."))
+		.SetMenuType(ETabSpawnerMenuType::Hidden);
+
 	// ToolMenus may not be ready this early in startup; defer menu wiring.
 	UToolMenus::RegisterStartupCallback(
 		FSimpleMulticastDelegate::FDelegate::CreateRaw(this, &FNexusEditorModule::RegisterMenus));
@@ -139,12 +163,15 @@ void FNexusEditorModule::StartupModule()
 
 void FNexusEditorModule::ShutdownModule()
 {
+	// Drop the selection service first so any Inspector torn down during shutdown finds
+	// it gone (TrySelection() returns null) and unsubscribes harmlessly.
+	SelectionService.Reset();
+
 	UToolMenus::UnRegisterStartupCallback(this);
 	UToolMenus::UnregisterOwner(this);
 
 	if (FSlateApplication::IsInitialized())
 	{
-		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(HubTabName);
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(WorkbenchTabName);
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(DashboardTabName);
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(CreatorTabName);
@@ -153,9 +180,12 @@ void FNexusEditorModule::ShutdownModule()
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(MatrixTabName);
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(GridTabName);
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(SandboxTabName);
+		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(InventoryTabName);
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TagAuditTabName);
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(EconomyTabName);
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(DocsTabName);
+		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(IconSheetTabName);
+		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(InsightsTabName);
 	}
 }
 
@@ -177,7 +207,7 @@ void FNexusEditorModule::RegisterMenus()
 	}
 
 	// === Level Editor toolbar: split combo button ===========================
-	// Primary click opens the Hub; drop-down shows the same submenu.
+	// Primary click opens the Workbench (the suite's home); drop-down shows the same submenu.
 	if (UToolMenu* UserToolbar = UToolMenus::Get()->ExtendMenu("LevelEditor.LevelEditorToolBar.User"))
 	{
 		FToolMenuSection& Section = UserToolbar->FindOrAddSection("Nexus");
@@ -185,11 +215,11 @@ void FNexusEditorModule::RegisterMenus()
 			"NexusToolsCombo",
 			FUIAction(FExecuteAction::CreateLambda([]()
 			{
-				FGlobalTabmanager::Get()->TryInvokeTab(HubTabName);
+				FGlobalTabmanager::Get()->TryInvokeTab(WorkbenchTabName);
 			})),
 			FNewToolMenuChoice(FNewToolMenuDelegate::CreateRaw(this, &FNexusEditorModule::FillNexusMenu)),
 			LOCTEXT("NexusToolbarLabel", "Nexus"),
-			LOCTEXT("NexusToolbarTooltip", "Open the Nexus Hub.  Drop-down opens individual tools."),
+			LOCTEXT("NexusToolbarTooltip", "Open the Nexus Workbench.  Drop-down opens individual tools."),
 			FSlateIcon(FAppStyle::GetAppStyleSetName(), "Icons.Box"),
 			false);
 		Section.AddEntry(Entry);
@@ -234,17 +264,13 @@ void FNexusEditorModule::FillNexusMenu(UToolMenu* Menu)
 			})));
 	};
 
-	// --- Launchers (Hub + Workbench) at the top ----------------------------
+	// --- The Workbench (the suite's single home) at the top ----------------
 	{
 		FToolMenuSection& Section = Menu->FindOrAddSection(
-			"NexusLaunchers", LOCTEXT("NexusLaunchersHeader", "Launchers"));
-		AddTabEntry(Section, "OpenNexusHub",
-			LOCTEXT("OpenHubLabel", "Open Nexus Hub"),
-			LOCTEXT("OpenHubTooltip", "Launcher with a card for every Nexus tool plus an audit summary."),
-			TEXT("Icons.Box"), HubTabName);
+			"NexusLaunchers", LOCTEXT("NexusLaunchersHeader", "Home"));
 		AddTabEntry(Section, "OpenNexusWorkbench",
 			LOCTEXT("OpenWorkbenchLabel", "Open Nexus Workbench"),
-			LOCTEXT("OpenWorkbenchTooltip", "Every Nexus tool inside a single window with a sidebar selector."),
+			LOCTEXT("OpenWorkbenchTooltip", "The Nexus suite in one window — Home page, every tool, and a shared Inspector."),
 			TEXT("Icons.Layout"), WorkbenchTabName);
 	}
 
@@ -290,15 +316,6 @@ void FNexusEditorModule::FillNexusMenu(UToolMenu* Menu)
 	}
 }
 
-TSharedRef<SDockTab> FNexusEditorModule::SpawnHubTab(const FSpawnTabArgs& Args)
-{
-	return SNew(SDockTab)
-		.TabRole(ETabRole::NomadTab)
-		[
-			SNew(SNexusHub)
-		];
-}
-
 TSharedRef<SDockTab> FNexusEditorModule::SpawnWorkbenchTab(const FSpawnTabArgs& Args)
 {
 	return SNew(SDockTab)
@@ -331,6 +348,27 @@ TSharedRef<SDockTab> FNexusEditorModule::SpawnCreatorTab(const FSpawnTabArgs& Ar
 void FNexusEditorModule::RegisterCreator(TSharedRef<SNexusCreatorWindow> Creator)
 {
 	ActiveCreator = Creator;
+}
+
+FNexusSelectionService* FNexusEditorModule::TrySelection()
+{
+	return SelectionService.Get();
+}
+
+void FNexusEditorModule::SetSelection(UObject* Asset, FName SourceTool)
+{
+	if (SelectionService.IsValid())
+	{
+		SelectionService->SetSelection(Asset, SourceTool);
+	}
+}
+
+void FNexusEditorModule::SetSelection(const TArray<UObject*>& Assets, FName SourceTool)
+{
+	if (SelectionService.IsValid())
+	{
+		SelectionService->SetSelection(Assets, SourceTool);
+	}
 }
 
 void FNexusEditorModule::OpenCreatorWith(UObject* Asset)
@@ -397,6 +435,15 @@ TSharedRef<SDockTab> FNexusEditorModule::SpawnSandboxTab(const FSpawnTabArgs& Ar
 		];
 }
 
+TSharedRef<SDockTab> FNexusEditorModule::SpawnInventoryTab(const FSpawnTabArgs& Args)
+{
+	return SNew(SDockTab)
+		.TabRole(ETabRole::NomadTab)
+		[
+			SNew(SNexusInventoryWorkspace)
+		];
+}
+
 TSharedRef<SDockTab> FNexusEditorModule::SpawnTagAuditTab(const FSpawnTabArgs& Args)
 {
 	return SNew(SDockTab)
@@ -421,6 +468,24 @@ TSharedRef<SDockTab> FNexusEditorModule::SpawnDocsTab(const FSpawnTabArgs& Args)
 		.TabRole(ETabRole::NomadTab)
 		[
 			SNew(SNexusDocsBrowser)
+		];
+}
+
+TSharedRef<SDockTab> FNexusEditorModule::SpawnIconSheetTab(const FSpawnTabArgs& Args)
+{
+	return SNew(SDockTab)
+		.TabRole(ETabRole::NomadTab)
+		[
+			SNew(SNexusIconSheet)
+		];
+}
+
+TSharedRef<SDockTab> FNexusEditorModule::SpawnInsightsTab(const FSpawnTabArgs& Args)
+{
+	return SNew(SDockTab)
+		.TabRole(ETabRole::NomadTab)
+		[
+			SNew(SNexusContentInsights)
 		];
 }
 

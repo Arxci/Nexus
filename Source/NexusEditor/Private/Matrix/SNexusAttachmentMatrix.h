@@ -37,6 +37,7 @@ public:
 private:
 	void Rebuild();
 	TSharedRef<ITableRow> OnGenerateRow(TSharedPtr<FMatrixRow> Row, const TSharedRef<STableViewBase>& Owner);
+	void OnRowSelectionChanged(TSharedPtr<FMatrixRow> Row, ESelectInfo::Type SelectInfo);
 	void OnRowDoubleClicked(TSharedPtr<FMatrixRow> Row);
 	FReply OnRefreshClicked();
 	FText GetSummaryText() const;

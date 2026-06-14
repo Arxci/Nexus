@@ -55,6 +55,7 @@ private:
 	void ApplyView();
 
 	TSharedRef<ITableRow> OnGenerateRow(TSharedPtr<FEconomyRow> Row, const TSharedRef<STableViewBase>& Owner);
+	void OnRowSelectionChanged(TSharedPtr<FEconomyRow> Row, ESelectInfo::Type SelectInfo);
 	void OnRowDoubleClicked(TSharedPtr<FEconomyRow> Row);
 	FReply OnRefreshClicked();
 	void OnSearchChanged(const FText& Text);

@@ -10,42 +10,12 @@
 #include "Nexus/Equipment/Attachments/NexusAttachmentDefinition.h"
 #include "Nexus/Levels/NexusLevelManifest.h"
 
+#include "Shared/NexusEditorUtils.h"
+
 #define LOCTEXT_NAMESPACE "NexusContentAudit"
 
 namespace
 {
-	/** Load every asset of class T (and subclasses) the asset registry knows about. */
-	template <typename T>
-	void GatherAssets(TArray<T*>& Out)
-	{
-		const IAssetRegistry& AssetRegistry =
-			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
-
-		FARFilter Filter;
-		Filter.ClassPaths.Add(T::StaticClass()->GetClassPathName());
-		Filter.bRecursiveClasses = true;
-
-		TArray<FAssetData> Assets;
-		AssetRegistry.GetAssets(Filter, Assets);
-
-		Out.Reserve(Out.Num() + Assets.Num());
-		for (const FAssetData& Data : Assets)
-		{
-			if (T* Obj = Cast<T>(Data.GetAsset()))
-			{
-				Out.Add(Obj);
-			}
-		}
-	}
-
-	/** Last segment of a tag, e.g. Stat.Weapon.Damage -> "Damage", for compact display. */
-	FString LeafName(const FGameplayTag& Tag)
-	{
-		const FString Full = Tag.ToString();
-		int32 Dot = INDEX_NONE;
-		return Full.FindLastChar(TEXT('.'), Dot) ? Full.RightChop(Dot + 1) : Full;
-	}
-
 	/** "Damage 12, RPM 450" — sorted for stable display. Sorts Stats in place. */
 	FString CompactStats(TMap<FGameplayTag, float>& Stats)
 	{
@@ -55,7 +25,7 @@ namespace
 		Parts.Reserve(Stats.Num());
 		for (const TPair<FGameplayTag, float>& Pair : Stats)
 		{
-			Parts.Add(FString::Printf(TEXT("%s %g"), *LeafName(Pair.Key), Pair.Value));
+			Parts.Add(FString::Printf(TEXT("%s %g"), *NexusEditorUtil::TagLeaf(Pair.Key), Pair.Value));
 		}
 		return FString::Join(Parts, TEXT(", "));
 	}
@@ -135,7 +105,7 @@ FGameplayTagContainer FNexusContentAudit::GatherGlobalProvidedTags()
 	}
 
 	TArray<UNexusAttachmentDefinition*> Attachments;
-	GatherAssets(Attachments);
+	NexusEditorUtil::GatherAssets(Attachments);
 	Cache = BuildGlobalProvided(Attachments);
 	CacheTime = Now;
 	bHasCache = true;
@@ -183,7 +153,7 @@ TArray<UNexusItemDefinition*> FNexusContentAudit::FindItemsSharingIdentity(const
 	{
 		ByIdentity.Reset();
 		TArray<UNexusItemDefinition*> All;
-		GatherAssets(All);
+		NexusEditorUtil::GatherAssets(All);
 		for (UNexusItemDefinition* Item : All)
 		{
 			if (Item && Item->IdentityTag.IsValid())
@@ -242,8 +212,8 @@ FNexusAuditResult FNexusContentAudit::Run()
 
 	TArray<UNexusItemDefinition*> Items;
 	TArray<UNexusAttachmentDefinition*> Attachments;
-	GatherAssets(Items);
-	GatherAssets(Attachments);
+	NexusEditorUtil::GatherAssets(Items);
+	NexusEditorUtil::GatherAssets(Attachments);
 
 	// --- Items ----------------------------------------------------------------
 	TMap<FGameplayTag, TArray<UNexusItemDefinition*>> ItemsByIdentity;
@@ -400,7 +370,7 @@ FNexusAuditResult FNexusContentAudit::Run()
 	// Items reachable in no level manifest aren't preloaded, so their first equip
 	// hitches on a cold load (the manifest is Nexus's Lyra-style residency set).
 	TArray<UNexusLevelManifest*> Manifests;
-	GatherAssets(Manifests);
+	NexusEditorUtil::GatherAssets(Manifests);
 	TSet<FSoftObjectPath> ManifestItemPaths;
 	for (const UNexusLevelManifest* Manifest : Manifests)
 	{

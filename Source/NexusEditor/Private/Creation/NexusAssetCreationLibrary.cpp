@@ -1,5 +1,7 @@
 #include "Creation/NexusAssetCreationLibrary.h"
 
+#include "Shared/NexusEditorUtils.h"
+
 #include "AssetToolsModule.h"
 #include "IAssetTools.h"
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -68,14 +70,6 @@ namespace
 		TInstancedStruct<FNexusItemFragment> Frag;
 		Frag.InitializeAs<FragmentT>();
 		Item->Fragments.Add(MoveTemp(Frag));
-	}
-
-	/** Last segment of a tag, e.g. Attachment.Slot.Sight -> "Sight". */
-	FString LeafName(const FGameplayTag& Tag)
-	{
-		const FString Full = Tag.ToString();
-		int32 Dot = INDEX_NONE;
-		return Full.FindLastChar(TEXT('.'), Dot) ? Full.RightChop(Dot + 1) : Full;
 	}
 
 	/** The Attachment.Slot.* tag matching an Attachment.Type.* tag (same leaf), or invalid. */
@@ -264,7 +258,7 @@ ENexusAttachResult FNexusAssetCreation::AssignOrCreateSlot(
 			if (Slot.DefaultAttachment.IsNull())
 			{
 				Slot.DefaultAttachment = Attachment;
-				OutSlotName = LeafName(Slot.SlotID);
+				OutSlotName = NexusEditorUtil::TagLeaf(Slot.SlotID);
 				Weapon->MarkPackageDirty();
 				return ENexusAttachResult::Assigned;
 			}
@@ -279,13 +273,13 @@ ENexusAttachResult FNexusAssetCreation::AssignOrCreateSlot(
 			NewSlot.AcceptedTags.AddTag(TypeTag);
 			NewSlot.DefaultAttachment = Attachment;
 			Equippable->Slots.Add(NewSlot);
-			OutSlotName = LeafName(NewSlot.SlotID);
+			OutSlotName = NexusEditorUtil::TagLeaf(NewSlot.SlotID);
 			Weapon->MarkPackageDirty();
 			return ENexusAttachResult::CreatedSlot;
 		}
 
 		// Matching slot(s) exist but all are filled.
-		OutSlotName = LeafName(TypeTag);
+		OutSlotName = NexusEditorUtil::TagLeaf(TypeTag);
 		return ENexusAttachResult::AllFilled;
 	}
 
@@ -342,12 +336,12 @@ FGameplayTag FNexusAssetCreation::DeriveAndAssignIdentityTag(UObject* Asset, FTe
 	if (Item)
 	{
 		Root = TEXT("Item.Identity");
-		for (const FGameplayTag& CategoryTag : Item->CategoryTags) { Category = LeafName(CategoryTag); break; }
+		for (const FGameplayTag& CategoryTag : Item->CategoryTags) { Category = NexusEditorUtil::TagLeaf(CategoryTag); break; }
 	}
 	else if (Attachment)
 	{
 		Root = TEXT("Attachment.Identity");
-		for (const FGameplayTag& ProvidedTag : Attachment->ProvidedTags) { Category = LeafName(ProvidedTag); break; }
+		for (const FGameplayTag& ProvidedTag : Attachment->ProvidedTags) { Category = NexusEditorUtil::TagLeaf(ProvidedTag); break; }
 	}
 	else
 	{

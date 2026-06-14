@@ -1,5 +1,7 @@
 #include "Grid/SNexusGridPreview.h"
 
+#include "NexusEditorModule.h"
+
 #include "Editor.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 
@@ -159,9 +161,20 @@ void SNexusGridPreview::Rebuild()
 		Row->Name = NexusEditorUtil::DisplayLabel(Item, Item->DisplayName);
 		Row->Grid = FIntPoint(FMath::Max(1, Item->GridSize.X), FMath::Max(1, Item->GridSize.Y));
 		Row->bWeapon = NexusEditorUtil::HasWeaponFragment(Item);
+		// A degenerate authored dimension (<1) is always wrong, regardless of the roster.
+		if (Item->GridSize.X < 1 || Item->GridSize.Y < 1)
+		{
+			Row->bFlagged = true;
+			Row->FlagReason = FString::Printf(TEXT("GridSize has a non-positive dimension (%dx%d) — clamped to 1 at runtime."),
+				Item->GridSize.X, Item->GridSize.Y);
+		}
 		Row->IconBrush = MakeIconBrush(Item);
 		Rows.Add(Row);
 	}
+
+	// Footprint-area outliers: items whose area sits far off the roster median are the likely
+	// typos (a 1x1 rifle, a 6x6 herb). Only meaningful once there's a roster to compare against.
+	FlagAreaOutliers();
 
 	// Largest footprints first — the items most likely to be mis-sized.
 	Rows.Sort([](const TSharedPtr<FGridRow>& A, const TSharedPtr<FGridRow>& B)
@@ -172,11 +185,70 @@ void SNexusGridPreview::Rebuild()
 		return (A.IsValid() ? A->Name : FString()) < (B.IsValid() ? B->Name : FString());
 	});
 
-	SummaryText = FText::Format(LOCTEXT("Summary", "{0} item(s)."), FText::AsNumber(Rows.Num()));
+	int32 Flagged = 0;
+	for (const TSharedPtr<FGridRow>& Row : Rows)
+	{
+		if (Row.IsValid() && Row->bFlagged) { ++Flagged; }
+	}
+	SummaryText = (Flagged > 0)
+		? FText::Format(LOCTEXT("SummaryFlagged", "{0} item(s)  ·  {1} flagged as mis-sized."),
+			FText::AsNumber(Rows.Num()), FText::AsNumber(Flagged))
+		: FText::Format(LOCTEXT("Summary", "{0} item(s)  ·  none flagged."), FText::AsNumber(Rows.Num()));
 
 	if (ListView.IsValid())
 	{
 		ListView->RequestListRefresh();
+	}
+}
+
+void SNexusGridPreview::FlagAreaOutliers()
+{
+	// Need a few items before a "median" means anything.
+	if (Rows.Num() < 4)
+	{
+		return;
+	}
+
+	TArray<int32> Areas;
+	Areas.Reserve(Rows.Num());
+	for (const TSharedPtr<FGridRow>& Row : Rows)
+	{
+		if (Row.IsValid())
+		{
+			Areas.Add(FMath::Max(1, Row->Grid.X * Row->Grid.Y));
+		}
+	}
+	Areas.Sort();
+	const int32 Median = Areas[Areas.Num() / 2];
+	if (Median <= 0)
+	{
+		return;
+	}
+
+	// Generous factor — footprints legitimately vary a lot; we only want the gross typos.
+	constexpr float Factor = 4.0f;
+	const float High = Median * Factor;
+	const float Low = Median / Factor;
+
+	for (const TSharedPtr<FGridRow>& Row : Rows)
+	{
+		if (!Row.IsValid() || Row->bFlagged)
+		{
+			continue;   // keep the stronger degenerate-dimension reason
+		}
+		const int32 Area = FMath::Max(1, Row->Grid.X * Row->Grid.Y);
+		if (Area > High)
+		{
+			Row->bFlagged = true;
+			Row->FlagReason = FString::Printf(
+				TEXT("Footprint area %d is far above the roster median of %d — check for a typo."), Area, Median);
+		}
+		else if (Area < Low)
+		{
+			Row->bFlagged = true;
+			Row->FlagReason = FString::Printf(
+				TEXT("Footprint area %d is far below the roster median of %d — check for a typo."), Area, Median);
+		}
 	}
 }
 
@@ -196,9 +268,14 @@ void SNexusGridPreview::RebuildGridVisual(const TSharedPtr<FGridRow>& Row)
 
 	const int32 W = Row->Grid.X;
 	const int32 H = Row->Grid.Y;
-	FootprintText = FText::Format(
-		LOCTEXT("Footprint", "{0}  —  {1} x {2}  ({3} cells)"),
-		FText::FromString(Row->Name), FText::AsNumber(W), FText::AsNumber(H), FText::AsNumber(W * H));
+	FootprintText = Row->bFlagged
+		? FText::Format(
+			LOCTEXT("FootprintFlagged", "⚠ {0}  —  {1} x {2}  ({3} cells)   ·   {4}"),
+			FText::FromString(Row->Name), FText::AsNumber(W), FText::AsNumber(H), FText::AsNumber(W * H),
+			FText::FromString(Row->FlagReason))
+		: FText::Format(
+			LOCTEXT("Footprint", "{0}  —  {1} x {2}  ({3} cells)"),
+			FText::FromString(Row->Name), FText::AsNumber(W), FText::AsNumber(H), FText::AsNumber(W * H));
 
 	if (W > NexusGrid::MaxDrawn || H > NexusGrid::MaxDrawn)
 	{
@@ -267,8 +344,9 @@ void SNexusGridPreview::RebuildGridVisual(const TSharedPtr<FGridRow>& Row)
 TSharedRef<ITableRow> SNexusGridPreview::OnGenerateRow(
 	TSharedPtr<FGridRow> Row, const TSharedRef<STableViewBase>& Owner)
 {
+	const bool bFlagged = Row.IsValid() && Row->bFlagged;
 	const FString Label = Row.IsValid()
-		? FString::Printf(TEXT("%dx%d   %s"), Row->Grid.X, Row->Grid.Y, *Row->Name)
+		? FString::Printf(TEXT("%s%dx%d   %s"), bFlagged ? TEXT("⚠ ") : TEXT(""), Row->Grid.X, Row->Grid.Y, *Row->Name)
 		: FString();
 
 	// Thumbnail (when the item has an icon) sits left of the label so the roster reads
@@ -276,7 +354,13 @@ TSharedRef<ITableRow> SNexusGridPreview::OnGenerateRow(
 	// outlives the widget (Rows owns it), so the raw pointer stays valid.
 	const bool bHasIcon = Row.IsValid() && Row->IconBrush.IsValid();
 
+	const FSlateColor LabelColor = bFlagged
+		? FSlateColor(FStyleColors::Warning)
+		: ((Row.IsValid() && Row->bWeapon) ? FSlateColor(FStyleColors::AccentBlue) : FSlateColor::UseForeground());
+	const FText RowTip = bFlagged ? FText::FromString(Row->FlagReason) : FText::GetEmpty();
+
 	return SNew(STableRow<TSharedPtr<FGridRow>>, Owner)
+	.ToolTipText(RowTip)
 	[
 		SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(4.0f, 2.0f, 6.0f, 2.0f))
@@ -293,8 +377,7 @@ TSharedRef<ITableRow> SNexusGridPreview::OnGenerateRow(
 			SNew(STextBlock)
 			.Text(FText::FromString(Label))
 			.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
-			.ColorAndOpacity((Row.IsValid() && Row->bWeapon)
-				? FSlateColor(FStyleColors::AccentBlue) : FSlateColor::UseForeground())
+			.ColorAndOpacity(LabelColor)
 		]
 	];
 }
@@ -302,6 +385,12 @@ TSharedRef<ITableRow> SNexusGridPreview::OnGenerateRow(
 void SNexusGridPreview::OnSelectionChanged(TSharedPtr<FGridRow> Row, ESelectInfo::Type SelectInfo)
 {
 	RebuildGridVisual(Row);
+
+	// Surface the picked item in the Workbench Inspector.
+	if (Row.IsValid() && Row->Item.IsValid())
+	{
+		FNexusEditorModule::SetSelection(Row->Item.Get(), FNexusEditorModule::GridTabName);
+	}
 }
 
 void SNexusGridPreview::OnRowDoubleClicked(TSharedPtr<FGridRow> Row)

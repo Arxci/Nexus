@@ -51,6 +51,11 @@ public:
 	int32 GetItemCount() const;
 	FIntPoint GetGridSize() const { return FIntPoint(GridW, GridH); }
 	int32 GetUsedCellCount() const;
+
+	/** Serialise the current placement to a compact string (def path | x | y | rot, ';'-joined). */
+	FString SerializeLayout() const;
+	/** Clear and rebuild the grid from a string produced by SerializeLayout(). */
+	void DeserializeLayout(const FString& Data);
 	int32 GetTotalCellCount() const { return GridW * GridH; }
 
 protected:
@@ -75,6 +80,8 @@ private:
 	FIntPoint LocalToCell(const FVector2D& Local) const;
 	FVector2D CellToLocal(FIntPoint Cell) const;
 	FIntPoint HeldFootprint() const;
+	/** Empty when the held item's current target is a legal drop; else a short why-not string. */
+	FString HeldInvalidReason() const;
 	FIntPoint ItemTopLeft(const UNexusItemInstance* Instance) const;
 	/** Where the held item's top-left would land for the current cursor cell. */
 	FIntPoint HeldTargetTopLeft() const;

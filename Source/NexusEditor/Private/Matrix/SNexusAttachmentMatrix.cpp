@@ -1,5 +1,7 @@
 #include "Matrix/SNexusAttachmentMatrix.h"
 
+#include "NexusEditorModule.h"
+
 #include "Editor.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 
@@ -18,6 +20,7 @@
 #include "Nexus/Equipment/Attachments/NexusAttachmentDefinition.h"
 
 #include "Shared/NexusEditorAssetWatcher.h"
+#include "Shared/NexusEditorStyle.h"
 #include "Shared/NexusEditorUtils.h"
 #include "Shared/NexusEditorWidgets.h"
 
@@ -67,10 +70,10 @@ public:
 		if (bRequires)  { Marks += Marks.IsEmpty() ? TEXT("R") : TEXT(" R"); TooltipParts.Add(FString::Printf(TEXT("Requires %s"), *FullTag)); }
 		if (bConflicts) { Marks += Marks.IsEmpty() ? TEXT("C") : TEXT(" C"); TooltipParts.Add(FString::Printf(TEXT("Conflicts with %s"), *FullTag)); }
 
-		FSlateColor Color = FSlateColor::UseForeground();
-		if (Marks == TEXT("P"))      { Color = FStyleColors::AccentGreen; }
-		else if (Marks == TEXT("R")) { Color = FStyleColors::AccentBlue; }
-		else if (Marks == TEXT("C")) { Color = FStyleColors::Error; }
+		FSlateColor Color = NexusEditorStyle::Neutral();
+		if (Marks == TEXT("P"))      { Color = NexusEditorStyle::Provides(); }
+		else if (Marks == TEXT("R")) { Color = NexusEditorStyle::Requires(); }
+		else if (Marks == TEXT("C")) { Color = NexusEditorStyle::Conflicts(); }
 
 		// Tooltip spells out the full tag so a cryptic leaf ("NATO") is unambiguous.
 		return NexusEditorWidgets::Cell(Marks, Color, FString::Join(TooltipParts, TEXT("\n")));
@@ -108,6 +111,7 @@ void SNexusAttachmentMatrix::Construct(const FArguments& InArgs)
 				SAssignNew(ListView, SListView<TSharedPtr<FMatrixRow>>)
 				.ListItemsSource(&Rows)
 				.OnGenerateRow(this, &SNexusAttachmentMatrix::OnGenerateRow)
+				.OnSelectionChanged(this, &SNexusAttachmentMatrix::OnRowSelectionChanged)
 				.OnMouseButtonDoubleClick(this, &SNexusAttachmentMatrix::OnRowDoubleClicked)
 				.SelectionMode(ESelectionMode::Single)
 				.HeaderRow(HeaderRow.ToSharedRef())
@@ -193,6 +197,14 @@ TSharedRef<ITableRow> SNexusAttachmentMatrix::OnGenerateRow(
 	TSharedPtr<FMatrixRow> Row, const TSharedRef<STableViewBase>& Owner)
 {
 	return SNew(SNexusMatrixRow, Owner).Row(Row);
+}
+
+void SNexusAttachmentMatrix::OnRowSelectionChanged(TSharedPtr<FMatrixRow> Row, ESelectInfo::Type SelectInfo)
+{
+	if (Row.IsValid() && Row->Attachment.IsValid())
+	{
+		FNexusEditorModule::SetSelection(Row->Attachment.Get(), FNexusEditorModule::MatrixTabName);
+	}
 }
 
 void SNexusAttachmentMatrix::OnRowDoubleClicked(TSharedPtr<FMatrixRow> Row)

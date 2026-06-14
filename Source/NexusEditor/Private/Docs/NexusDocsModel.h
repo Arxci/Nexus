@@ -188,6 +188,8 @@ struct FNexusDocCollection
 	TArray<TSharedPtr<FNexusDocClass>> Classes;
 	/** Distinct category names in display order. */
 	TArray<FString> Categories;
+	/** TypeName -> entry, for O(1) lookup (Used-By / parent links) instead of scanning Classes. */
+	TMap<FString, TSharedPtr<FNexusDocClass>> ByName;
 
 	// === Aggregate counters (computed during BuildFromNexusModule) ===========
 	int32 TotalClasses = 0;          // UCLASS count

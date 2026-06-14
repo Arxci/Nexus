@@ -1,5 +1,7 @@
 #include "Economy/SNexusEconomyView.h"
 
+#include "NexusEditorModule.h"
+
 #include "Editor.h"
 #include "ScopedTransaction.h"
 #include "Subsystems/AssetEditorSubsystem.h"
@@ -23,6 +25,7 @@
 
 #include "Settings/NexusEditorSettings.h"
 #include "Shared/NexusEditorAssetWatcher.h"
+#include "Shared/NexusEditorPersistence.h"
 #include "Shared/NexusEditorUtils.h"
 #include "Shared/NexusEditorWidgets.h"
 
@@ -124,6 +127,11 @@ void SNexusEconomyView::Construct(const FArguments& InArgs)
 {
 	using namespace NexusEconomy;
 
+	// Restore the last sort (per-user) so the sheet opens the way you left it.
+	SortColumn = FName(*NexusEditorPersistence::GetString(TEXT("EconomySortColumn")));
+	SortMode = static_cast<EColumnSortMode::Type>(
+		NexusEditorPersistence::GetInt(TEXT("EconomySortMode"), static_cast<int32>(EColumnSortMode::None)));
+
 	Rebuild();
 
 	ChildSlot
@@ -161,8 +169,9 @@ void SNexusEconomyView::Construct(const FArguments& InArgs)
 				SAssignNew(ListView, SListView<TSharedPtr<FEconomyRow>>)
 				.ListItemsSource(&VisibleRows)
 				.OnGenerateRow(this, &SNexusEconomyView::OnGenerateRow)
+				.OnSelectionChanged(this, &SNexusEconomyView::OnRowSelectionChanged)
 				.OnMouseButtonDoubleClick(this, &SNexusEconomyView::OnRowDoubleClicked)
-				.SelectionMode(ESelectionMode::Single)
+				.SelectionMode(ESelectionMode::Multi)
 				.HeaderRow(
 					SNew(SHeaderRow)
 					+ SHeaderRow::Column(ColName).DefaultLabel(LOCTEXT("CName", "Name")).FillWidth(0.30f)
@@ -327,6 +336,8 @@ void SNexusEconomyView::OnSort(EColumnSortPriority::Type /*Priority*/, const FNa
 {
 	SortColumn = Column;
 	SortMode = Mode;
+	NexusEditorPersistence::SetString(TEXT("EconomySortColumn"), SortColumn.ToString());
+	NexusEditorPersistence::SetInt(TEXT("EconomySortMode"), static_cast<int32>(SortMode));
 	ApplyView();
 }
 
@@ -375,6 +386,25 @@ void SNexusEconomyView::CommitBuyable(TSharedPtr<FEconomyRow> Row, bool bNewBuya
 	Item->bBuyable = bNewBuyable;
 	Item->MarkPackageDirty();
 	Rebuild();
+}
+
+void SNexusEconomyView::OnRowSelectionChanged(TSharedPtr<FEconomyRow> Row, ESelectInfo::Type SelectInfo)
+{
+	if (!ListView.IsValid())
+	{
+		return;
+	}
+	// Publish every selected item so the Inspector can bulk-edit shared properties
+	// (e.g. set Weight/Value across a whole category at once).
+	TArray<UObject*> Selected;
+	for (const TSharedPtr<FEconomyRow>& Selected_Row : ListView->GetSelectedItems())
+	{
+		if (Selected_Row.IsValid() && Selected_Row->Item.IsValid())
+		{
+			Selected.Add(Selected_Row->Item.Get());
+		}
+	}
+	FNexusEditorModule::SetSelection(Selected, FNexusEditorModule::EconomyTabName);
 }
 
 void SNexusEconomyView::OnRowDoubleClicked(TSharedPtr<FEconomyRow> Row)

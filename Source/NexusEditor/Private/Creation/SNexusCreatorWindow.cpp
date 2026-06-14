@@ -1,5 +1,6 @@
 #include "Creation/SNexusCreatorWindow.h"
 
+#include "NexusEditorModule.h"
 #include "Creation/NexusAssetCreationLibrary.h"
 #include "Preview/SNexusItemViewport.h"
 
@@ -157,6 +158,8 @@ void SNexusCreatorWindow::Construct(const FArguments& InArgs)
 					[ ModeButton(ECreateMode::Manifest, LOCTEXT("ModeManifest", "Manifest")) ]
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 					[ ModeButton(ECreateMode::Loadout, LOCTEXT("ModeLoadout", "Loadout")) ]
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+					[ ModeButton(ECreateMode::Suite, LOCTEXT("ModeSuite", "Weapon Suite")) ]
 
 					+ SHorizontalBox::Slot().FillWidth(1.0f)[ SNullWidget::NullWidget ]
 
@@ -255,6 +258,14 @@ void SNexusCreatorWindow::Construct(const FArguments& InArgs)
 							.Text(LOCTEXT("CreateItemBtn", "Create Item"))
 							.OnClicked(this, &SNexusCreatorWindow::OnCreateClicked)
 						]
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
+						[
+							SNew(SComboButton)
+							.OnGetMenuContent(this, &SNexusCreatorWindow::MakePresetsMenu)
+							.ToolTipText(LOCTEXT("PresetsTip", "Stamp a preconfigured item from a named preset (Project Settings → Nexus Authoring Tools → Presets)."))
+							.ButtonContent()
+							[ SNew(STextBlock).Text(LOCTEXT("Presets", "Presets ▾")) ]
+						]
 					]
 
 					// Index 1 — Attachment.
@@ -352,6 +363,66 @@ void SNexusCreatorWindow::Construct(const FArguments& InArgs)
 							SNew(STextBlock)
 							.Text(LOCTEXT("LoadoutHint", "Then add the character's equipment slots on the right."))
 							.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+						]
+					]
+
+					// Index 5 — Weapon Suite wizard.
+					+ SWidgetSwitcher::Slot()
+					[
+						SNew(SVerticalBox)
+						+ SVerticalBox::Slot().AutoHeight()
+						[
+							SNew(SHorizontalBox)
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+							[ SectionLabel(LOCTEXT("SuiteColon", "WEAPON SUITE")) ]
+							// Ranged / Melee toggle.
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
+							[
+								SNew(SCheckBox)
+								.Style(FAppStyle::Get(), "DetailsView.SectionButton")
+								.Padding(FMargin(10.0f, 2.0f))
+								.IsChecked_Lambda([this]() { return bSuiteRanged ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+								.OnCheckStateChanged_Lambda([this](ECheckBoxState S) { if (S == ECheckBoxState::Checked) { bSuiteRanged = true; } })
+								[ SNew(STextBlock).Text(LOCTEXT("SuiteRanged", "Ranged")) ]
+							]
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+							[
+								SNew(SCheckBox)
+								.Style(FAppStyle::Get(), "DetailsView.SectionButton")
+								.Padding(FMargin(10.0f, 2.0f))
+								.IsChecked_Lambda([this]() { return !bSuiteRanged ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+								.OnCheckStateChanged_Lambda([this](ECheckBoxState S) { if (S == ECheckBoxState::Checked) { bSuiteRanged = false; } })
+								[ SNew(STextBlock).Text(LOCTEXT("SuiteMelee", "Melee")) ]
+							]
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(12.0f, 0.0f, 0.0f, 0.0f)
+							[
+								SNew(SButton)
+								.ButtonStyle(&FAppStyle::Get().GetWidgetStyle<FButtonStyle>("PrimaryButton"))
+								.Text(LOCTEXT("CreateSuiteBtn", "Create All"))
+								.ToolTipText(LOCTEXT("CreateSuiteTip", "Stamp the weapon, create + auto-slot the checked attachments, and optionally ammo + a recipe — all loaded here for editing."))
+								.OnClicked_Lambda([this]() { CreateWeaponSuite(); return FReply::Handled(); })
+							]
+						]
+						// Attachment + extras checkboxes.
+						+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 0.0f)
+						[
+							SNew(SHorizontalBox)
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+							[ SectionLabel(LOCTEXT("SuiteInclude", "INCLUDE")) ]
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f)
+							[ SNew(SCheckBox).IsChecked_Lambda([this]() { return bSuiteSight ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }).OnCheckStateChanged_Lambda([this](ECheckBoxState S) { bSuiteSight = (S == ECheckBoxState::Checked); })[ SNew(STextBlock).Text(LOCTEXT("OptSight", "Sight")).Margin(FMargin(4, 0, 0, 0)) ] ]
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f)
+							[ SNew(SCheckBox).IsChecked_Lambda([this]() { return bSuiteBarrel ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }).OnCheckStateChanged_Lambda([this](ECheckBoxState S) { bSuiteBarrel = (S == ECheckBoxState::Checked); })[ SNew(STextBlock).Text(LOCTEXT("OptBarrel", "Barrel")).Margin(FMargin(4, 0, 0, 0)) ] ]
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f)
+							[ SNew(SCheckBox).IsChecked_Lambda([this]() { return bSuiteMagazine ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }).OnCheckStateChanged_Lambda([this](ECheckBoxState S) { bSuiteMagazine = (S == ECheckBoxState::Checked); })[ SNew(STextBlock).Text(LOCTEXT("OptMag", "Magazine")).Margin(FMargin(4, 0, 0, 0)) ] ]
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f)
+							[ SNew(SCheckBox).IsChecked_Lambda([this]() { return bSuiteSlide ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }).OnCheckStateChanged_Lambda([this](ECheckBoxState S) { bSuiteSlide = (S == ECheckBoxState::Checked); })[ SNew(STextBlock).Text(LOCTEXT("OptSlide", "Slide")).Margin(FMargin(4, 0, 0, 0)) ] ]
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f)
+							[ SNew(SCheckBox).IsChecked_Lambda([this]() { return bSuiteTrigger ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }).OnCheckStateChanged_Lambda([this](ECheckBoxState S) { bSuiteTrigger = (S == ECheckBoxState::Checked); })[ SNew(STextBlock).Text(LOCTEXT("OptTrigger", "Trigger")).Margin(FMargin(4, 0, 0, 0)) ] ]
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(16.0f, 0.0f, 0.0f, 0.0f)
+							[ SNew(SCheckBox).IsChecked_Lambda([this]() { return bSuiteAmmo ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }).OnCheckStateChanged_Lambda([this](ECheckBoxState S) { bSuiteAmmo = (S == ECheckBoxState::Checked); })[ SNew(STextBlock).Text(LOCTEXT("OptAmmo", "Ammo")).Margin(FMargin(4, 0, 0, 0)) ] ]
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f)
+							[ SNew(SCheckBox).IsChecked_Lambda([this]() { return bSuiteRecipe ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }).OnCheckStateChanged_Lambda([this](ECheckBoxState S) { bSuiteRecipe = (S == ECheckBoxState::Checked); })[ SNew(STextBlock).Text(LOCTEXT("OptRecipe", "Recipe")).Margin(FMargin(4, 0, 0, 0)) ] ]
 						]
 					]
 				]
@@ -616,6 +687,9 @@ void SNexusCreatorWindow::OnEntrySelectionChanged(TSharedPtr<FCreatedEntry> Entr
 {
 	UObject* Object = Entry.IsValid() ? Entry->Asset.Get() : nullptr;
 	Inspect(Object);
+
+	// Keep the shared selection in step so a torn-off Creator still drives the Workbench Inspector.
+	FNexusEditorModule::SetSelection(Object, FNexusEditorModule::CreatorTabName);
 
 	// Clicking an item makes it the host new attachments attach to; selecting an attachment
 	// leaves the last item as the host so you can keep adding parts to it.
@@ -905,6 +979,151 @@ FReply SNexusCreatorWindow::OnAutoTagClicked()
 	RefreshValidation();
 	StatusText = FText::Format(LOCTEXT("Tagged", "Set identity tag to {0}."), FText::FromString(NewTag.ToString()));
 	return FReply::Handled();
+}
+
+TSharedRef<SWidget> SNexusCreatorWindow::MakePresetsMenu()
+{
+	FMenuBuilder MenuBuilder(/*bShouldCloseWindowAfterMenuSelection=*/ true, nullptr);
+
+	const TArray<FNexusCreatorPreset>& Presets = UNexusEditorSettings::Get().CreatorPresets;
+	if (Presets.Num() == 0)
+	{
+		MenuBuilder.AddMenuEntry(
+			LOCTEXT("NoPresets", "No presets — add some in Project Settings → Nexus Authoring Tools"),
+			FText::GetEmpty(), FSlateIcon(),
+			FUIAction(FExecuteAction(), FCanExecuteAction::CreateLambda([]() { return false; })));
+		return MenuBuilder.MakeWidget();
+	}
+
+	for (const FNexusCreatorPreset& Preset : Presets)
+	{
+		const FString Label = Preset.Name.IsEmpty()
+			? FString::Printf(TEXT("Preset (%dx%d)"), Preset.GridSize.X, Preset.GridSize.Y)
+			: Preset.Name;
+		const FNexusCreatorPreset Captured = Preset;
+		MenuBuilder.AddMenuEntry(
+			FText::FromString(Label), FText::GetEmpty(), FSlateIcon(),
+			FUIAction(FExecuteAction::CreateLambda([this, Captured]() { CreateFromPreset(Captured); })));
+	}
+
+	return MenuBuilder.MakeWidget();
+}
+
+void SNexusCreatorWindow::CreateFromPreset(const FNexusCreatorPreset& Preset)
+{
+	const ENexusItemTemplate Template =
+		static_cast<ENexusItemTemplate>(FMath::Clamp<int32>(Preset.Template, 0, 7));
+
+	FText Error;
+	UNexusItemDefinition* Item = FNexusAssetCreation::CreateItem(
+		Template, CreateFolderFor(FNexusAssetCreation::SubfolderForTemplate(Template)), CurrentName(), Error);
+	if (!Item)
+	{
+		StatusText = Error.IsEmpty() ? LOCTEXT("PresetFail", "Could not create from the preset.") : Error;
+		return;
+	}
+
+	// Apply the preset's smart defaults over the template's.
+	Item->Modify();
+	if (Preset.GridSize.X > 0 && Preset.GridSize.Y > 0)
+	{
+		Item->GridSize = Preset.GridSize;
+	}
+	Item->Weight = Preset.Weight;
+	Item->BaseValue = Preset.BaseValue;
+	Item->MarkPackageDirty();
+
+	ActiveSlotHost = Item;
+	AddEntry(Item, FString::Printf(TEXT("%s  (%s preset)"),
+		*Item->GetName(), *(Preset.Name.IsEmpty() ? FString(TEXT("item")) : Preset.Name)));
+	StatusText = FText::Format(
+		LOCTEXT("PresetMade", "Created '{0}' from preset (unsaved — edit on the right, then Save All)."),
+		FText::FromString(Item->GetName()));
+}
+
+void SNexusCreatorWindow::CreateWeaponSuite()
+{
+	const ENexusItemTemplate WeaponTemplate = bSuiteRanged
+		? ENexusItemTemplate::RangedWeapon : ENexusItemTemplate::MeleeWeapon;
+
+	FText Error;
+	UNexusItemDefinition* Weapon = FNexusAssetCreation::CreateItem(
+		WeaponTemplate, CreateFolderFor(FNexusAssetCreation::SubfolderForTemplate(WeaponTemplate)), CurrentName(), Error);
+	if (!Weapon)
+	{
+		StatusText = Error.IsEmpty() ? LOCTEXT("SuiteWeaponFail", "Could not create the weapon.") : Error;
+		return;
+	}
+	ActiveSlotHost = Weapon;
+	AddEntry(Weapon, FString::Printf(TEXT("%s  (weapon)"), *Weapon->GetName()));
+
+	const FString Base = Weapon->GetName();
+	int32 Made = 1;
+
+	// Create each checked attachment and auto-slot it onto the weapon.
+	auto MakeAtt = [&](bool bWant, const FGameplayTag& TypeTag, const TCHAR* Suffix)
+	{
+		if (!bWant)
+		{
+			return;
+		}
+		FText AttErr;
+		UNexusAttachmentDefinition* Att = FNexusAssetCreation::CreateAttachment(
+			TypeTag, CreateFolderFor(TEXT("Attachments")), FString::Printf(TEXT("%s_%s"), *Base, Suffix), AttErr);
+		if (Att)
+		{
+			FString SlotName;
+			FNexusAssetCreation::AssignOrCreateSlot(Weapon, Att, TypeTag, SlotName);
+			AddEntry(Att, FString::Printf(TEXT("%s  (%s attachment)"), *Att->GetName(), Suffix));
+			++Made;
+		}
+	};
+
+	MakeAtt(bSuiteSight,    NexusGameplayTags::Attachment_Type_Sight,    TEXT("Sight"));
+	MakeAtt(bSuiteBarrel,   NexusGameplayTags::Attachment_Type_Barrel,   TEXT("Barrel"));
+	MakeAtt(bSuiteMagazine, NexusGameplayTags::Attachment_Type_Magazine, TEXT("Magazine"));
+	MakeAtt(bSuiteSlide,    NexusGameplayTags::Attachment_Type_Slide,    TEXT("Slide"));
+	MakeAtt(bSuiteTrigger,  NexusGameplayTags::Attachment_Type_Trigger,  TEXT("Trigger"));
+
+	if (bSuiteAmmo)
+	{
+		FText AmmoErr;
+		UNexusItemDefinition* Ammo = FNexusAssetCreation::CreateItem(
+			ENexusItemTemplate::Ammo,
+			CreateFolderFor(FNexusAssetCreation::SubfolderForTemplate(ENexusItemTemplate::Ammo)),
+			FString::Printf(TEXT("%s_Ammo"), *Base), AmmoErr);
+		if (Ammo)
+		{
+			AddEntry(Ammo, FString::Printf(TEXT("%s  (ammo)"), *Ammo->GetName()));
+			++Made;
+		}
+	}
+
+	if (bSuiteRecipe)
+	{
+		FText RecErr;
+		UNexusCombinationRecipe* Recipe = FNexusAssetCreation::CreateRecipe(
+			UNexusEditorSettings::Get().RecipeFolder, FString::Printf(TEXT("%s_Recipe"), *Base), Weapon, RecErr);
+		if (Recipe)
+		{
+			AddEntry(Recipe, FString::Printf(TEXT("%s  (recipe)"), *Recipe->GetName()));
+			++Made;
+		}
+	}
+
+	// Leave the weapon itself selected for editing.
+	for (const TSharedPtr<FCreatedEntry>& EntryIt : Entries)
+	{
+		if (EntryIt.IsValid() && EntryIt->Asset.Get() == Weapon)
+		{
+			SelectEntry(EntryIt);
+			break;
+		}
+	}
+
+	StatusText = FText::Format(
+		LOCTEXT("SuiteMade", "Created a {0}-asset weapon suite around '{1}' (unsaved — review on the right, then Save All)."),
+		FText::AsNumber(Made), FText::FromString(Weapon->GetName()));
 }
 
 void SNexusCreatorWindow::Inspect(UObject* Asset)

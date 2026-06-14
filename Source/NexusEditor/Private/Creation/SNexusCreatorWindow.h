@@ -44,7 +44,7 @@ public:
 	void LoadAsset(UObject* Asset);
 
 private:
-	enum class ECreateMode : uint8 { Item, Attachment, Recipe, Manifest, Loadout };
+	enum class ECreateMode : uint8 { Item, Attachment, Recipe, Manifest, Loadout, Suite };
 
 	/** One stamped asset in this session's working set. */
 	struct FCreatedEntry
@@ -71,6 +71,7 @@ private:
 		case ECreateMode::Recipe:     return 2;
 		case ECreateMode::Manifest:   return 3;
 		case ECreateMode::Loadout:    return 4;
+		case ECreateMode::Suite:      return 5;
 		default:                      return 0;
 		}
 	}
@@ -83,6 +84,13 @@ private:
 	void CreateBlankManifest();
 	void BuildManifestFromLevel();
 	void CreateLoadoutAsset();
+
+	/** Weapon-suite wizard: stamp a weapon + chosen attachments (auto-slotted) + ammo + recipe. */
+	void CreateWeaponSuite();
+
+	// Named presets (template + smart defaults), from UNexusEditorSettings.
+	TSharedRef<SWidget> MakePresetsMenu();
+	void CreateFromPreset(const struct FNexusCreatorPreset& Preset);
 
 	// Item-template combo.
 	TSharedRef<SWidget> OnGenerateItemTemplateRow(TSharedPtr<ENexusItemTemplate> InItem);
@@ -137,6 +145,16 @@ private:
 
 	ECreateMode Mode = ECreateMode::Item;
 	bool bRouteByType = true;
+
+	// Weapon-suite wizard options.
+	bool bSuiteRanged = true;
+	bool bSuiteSight = true;
+	bool bSuiteBarrel = false;
+	bool bSuiteMagazine = true;
+	bool bSuiteSlide = false;
+	bool bSuiteTrigger = false;
+	bool bSuiteAmmo = true;
+	bool bSuiteRecipe = false;
 
 	TArray<TSharedPtr<ENexusItemTemplate>> ItemTemplates;
 	TSharedPtr<ENexusItemTemplate> SelectedItemTemplate;
