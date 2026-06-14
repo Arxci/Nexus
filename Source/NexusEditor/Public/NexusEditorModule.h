@@ -44,6 +44,7 @@ public:
 	static const FName CraftingTabName;
 	static const FName MatrixTabName;
 	static const FName GridTabName;
+	static const FName SandboxTabName;
 	static const FName TagAuditTabName;
 	static const FName EconomyTabName;
 	static const FName DocsTabName;
@@ -62,6 +63,7 @@ private:
 	TSharedRef<SDockTab> SpawnCraftingTab(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnMatrixTab(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnGridTab(const FSpawnTabArgs& Args);
+	TSharedRef<SDockTab> SpawnSandboxTab(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnTagAuditTab(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnEconomyTab(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnDocsTab(const FSpawnTabArgs& Args);

@@ -25,6 +25,7 @@
 #include "NexusEditorModule.h"
 
 #include "Settings/NexusEditorSettings.h"
+#include "Shared/NexusEditorAssetWatcher.h"
 
 #define LOCTEXT_NAMESPACE "NexusCraftingTree"
 
@@ -48,14 +49,29 @@ namespace
 		}
 	}
 
-	FString NodeLabel(const UNexusItemDefinition* Item, int32 Count, bool bCycle)
+	FString ItemName(const UNexusItemDefinition* Item)
 	{
-		const FString Name = (Item && !Item->DisplayName.IsEmpty())
+		return (Item && !Item->DisplayName.IsEmpty())
 			? Item->DisplayName.ToString()
 			: (Item ? Item->GetName() : TEXT("(none)"));
-		FString Text = FString::Printf(TEXT("%d x  %s"), Count, *Name);
-		if (bCycle) { Text += TEXT("   (cycle — stopped)"); }
-		return Text;
+	}
+
+	/** Compact "a + b + c" summary of a recipe's inputs, for a variant node's label. */
+	FString RecipeInputSummary(const UNexusCombinationRecipe* Recipe)
+	{
+		if (!Recipe || Recipe->Inputs.Num() == 0)
+		{
+			return TEXT("(no inputs)");
+		}
+		TArray<FString> Parts;
+		for (const FNexusRecipeInput& Input : Recipe->Inputs)
+		{
+			if (Input.Definition)
+			{
+				Parts.Add(FString::Printf(TEXT("%dx %s"), Input.Count, *ItemName(Input.Definition)));
+			}
+		}
+		return FString::Join(Parts, TEXT(" + "));
 	}
 }
 
@@ -102,6 +118,12 @@ void SNexusCraftingTree::Construct(const FArguments& InArgs)
 			]
 		]
 	];
+
+	// Live: rebuild when recipes or items change.
+	Watcher = MakeShared<FNexusAssetWatcher>();
+	Watcher->Start(
+		{ UNexusCombinationRecipe::StaticClass(), UNexusItemDefinition::StaticClass() },
+		[this]() { Rebuild(); });
 }
 
 void SNexusCraftingTree::Rebuild()
@@ -111,22 +133,24 @@ void SNexusCraftingTree::Rebuild()
 	TArray<UNexusCombinationRecipe*> Recipes;
 	GatherAssets(Recipes);
 
-	// First recipe that produces each item (multiple producers: first wins).
-	TMap<UNexusItemDefinition*, UNexusCombinationRecipe*> OutputToRecipe;
+	// EVERY recipe that produces each item — alternative recipes used to be silently
+	// dropped (first-wins), hiding real content. Now they all surface as variant nodes.
+	TMap<UNexusItemDefinition*, TArray<UNexusCombinationRecipe*>> OutputToRecipes;
 	for (UNexusCombinationRecipe* Recipe : Recipes)
 	{
-		if (Recipe && Recipe->Output && !OutputToRecipe.Contains(Recipe->Output))
+		if (Recipe && Recipe->Output)
 		{
-			OutputToRecipe.Add(Recipe->Output, Recipe);
+			OutputToRecipes.FindOrAdd(Recipe->Output).Add(Recipe);
 		}
 	}
 
-	// One root per craftable output.
-	for (const TPair<UNexusItemDefinition*, UNexusCombinationRecipe*>& Pair : OutputToRecipe)
+	// One root per craftable output. OutputCount comes from the first recipe; multi-recipe
+	// outputs show per-variant counts on their children.
+	for (const TPair<UNexusItemDefinition*, TArray<UNexusCombinationRecipe*>>& Pair : OutputToRecipes)
 	{
 		TSet<UNexusItemDefinition*> AncestorPath;
-		const int32 Count = Pair.Value ? Pair.Value->OutputCount : 1;
-		RootNodes.Add(BuildNode(Pair.Key, Count, OutputToRecipe, AncestorPath, 0));
+		const int32 Count = (Pair.Value.Num() > 0 && Pair.Value[0]) ? Pair.Value[0]->OutputCount : 1;
+		RootNodes.Add(BuildNode(Pair.Key, Count, OutputToRecipes, AncestorPath, 0));
 	}
 
 	RootNodes.Sort([](const TSharedPtr<FCraftNode>& A, const TSharedPtr<FCraftNode>& B)
@@ -147,7 +171,7 @@ void SNexusCraftingTree::Rebuild()
 
 TSharedPtr<SNexusCraftingTree::FCraftNode> SNexusCraftingTree::BuildNode(
 	UNexusItemDefinition* Item, int32 Count,
-	const TMap<UNexusItemDefinition*, UNexusCombinationRecipe*>& OutputToRecipe,
+	const TMap<UNexusItemDefinition*, TArray<UNexusCombinationRecipe*>>& OutputToRecipes,
 	TSet<UNexusItemDefinition*>& AncestorPath, int32 Depth)
 {
 	TSharedPtr<FCraftNode> Node = MakeShared<FCraftNode>();
@@ -160,23 +184,66 @@ TSharedPtr<SNexusCraftingTree::FCraftNode> SNexusCraftingTree::BuildNode(
 		return Node;
 	}
 
-	if (UNexusCombinationRecipe* const* RecipePtr = OutputToRecipe.Find(Item))
+	const TArray<UNexusCombinationRecipe*>* RecipesPtr = OutputToRecipes.Find(Item);
+	if (!RecipesPtr || RecipesPtr->Num() == 0)
 	{
-		UNexusCombinationRecipe* Recipe = *RecipePtr;
-		Node->Recipe = Recipe;
+		return Node; // raw / uncraftable input — a leaf
+	}
 
-		AncestorPath.Add(Item);
-		for (const FNexusRecipeInput& Input : Recipe->Inputs)
+	Node->RecipeCount = RecipesPtr->Num();
+
+	if (RecipesPtr->Num() == 1)
+	{
+		// Single producer: inputs hang directly off the item node, as before.
+		UNexusCombinationRecipe* Recipe = (*RecipesPtr)[0];
+		Node->Recipe = Recipe;
+		BuildRecipeInputs(Node, Recipe, OutputToRecipes, AncestorPath, Depth);
+	}
+	else
+	{
+		// Several producers: one variant child per recipe, each expandable to its inputs,
+		// so a designer can compare "Ammo via Gunpowder" vs "Ammo via Saltpeter + Coal".
+		for (int32 i = 0; i < RecipesPtr->Num(); ++i)
 		{
-			if (Input.Definition)
-			{
-				Node->Children.Add(BuildNode(Input.Definition, Input.Count, OutputToRecipe, AncestorPath, Depth + 1));
-			}
+			UNexusCombinationRecipe* Recipe = (*RecipesPtr)[i];
+			if (!Recipe) { continue; }
+
+			TSharedPtr<FCraftNode> Variant = MakeShared<FCraftNode>();
+			Variant->Item = Item;
+			Variant->Recipe = Recipe;
+			Variant->bRecipeVariant = true;
+			Variant->Count = Recipe->OutputCount;
+			Variant->VariantLabel = FString::Printf(
+				TEXT("via: %s"), *RecipeInputSummary(Recipe));
+			BuildRecipeInputs(Variant, Recipe, OutputToRecipes, AncestorPath, Depth);
+			Node->Children.Add(Variant);
 		}
-		AncestorPath.Remove(Item);
 	}
 
 	return Node;
+}
+
+void SNexusCraftingTree::BuildRecipeInputs(
+	TSharedPtr<FCraftNode>& OutNode, UNexusCombinationRecipe* Recipe,
+	const TMap<UNexusItemDefinition*, TArray<UNexusCombinationRecipe*>>& OutputToRecipes,
+	TSet<UNexusItemDefinition*>& AncestorPath, int32 Depth)
+{
+	if (!OutNode.IsValid() || !Recipe)
+	{
+		return;
+	}
+
+	UNexusItemDefinition* Output = OutNode->Item.Get();
+	if (Output) { AncestorPath.Add(Output); }
+	for (const FNexusRecipeInput& Input : Recipe->Inputs)
+	{
+		if (Input.Definition)
+		{
+			OutNode->Children.Add(
+				BuildNode(Input.Definition, Input.Count, OutputToRecipes, AncestorPath, Depth + 1));
+		}
+	}
+	if (Output) { AncestorPath.Remove(Output); }
 }
 
 TSharedRef<ITableRow> SNexusCraftingTree::OnGenerateRow(
@@ -186,7 +253,28 @@ TSharedRef<ITableRow> SNexusCraftingTree::OnGenerateRow(
 		SNew(STableRow<TSharedPtr<FCraftNode>>, Owner);
 
 	const FSlateColor Color = (Node.IsValid() && Node->bCycle)
-		? FSlateColor(FStyleColors::Warning) : FSlateColor::UseForeground();
+		? FSlateColor(FStyleColors::Warning)
+		: ((Node.IsValid() && Node->bRecipeVariant)
+			? FSlateColor::UseSubduedForeground()
+			: FSlateColor::UseForeground());
+
+	FString Label;
+	if (Node.IsValid())
+	{
+		if (Node->bRecipeVariant)
+		{
+			// A recipe alternative under a multi-producer item.
+			Label = (Node->Count > 1)
+				? FString::Printf(TEXT("%s   (yields %dx)"), *Node->VariantLabel, Node->Count)
+				: Node->VariantLabel;
+		}
+		else
+		{
+			Label = FString::Printf(TEXT("%d x  %s"), Node->Count, *ItemName(Node->Item.Get()));
+			if (Node->RecipeCount > 1) { Label += FString::Printf(TEXT("   (%d recipes)"), Node->RecipeCount); }
+			if (Node->bCycle) { Label += TEXT("   (cycle — stopped)"); }
+		}
+	}
 
 	Row->SetContent(
 		SNew(SHorizontalBox)
@@ -195,8 +283,7 @@ TSharedRef<ITableRow> SNexusCraftingTree::OnGenerateRow(
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(2.0f, 2.0f)
 		[
 			SNew(STextBlock)
-			.Text(FText::FromString(Node.IsValid()
-				? NodeLabel(Node->Item.Get(), Node->Count, Node->bCycle) : FString()))
+			.Text(FText::FromString(Label))
 			.ColorAndOpacity(Color)
 		]);
 

@@ -11,6 +11,7 @@
 #include "Docs/SNexusDocsBrowser.h"
 #include "Economy/SNexusEconomyView.h"
 #include "Grid/SNexusGridPreview.h"
+#include "Sandbox/SNexusInventorySandbox.h"
 #include "Matrix/SNexusAttachmentMatrix.h"
 #include "Preview/SNexusAssemblyPreview.h"
 #include "Tags/SNexusTagAudit.h"
@@ -281,6 +282,7 @@ TSharedPtr<SWidget> SNexusWorkbench::ConstructToolWidget(FName TabName) const
 	if (TabName == FNexusEditorModule::CraftingTabName) { return SNew(SNexusCraftingTree); }
 	if (TabName == FNexusEditorModule::MatrixTabName)   { return SNew(SNexusAttachmentMatrix); }
 	if (TabName == FNexusEditorModule::GridTabName)     { return SNew(SNexusGridPreview); }
+	if (TabName == FNexusEditorModule::SandboxTabName)  { return SNew(SNexusInventorySandbox); }
 	if (TabName == FNexusEditorModule::TagAuditTabName) { return SNew(SNexusTagAudit); }
 	if (TabName == FNexusEditorModule::EconomyTabName)  { return SNew(SNexusEconomyView); }
 	if (TabName == FNexusEditorModule::DocsTabName)     { return SNew(SNexusDocsBrowser); }

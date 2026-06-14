@@ -927,9 +927,7 @@ void SNexusCreatorWindow::OnInspectedPropertyChanged(const FPropertyChangedEvent
 	// the user having to reselect the entry.
 	if (PreviewViewport.IsValid())
 	{
-		UObject* Object = Inspected.Get();
-		PreviewViewport->SetPreviewAsset(nullptr);
-		PreviewViewport->SetPreviewAsset(Object);
+		PreviewViewport->RefreshPreview();
 	}
 	RefreshValidation();
 }

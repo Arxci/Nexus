@@ -9,6 +9,8 @@
 
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SNullWidget.h"
+#include "Widgets/SOverlay.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -17,8 +19,12 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
 
+#include "Engine/Texture2D.h"
+#include "Styling/SlateBrush.h"
+
 #include "Nexus/Inventory/NexusItemDefinition.h"
 
+#include "Shared/NexusEditorAssetWatcher.h"
 #include "Shared/NexusEditorUtils.h"
 #include "Shared/NexusEditorWidgets.h"
 
@@ -27,8 +33,18 @@
 namespace NexusGrid
 {
 	// One cell of the footprint; capped so a pathological 50x50 can't blow up the panel.
-	constexpr float CellSize = 26.0f;
+	constexpr float CellSize = 40.0f;
 	constexpr int32 MaxDrawn = 16;
+}
+
+TSharedPtr<FSlateBrush> SNexusGridPreview::MakeIconBrush(const UNexusItemDefinition* Item)
+{
+	if (!Item)
+	{
+		return nullptr;
+	}
+	// Sync-load the soft icon — fine in an editor tool, mirrors the other previews.
+	return NexusEditorWidgets::IconBrush(Item->Icon.LoadSynchronous());
 }
 
 void SNexusGridPreview::Construct(const FArguments& InArgs)
@@ -112,6 +128,17 @@ void SNexusGridPreview::Construct(const FArguments& InArgs)
 	{
 		ListView->SetSelection(Rows[0]);
 	}
+
+	// Live: rebuild the roster when items are added/removed/edited.
+	Watcher = MakeShared<FNexusAssetWatcher>();
+	Watcher->Start({ UNexusItemDefinition::StaticClass() }, [this]()
+	{
+		Rebuild();
+		if (Rows.Num() > 0 && ListView.IsValid())
+		{
+			ListView->SetSelection(Rows[0]);
+		}
+	});
 }
 
 void SNexusGridPreview::Rebuild()
@@ -132,6 +159,7 @@ void SNexusGridPreview::Rebuild()
 		Row->Name = NexusEditorUtil::DisplayLabel(Item, Item->DisplayName);
 		Row->Grid = FIntPoint(FMath::Max(1, Item->GridSize.X), FMath::Max(1, Item->GridSize.Y));
 		Row->bWeapon = NexusEditorUtil::HasWeaponFragment(Item);
+		Row->IconBrush = MakeIconBrush(Item);
 		Rows.Add(Row);
 	}
 
@@ -186,7 +214,10 @@ void SNexusGridPreview::RebuildGridVisual(const TSharedPtr<FGridRow>& Row)
 		? FSlateColor(FStyleColors::AccentBlue)
 		: FSlateColor(FStyleColors::AccentGreen);
 
-	TSharedRef<SVerticalBox> Column = SNew(SVerticalBox);
+	// Hairline cell-division grid laid over the art so the footprint stays countable.
+	// "Border" draws box edges only (transparent centre), unlike a filled WhiteBrush.
+	const FSlateBrush* CellOutline = FAppStyle::Get().GetBrush("Border");
+	TSharedRef<SVerticalBox> CellGrid = SNew(SVerticalBox);
 	for (int32 Y = 0; Y < H; ++Y)
 	{
 		TSharedRef<SHorizontalBox> RowBox = SNew(SHorizontalBox);
@@ -197,18 +228,40 @@ void SNexusGridPreview::RebuildGridVisual(const TSharedPtr<FGridRow>& Row)
 				SNew(SBox)
 				.WidthOverride(NexusGrid::CellSize)
 				.HeightOverride(NexusGrid::CellSize)
-				.Padding(2.0f)
 				[
 					SNew(SBorder)
-					.BorderImage(FAppStyle::Get().GetBrush("WhiteBrush"))
-					.BorderBackgroundColor(CellColor)
+					.BorderImage(CellOutline)
+					.BorderBackgroundColor(FLinearColor(1.0f, 1.0f, 1.0f, 0.25f))
 				]
 			];
 		}
-		Column->AddSlot().AutoHeight()[ RowBox ];
+		CellGrid->AddSlot().AutoHeight()[ RowBox ];
 	}
 
-	GridContainer->SetContent(Column);
+	// Keep the brush alive for as long as the SImage below references it.
+	SelectedIconBrush = Row->IconBrush;
+
+	// Base layer: the item's real icon stretched across the whole footprint when it has
+	// one; otherwise the original type-coloured block so footprint-only items still read.
+	TSharedRef<SWidget> BaseLayer = SelectedIconBrush.IsValid()
+		? StaticCastSharedRef<SWidget>(
+			SNew(SImage)
+			.Image(SelectedIconBrush.Get())
+			.ToolTipText(LOCTEXT("IconTip", "The item's authored Icon, drawn at its real grid footprint.")))
+		: StaticCastSharedRef<SWidget>(
+			SNew(SBorder)
+			.BorderImage(FAppStyle::Get().GetBrush("WhiteBrush"))
+			.BorderBackgroundColor(CellColor));
+
+	GridContainer->SetContent(
+		SNew(SBox)
+		.WidthOverride(W * NexusGrid::CellSize)
+		.HeightOverride(H * NexusGrid::CellSize)
+		[
+			SNew(SOverlay)
+			+ SOverlay::Slot()[ BaseLayer ]
+			+ SOverlay::Slot()[ CellGrid ]
+		]);
 }
 
 TSharedRef<ITableRow> SNexusGridPreview::OnGenerateRow(
@@ -218,9 +271,24 @@ TSharedRef<ITableRow> SNexusGridPreview::OnGenerateRow(
 		? FString::Printf(TEXT("%dx%d   %s"), Row->Grid.X, Row->Grid.Y, *Row->Name)
 		: FString();
 
+	// Thumbnail (when the item has an icon) sits left of the label so the roster reads
+	// like an inventory, not just a list of dimensions. The brush lives on the row, which
+	// outlives the widget (Rows owns it), so the raw pointer stays valid.
+	const bool bHasIcon = Row.IsValid() && Row->IconBrush.IsValid();
+
 	return SNew(STableRow<TSharedPtr<FGridRow>>, Owner)
 	[
-		SNew(SBox).Padding(FMargin(6.0f, 3.0f))
+		SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(4.0f, 2.0f, 6.0f, 2.0f))
+		[
+			SNew(SBox).WidthOverride(24.0f).HeightOverride(24.0f)
+			[
+				bHasIcon
+					? StaticCastSharedRef<SWidget>(SNew(SImage).Image(Row->IconBrush.Get()))
+					: SNullWidget::NullWidget
+			]
+		]
+		+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(FMargin(0.0f, 3.0f))
 		[
 			SNew(STextBlock)
 			.Text(FText::FromString(Label))

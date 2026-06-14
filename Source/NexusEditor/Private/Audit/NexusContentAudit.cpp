@@ -113,11 +113,33 @@ namespace
 	}
 }
 
+namespace
+{
+	// "Validate All" calls the validator once per asset, and each call used to rescan
+	// the whole project — O(N^2). A short time-to-live cache collapses a batch run into a
+	// single scan while still self-refreshing within a couple of seconds for interactive
+	// single-asset validation. Editor-only, game thread; no locking needed.
+	constexpr double GAuditCacheTTL = 2.0;
+}
+
 FGameplayTagContainer FNexusContentAudit::GatherGlobalProvidedTags()
 {
+	static double CacheTime = 0.0;
+	static FGameplayTagContainer Cache;
+	static bool bHasCache = false;
+
+	const double Now = FPlatformTime::Seconds();
+	if (bHasCache && (Now - CacheTime) < GAuditCacheTTL)
+	{
+		return Cache;
+	}
+
 	TArray<UNexusAttachmentDefinition*> Attachments;
 	GatherAssets(Attachments);
-	return BuildGlobalProvided(Attachments);
+	Cache = BuildGlobalProvided(Attachments);
+	CacheTime = Now;
+	bHasCache = true;
+	return Cache;
 }
 
 FGameplayTagContainer FNexusContentAudit::GetUnsatisfiedRequirements(
@@ -151,13 +173,36 @@ TArray<UNexusItemDefinition*> FNexusContentAudit::FindItemsSharingIdentity(const
 		return Out;
 	}
 
-	TArray<UNexusItemDefinition*> All;
-	GatherAssets(All);
-	for (UNexusItemDefinition* Other : All)
+	// Identity -> items index, cached with the same short TTL so "Validate All" builds
+	// it once. Weak pointers so a GC between calls can't dangle.
+	static double CacheTime = 0.0;
+	static TMap<FGameplayTag, TArray<TWeakObjectPtr<UNexusItemDefinition>>> ByIdentity;
+
+	const double Now = FPlatformTime::Seconds();
+	if (ByIdentity.Num() == 0 || (Now - CacheTime) >= GAuditCacheTTL)
 	{
-		if (Other && Other != This && Other->IdentityTag.MatchesTagExact(This->IdentityTag))
+		ByIdentity.Reset();
+		TArray<UNexusItemDefinition*> All;
+		GatherAssets(All);
+		for (UNexusItemDefinition* Item : All)
 		{
-			Out.Add(Other);
+			if (Item && Item->IdentityTag.IsValid())
+			{
+				ByIdentity.FindOrAdd(Item->IdentityTag).Add(Item);
+			}
+		}
+		CacheTime = Now;
+	}
+
+	if (const TArray<TWeakObjectPtr<UNexusItemDefinition>>* Bucket = ByIdentity.Find(This->IdentityTag))
+	{
+		for (const TWeakObjectPtr<UNexusItemDefinition>& Weak : *Bucket)
+		{
+			UNexusItemDefinition* Other = Weak.Get();
+			if (Other && Other != This && Other->IdentityTag.MatchesTagExact(This->IdentityTag))
+			{
+				Out.Add(Other);
+			}
 		}
 	}
 	return Out;

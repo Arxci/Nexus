@@ -1,12 +1,15 @@
 #include "Tags/SNexusTagAudit.h"
 
+#include "GameplayTagsEditorModule.h"
 #include "GameplayTagsManager.h"
+#include "Misc/MessageDialog.h"
 
 #include "Styling/AppStyle.h"
 #include "Styling/StyleColors.h"
 
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SSearchBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Text/STextBlock.h"
@@ -15,6 +18,7 @@
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Equipment/Attachments/NexusAttachmentDefinition.h"
 
+#include "Shared/NexusEditorAssetWatcher.h"
 #include "Shared/NexusEditorUtils.h"
 #include "Shared/NexusEditorWidgets.h"
 
@@ -53,9 +57,32 @@ void SNexusTagAudit::Construct(const FArguments& InArgs)
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
 			[
 				SNew(SButton)
-				.Text(LOCTEXT("Log", "Log orphan list"))
-				.ToolTipText(LOCTEXT("LogTip", "Print the orphaned tags to the Output Log so you can clean them from the tag config."))
+				.Text(LOCTEXT("RemoveSelected", "Remove Selected"))
+				.ToolTipText(LOCTEXT("RemoveSelTip", "Delete the selected orphan tags from the project's tag config."))
+				.OnClicked(this, &SNexusTagAudit::OnRemoveSelectedClicked)
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f, 0.0f, 0.0f)
+			[
+				SNew(SButton)
+				.Text(LOCTEXT("RemoveAll", "Remove All"))
+				.ToolTipText(LOCTEXT("RemoveAllTip", "Delete every listed orphan tag from the project's tag config (asks first)."))
+				.OnClicked(this, &SNexusTagAudit::OnRemoveAllClicked)
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f, 0.0f, 0.0f)
+			[
+				SNew(SButton)
+				.Text(LOCTEXT("Log", "Log"))
+				.ToolTipText(LOCTEXT("LogTip", "Print the orphaned tags to the Output Log."))
 				.OnClicked(this, &SNexusTagAudit::OnLogClicked)
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
+			[
+				SNew(SBox).WidthOverride(200.0f)
+				[
+					SNew(SSearchBox)
+					.HintText(LOCTEXT("SearchHint", "Filter tags..."))
+					.OnTextChanged(this, &SNexusTagAudit::OnSearchChanged)
+				]
 			]
 			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(12.0f, 0.0f, 0.0f, 0.0f)
 			[ SNew(STextBlock).Text(this, &SNexusTagAudit::GetSummaryText) ]
@@ -71,12 +98,18 @@ void SNexusTagAudit::Construct(const FArguments& InArgs)
 			.Padding(4.0f)
 			[
 				SAssignNew(ListView, SListView<TSharedPtr<FString>>)
-				.ListItemsSource(&Orphans)
+				.ListItemsSource(&VisibleOrphans)
 				.OnGenerateRow(this, &SNexusTagAudit::OnGenerateRow)
-				.SelectionMode(ESelectionMode::Single)
+				.SelectionMode(ESelectionMode::Multi)
 			]
 		]
 	];
+
+	// Live: an asset being (re)tagged or deleted changes what's orphaned.
+	Watcher = MakeShared<FNexusAssetWatcher>();
+	Watcher->Start(
+		{ UNexusItemDefinition::StaticClass(), UNexusAttachmentDefinition::StaticClass() },
+		[this]() { Rebuild(); });
 }
 
 void SNexusTagAudit::Rebuild()
@@ -123,10 +156,29 @@ void SNexusTagAudit::Rebuild()
 		LOCTEXT("Summary", "{0} orphaned identity tag(s).   {1} asset(s) still untagged."),
 		FText::AsNumber(Orphans.Num()), FText::AsNumber(Untagged));
 
+	ApplyFilter();
+}
+
+void SNexusTagAudit::ApplyFilter()
+{
+	VisibleOrphans.Reset();
+	for (const TSharedPtr<FString>& Orphan : Orphans)
+	{
+		if (Orphan.IsValid() && (Filter.IsEmpty() || Orphan->Contains(Filter)))
+		{
+			VisibleOrphans.Add(Orphan);
+		}
+	}
 	if (ListView.IsValid())
 	{
 		ListView->RequestListRefresh();
 	}
+}
+
+void SNexusTagAudit::OnSearchChanged(const FText& Text)
+{
+	Filter = Text.ToString();
+	ApplyFilter();
 }
 
 TSharedRef<ITableRow> SNexusTagAudit::OnGenerateRow(
@@ -160,7 +212,79 @@ FReply SNexusTagAudit::OnLogClicked()
 		}
 	}
 	UE_LOG(LogNexusTagAudit, Display,
-		TEXT("Remove these from Config/DefaultGameplayTags.ini (or via Project Settings -> GameplayTags) once you're sure nothing references them."));
+		TEXT("Use Remove Selected / Remove All to delete these from the tag config once you're sure nothing references them."));
+	return FReply::Handled();
+}
+
+int32 SNexusTagAudit::RemoveTags(const TArray<TSharedPtr<FString>>& Tags)
+{
+	IGameplayTagsEditorModule& TagsEditor = IGameplayTagsEditorModule::Get();
+	UGameplayTagsManager& Manager = UGameplayTagsManager::Get();
+
+	int32 Removed = 0;
+	for (const TSharedPtr<FString>& TagPtr : Tags)
+	{
+		if (!TagPtr.IsValid())
+		{
+			continue;
+		}
+		// Resolve the registered node and delete its config source. Safe: these are
+		// orphans, so no asset references them.
+		TSharedPtr<FGameplayTagNode> Node = Manager.FindTagNode(FName(**TagPtr));
+		if (Node.IsValid() && TagsEditor.DeleteTagFromINI(Node))
+		{
+			++Removed;
+		}
+	}
+
+	if (Removed > 0)
+	{
+		Rebuild();
+	}
+	return Removed;
+}
+
+FReply SNexusTagAudit::OnRemoveSelectedClicked()
+{
+	const TArray<TSharedPtr<FString>> Selected =
+		ListView.IsValid() ? ListView->GetSelectedItems() : TArray<TSharedPtr<FString>>();
+	if (Selected.Num() == 0)
+	{
+		SummaryText = LOCTEXT("RemoveNone", "Select one or more orphan tags first.");
+		return FReply::Handled();
+	}
+
+	const FText Prompt = FText::Format(
+		LOCTEXT("ConfirmRemoveSel", "Delete {0} orphan tag(s) from the project's tag config? This edits DefaultGameplayTags.ini."),
+		FText::AsNumber(Selected.Num()));
+	if (FMessageDialog::Open(EAppMsgType::YesNo, Prompt) != EAppReturnType::Yes)
+	{
+		return FReply::Handled();
+	}
+
+	const int32 Removed = RemoveTags(Selected);
+	SummaryText = FText::Format(LOCTEXT("RemovedSel", "Removed {0} orphan tag(s)."), FText::AsNumber(Removed));
+	return FReply::Handled();
+}
+
+FReply SNexusTagAudit::OnRemoveAllClicked()
+{
+	if (Orphans.Num() == 0)
+	{
+		SummaryText = LOCTEXT("NoneToRemove", "No orphan tags to remove.");
+		return FReply::Handled();
+	}
+
+	const FText Prompt = FText::Format(
+		LOCTEXT("ConfirmRemoveAll", "Delete ALL {0} orphan tag(s) from the project's tag config? This edits DefaultGameplayTags.ini."),
+		FText::AsNumber(Orphans.Num()));
+	if (FMessageDialog::Open(EAppMsgType::YesNo, Prompt) != EAppReturnType::Yes)
+	{
+		return FReply::Handled();
+	}
+
+	const int32 Removed = RemoveTags(Orphans);
+	SummaryText = FText::Format(LOCTEXT("RemovedAll", "Removed {0} orphan tag(s)."), FText::AsNumber(Removed));
 	return FReply::Handled();
 }
 

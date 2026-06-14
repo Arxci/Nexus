@@ -8,6 +8,9 @@ class ITableRow;
 class STableViewBase;
 class SBox;
 class UNexusItemDefinition;
+class UTexture2D;
+class FNexusAssetWatcher;
+struct FSlateBrush;
 
 /**
  * The Nexus Grid Preview: every item listed with its grid footprint, and a live
@@ -32,7 +35,12 @@ private:
 		FString Name;
 		FIntPoint Grid = FIntPoint(1, 1);
 		bool bWeapon = false;
+		/** The item's real UI icon, ready to draw; null when the item has no Icon set. */
+		TSharedPtr<FSlateBrush> IconBrush;
 	};
+
+	/** Build a drawable brush from an item's soft Icon texture, or null when unset/unloadable. */
+	static TSharedPtr<FSlateBrush> MakeIconBrush(const UNexusItemDefinition* Item);
 
 	void Rebuild();
 	void RebuildGridVisual(const TSharedPtr<FGridRow>& Row);
@@ -47,6 +55,11 @@ private:
 	TArray<TSharedPtr<FGridRow>> Rows;
 	TSharedPtr<SListView<TSharedPtr<FGridRow>>> ListView;
 	TSharedPtr<SBox> GridContainer;
+	/** Kept alive while the selected item's footprint is on screen (SImage holds a raw brush ptr). */
+	TSharedPtr<FSlateBrush> SelectedIconBrush;
 	FText SummaryText;
 	FText FootprintText;
+
+	/** Live refresh when items change, so the roster never goes stale. */
+	TSharedPtr<FNexusAssetWatcher> Watcher;
 };

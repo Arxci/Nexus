@@ -46,6 +46,13 @@ public:
 	UPROPERTY(EditAnywhere, config, Category = "Folders")
 	bool bRouteIntoTypeFoldersByDefault = true;
 
+	/**
+	 * Economy View flags an item as a value-per-cell outlier when it sits this many
+	 * times above or below the roster median. Lower = stricter (more items flagged).
+	 */
+	UPROPERTY(EditAnywhere, config, Category = "Balancing", meta = (ClampMin = "1.5", ClampMax = "10.0"))
+	float EconomyOutlierFactor = 3.0f;
+
 	/** Convenience accessor used by the tools. */
 	static const UNexusEditorSettings& Get()
 	{

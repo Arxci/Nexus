@@ -27,60 +27,21 @@
 #include "Nexus/Equipment/Attachments/NexusAttachmentDefinition.h"
 #include "Nexus/Weapon/Fragments/NexusFragment_Weapon.h"
 
+#include "Shared/NexusEditorUtils.h"
+#include "Shared/NexusEditorWidgets.h"
+
 #define LOCTEXT_NAMESPACE "NexusAssemblyPreview"
 
 namespace NexusPreview
 {
+	// Column ids only — the asset-gather, tag-leaf, stat-format, and section-label helpers
+	// this file used to carry locally now live in NexusEditorUtil / NexusEditorWidgets.
 	const FName ColStat("Stat");
 	const FName ColBase("Base");
 	const FName ColAttach("Attach");
 	const FName ColUpgrade("Upgrade");
+	const FName ColDelta("Delta");
 	const FName ColFinal("Final");
-
-	template <typename T>
-	void GatherAssets(TArray<T*>& Out)
-	{
-		const IAssetRegistry& AssetRegistry =
-			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
-		FARFilter Filter;
-		Filter.ClassPaths.Add(T::StaticClass()->GetClassPathName());
-		Filter.bRecursiveClasses = true;
-		TArray<FAssetData> Assets;
-		AssetRegistry.GetAssets(Filter, Assets);
-		for (const FAssetData& Data : Assets)
-		{
-			if (T* Object = Cast<T>(Data.GetAsset())) { Out.Add(Object); }
-		}
-	}
-
-	bool HasWeaponFragment(const UNexusItemDefinition* Item)
-	{
-		if (!Item) { return false; }
-		for (const TInstancedStruct<FNexusItemFragment>& Frag : Item->Fragments)
-		{
-			if (!Frag.IsValid()) { continue; }
-			const UScriptStruct* Type = Frag.GetScriptStruct();
-			if (Type && Type->IsChildOf(FNexusFragment_Weapon::StaticStruct())) { return true; }
-		}
-		return false;
-	}
-
-	FString Leaf(const FGameplayTag& Tag)
-	{
-		const FString Full = Tag.ToString();
-		int32 Dot = INDEX_NONE;
-		return Full.FindLastChar(TEXT('.'), Dot) ? Full.RightChop(Dot + 1) : Full;
-	}
-
-	FString Num(float Value) { return FString::Printf(TEXT("%g"), Value); }
-
-	TSharedRef<SWidget> SectionLabel(const FText& Text)
-	{
-		return SNew(STextBlock)
-			.Text(Text)
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-			.ColorAndOpacity(FSlateColor::UseSubduedForeground());
-	}
 }
 
 /** Resolved-stat row: shows each step of the fold across columns. */
@@ -106,13 +67,27 @@ public:
 				[ SNew(STextBlock).Text(FText::FromString(Text)).ColorAndOpacity(Color) ];
 		};
 
-		if (Column == ColStat)    { return Make(Leaf(Stat->StatTag)); }
-		if (Column == ColBase)    { return Make(Num(Stat->Base)); }
-		if (Column == ColAttach)  { return Make(Num(Stat->AfterAttachments)); }
-		if (Column == ColUpgrade) { return Make(Num(Stat->AfterUpgrade)); }
+		if (Column == ColStat)    { return Make(NexusEditorUtil::TagLeaf(Stat->StatTag)); }
+		if (Column == ColBase)    { return Make(NexusEditorUtil::FormatStat(Stat->Base)); }
+		if (Column == ColAttach)  { return Make(NexusEditorUtil::FormatStat(Stat->AfterAttachments)); }
+		if (Column == ColUpgrade) { return Make(NexusEditorUtil::FormatStat(Stat->AfterUpgrade)); }
+		if (Column == ColDelta)
+		{
+			// Net change from base to final, with direction — the at-a-glance "did this
+			// loadout help?" column.
+			const float Delta = Stat->Final - Stat->Base;
+			if (FMath::IsNearlyZero(Delta))
+			{
+				return Make(TEXT("—"), FSlateColor::UseSubduedForeground());
+			}
+			const FString Text = FString::Printf(TEXT("%s %s"),
+				Delta > 0.0f ? TEXT("▲") : TEXT("▼"),
+				*NexusEditorUtil::FormatStat(FMath::Abs(Delta)));
+			return Make(Text, FSlateColor(Delta > 0.0f ? FStyleColors::AccentGreen : FStyleColors::Error));
+		}
 		if (Column == ColFinal)
 		{
-			return Make(Num(Stat->Final),
+			return Make(NexusEditorUtil::FormatStat(Stat->Final),
 				Stat->bClamped ? FSlateColor(FStyleColors::Warning) : FSlateColor::UseForeground());
 		}
 		return SNullWidget::NullWidget;
@@ -128,23 +103,23 @@ void SNexusAssemblyPreview::Construct(const FArguments& InArgs)
 
 	// Weapons = items that carry a weapon fragment; attachments = all of them.
 	TArray<UNexusItemDefinition*> AllItems;
-	GatherAssets(AllItems);
+	NexusEditorUtil::GatherAssets(AllItems);
 	for (UNexusItemDefinition* Item : AllItems)
 	{
-		if (!HasWeaponFragment(Item)) { continue; }
+		if (!NexusEditorUtil::HasWeaponFragment(Item)) { continue; }
 		TSharedPtr<FWeaponOption> Option = MakeShared<FWeaponOption>();
 		Option->Weapon = Item;
-		Option->Label = Item->DisplayName.IsEmpty() ? Item->GetName() : Item->DisplayName.ToString();
+		Option->Label = NexusEditorUtil::DisplayLabel(Item, Item->DisplayName);
 		Weapons.Add(Option);
 	}
 
 	TArray<UNexusAttachmentDefinition*> AllAttachments;
-	GatherAssets(AllAttachments);
+	NexusEditorUtil::GatherAssets(AllAttachments);
 	for (UNexusAttachmentDefinition* Attachment : AllAttachments)
 	{
 		TSharedPtr<FAttachmentToggle> Toggle = MakeShared<FAttachmentToggle>();
 		Toggle->Attachment = Attachment;
-		Toggle->Label = Attachment->DisplayName.IsEmpty() ? Attachment->GetName() : Attachment->DisplayName.ToString();
+		Toggle->Label = NexusEditorUtil::DisplayLabel(Attachment, Attachment->DisplayName);
 		Attachments.Add(Toggle);
 	}
 
@@ -164,7 +139,7 @@ void SNexusAssemblyPreview::Construct(const FArguments& InArgs)
 			[
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[ SectionLabel(LOCTEXT("WeaponLabel", "WEAPON")) ]
+				[ NexusEditorWidgets::SectionLabel(LOCTEXT("WeaponLabel", "WEAPON")) ]
 				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(8.0f, 0.0f)
 				[
 					SNew(SComboBox<TSharedPtr<FWeaponOption>>)
@@ -175,7 +150,7 @@ void SNexusAssemblyPreview::Construct(const FArguments& InArgs)
 					[ SNew(STextBlock).Text(this, &SNexusAssemblyPreview::GetWeaponText) ]
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(16.0f, 0.0f, 0.0f, 0.0f)
-				[ SectionLabel(LOCTEXT("UpgradeLabel", "UPGRADE TIER")) ]
+				[ NexusEditorWidgets::SectionLabel(LOCTEXT("UpgradeLabel", "UPGRADE TIER")) ]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
 				[
 					SNew(SSpinBox<int32>)
@@ -200,7 +175,7 @@ void SNexusAssemblyPreview::Construct(const FArguments& InArgs)
 				[
 					SNew(SVerticalBox)
 					+ SVerticalBox::Slot().AutoHeight().Padding(4.0f, 2.0f, 4.0f, 4.0f)
-					[ SectionLabel(LOCTEXT("AttachmentsHeader", "ATTACHMENTS — tick to install")) ]
+					[ NexusEditorWidgets::SectionLabel(LOCTEXT("AttachmentsHeader", "ATTACHMENTS — tick to install")) ]
 					+ SVerticalBox::Slot().FillHeight(1.0f)
 					[
 						SAssignNew(AttachmentListView, SListView<TSharedPtr<FAttachmentToggle>>)
@@ -222,7 +197,7 @@ void SNexusAssemblyPreview::Construct(const FArguments& InArgs)
 					[
 						SNew(SVerticalBox)
 						+ SVerticalBox::Slot().AutoHeight().Padding(4.0f, 2.0f, 4.0f, 4.0f)
-						[ SectionLabel(LOCTEXT("RadarHeader", "STAT RADAR — base vs final")) ]
+						[ NexusEditorWidgets::SectionLabel(LOCTEXT("RadarHeader", "STAT RADAR — base vs final")) ]
 						+ SVerticalBox::Slot().FillHeight(1.0f)
 						[ SAssignNew(StatRadar, SNexusStatRadar) ]
 					]
@@ -235,7 +210,7 @@ void SNexusAssemblyPreview::Construct(const FArguments& InArgs)
 					[
 						SNew(SVerticalBox)
 						+ SVerticalBox::Slot().AutoHeight().Padding(4.0f, 2.0f, 4.0f, 4.0f)
-						[ SectionLabel(LOCTEXT("StatsHeader", "RESOLVED STATS")) ]
+						[ NexusEditorWidgets::SectionLabel(LOCTEXT("StatsHeader", "RESOLVED STATS")) ]
 						+ SVerticalBox::Slot().FillHeight(1.0f)
 						[
 							SAssignNew(StatListView, SListView<TSharedPtr<FNexusResolvedStat>>)
@@ -244,11 +219,12 @@ void SNexusAssemblyPreview::Construct(const FArguments& InArgs)
 							.SelectionMode(ESelectionMode::None)
 							.HeaderRow(
 								SNew(SHeaderRow)
-								+ SHeaderRow::Column(ColStat).DefaultLabel(LOCTEXT("HStat", "Stat")).FillWidth(0.34f)
-								+ SHeaderRow::Column(ColBase).DefaultLabel(LOCTEXT("HBase", "Base")).FillWidth(0.16f)
-								+ SHeaderRow::Column(ColAttach).DefaultLabel(LOCTEXT("HAttach", "+Attach")).FillWidth(0.16f)
-								+ SHeaderRow::Column(ColUpgrade).DefaultLabel(LOCTEXT("HUpgrade", "+Upgrade")).FillWidth(0.17f)
-								+ SHeaderRow::Column(ColFinal).DefaultLabel(LOCTEXT("HFinal", "Final")).FillWidth(0.17f))
+								+ SHeaderRow::Column(ColStat).DefaultLabel(LOCTEXT("HStat", "Stat")).FillWidth(0.30f)
+								+ SHeaderRow::Column(ColBase).DefaultLabel(LOCTEXT("HBase", "Base")).FillWidth(0.14f)
+								+ SHeaderRow::Column(ColAttach).DefaultLabel(LOCTEXT("HAttach", "+Attach")).FillWidth(0.14f)
+								+ SHeaderRow::Column(ColUpgrade).DefaultLabel(LOCTEXT("HUpgrade", "+Upgrade")).FillWidth(0.14f)
+								+ SHeaderRow::Column(ColFinal).DefaultLabel(LOCTEXT("HFinal", "Final")).FillWidth(0.14f)
+								+ SHeaderRow::Column(ColDelta).DefaultLabel(LOCTEXT("HDelta", "Δ Net")).FillWidth(0.14f))
 						]
 					]
 				]

@@ -53,8 +53,17 @@ namespace NexusEditorTools
 				TEXT("OpenNexusGridPreview"),
 				LOCTEXT("GridLabel", "Grid Preview"),
 				LOCTEXT("GridTooltip", "Visualise each item's inventory grid footprint."),
-				LOCTEXT("GridDesc", "Inventory-grid footprint for every item."),
+				LOCTEXT("GridDesc", "Inventory-grid footprint (with real icons) for every item."),
 				TEXT("Icons.Box"),
+				ECategory::Inspection,
+			},
+			{
+				FNexusEditorModule::SandboxTabName,
+				TEXT("OpenNexusInventorySandbox"),
+				LOCTEXT("SandboxLabel", "Inventory Sandbox"),
+				LOCTEXT("SandboxTooltip", "Drag real items onto a real attaché grid — footprint and case-size tuning, live."),
+				LOCTEXT("SandboxDesc", "Pack the real inventory grid with real items — rotate, auto-arrange, swap case sizes."),
+				TEXT("Icons.Layout"),
 				ECategory::Inspection,
 			},
 			{

@@ -38,6 +38,9 @@ public:
 	/** Show this asset (a UNexusItemDefinition or UNexusAttachmentDefinition). Null clears the preview. */
 	void SetPreviewAsset(UObject* Asset);
 
+	/** Force a full re-resolve of the current asset (bypasses the same-asset short-circuit). */
+	void RefreshPreview();
+
 protected:
 	// SEditorViewport
 	virtual TSharedRef<FEditorViewportClient> MakeEditorViewportClient() override;
@@ -57,9 +60,6 @@ private:
 	 */
 	void RebuildAttachmentTree();
 	void ClearAttachmentComponents();
-
-	/** Force a full re-resolve of the current asset (bypasses the SetPreviewAsset same-asset short-circuit). */
-	void RefreshPreview();
 
 	/**
 	 * Global PostEditChange hook. Fires whenever ANY UObject's property changes

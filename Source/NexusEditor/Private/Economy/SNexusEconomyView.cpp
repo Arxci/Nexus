@@ -1,6 +1,7 @@
 #include "Economy/SNexusEconomyView.h"
 
 #include "Editor.h"
+#include "ScopedTransaction.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 
 #include "Styling/AppStyle.h"
@@ -9,13 +10,19 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SCheckBox.h"
+#include "Widgets/Input/SSearchBox.h"
+#include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/SHeaderRow.h"
 #include "Widgets/Views/STableRow.h"
 
 #include "Nexus/Inventory/NexusItemDefinition.h"
 
+#include "Settings/NexusEditorSettings.h"
+#include "Shared/NexusEditorAssetWatcher.h"
 #include "Shared/NexusEditorUtils.h"
 #include "Shared/NexusEditorWidgets.h"
 
@@ -30,22 +37,21 @@ namespace NexusEconomy
 	const FName ColSell("Sell");
 	const FName ColBuy("Buy");
 	const FName ColFlags("Flags");
-
-	// A value-per-cell this many times off the median is worth a designer's eye.
-	constexpr float OutlierFactor = 3.0f;
 }
 
-/** Multi-column balance-sheet row; outliers and tradability mistakes show in colour. */
+/** Multi-column balance-sheet row; outliers/mistakes show in colour, key fields edit inline. */
 class SNexusEconomyRow : public SMultiColumnTableRow<TSharedPtr<SNexusEconomyView::FEconomyRow>>
 {
 public:
 	SLATE_BEGIN_ARGS(SNexusEconomyRow) {}
 		SLATE_ARGUMENT(TSharedPtr<SNexusEconomyView::FEconomyRow>, Row)
+		SLATE_ARGUMENT(SNexusEconomyView*, View)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs, const TSharedRef<STableViewBase>& Owner)
 	{
 		Row = InArgs._Row;
+		View = InArgs._View;
 		SMultiColumnTableRow::Construct(FSuperRowType::FArguments(), Owner);
 	}
 
@@ -56,15 +62,51 @@ public:
 		if (!Row.IsValid()) { return SNullWidget::NullWidget; }
 
 		if (Column == ColName)  { return Cell(Row->Name); }
-		if (Column == ColValue) { return Cell(FString::FromInt(Row->Value)); }
+		if (Column == ColValue)
+		{
+			// Editable: tune base value without leaving the sheet.
+			return SNew(SBox).Padding(FMargin(4.0f, 1.0f)).VAlign(VAlign_Center)
+			[
+				SNew(SSpinBox<int32>)
+				.MinValue(0)
+				.MinDesiredWidth(48.0f)
+				.Value(Row->Value)
+				.OnValueCommitted_Lambda([this](int32 NewValue, ETextCommit::Type)
+				{
+					if (View) { View->CommitValue(Row, NewValue); }
+				})
+			];
+		}
 		if (Column == ColCells) { return Cell(FString::FromInt(Row->Cells)); }
 		if (Column == ColPerCell)
 		{
 			return Cell(FString::Printf(TEXT("%.1f"), Row->ValuePerCell),
 				Row->bOutlier ? FSlateColor(FStyleColors::Warning) : FSlateColor::UseForeground());
 		}
-		if (Column == ColSell) { return Cell(Row->bSellable ? TEXT("Yes") : TEXT("-")); }
-		if (Column == ColBuy)  { return Cell(Row->bBuyable ? TEXT("Yes") : TEXT("-")); }
+		if (Column == ColSell)
+		{
+			return SNew(SBox).Padding(FMargin(6.0f, 1.0f)).HAlign(HAlign_Center).VAlign(VAlign_Center)
+			[
+				SNew(SCheckBox)
+				.IsChecked(Row->bSellable ? ECheckBoxState::Checked : ECheckBoxState::Unchecked)
+				.OnCheckStateChanged_Lambda([this](ECheckBoxState State)
+				{
+					if (View) { View->CommitSellable(Row, State == ECheckBoxState::Checked); }
+				})
+			];
+		}
+		if (Column == ColBuy)
+		{
+			return SNew(SBox).Padding(FMargin(6.0f, 1.0f)).HAlign(HAlign_Center).VAlign(VAlign_Center)
+			[
+				SNew(SCheckBox)
+				.IsChecked(Row->bBuyable ? ECheckBoxState::Checked : ECheckBoxState::Unchecked)
+				.OnCheckStateChanged_Lambda([this](ECheckBoxState State)
+				{
+					if (View) { View->CommitBuyable(Row, State == ECheckBoxState::Checked); }
+				})
+			];
+		}
 		if (Column == ColFlags)
 		{
 			return Cell(Row->Flags,
@@ -75,6 +117,7 @@ public:
 
 private:
 	TSharedPtr<SNexusEconomyView::FEconomyRow> Row;
+	SNexusEconomyView* View = nullptr;
 };
 
 void SNexusEconomyView::Construct(const FArguments& InArgs)
@@ -96,6 +139,15 @@ void SNexusEconomyView::Construct(const FArguments& InArgs)
 				.Text(LOCTEXT("Refresh", "Refresh"))
 				.OnClicked(this, &SNexusEconomyView::OnRefreshClicked)
 			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
+			[
+				SNew(SBox).WidthOverride(220.0f)
+				[
+					SNew(SSearchBox)
+					.HintText(LOCTEXT("SearchHint", "Filter by name..."))
+					.OnTextChanged(this, &SNexusEconomyView::OnSearchChanged)
+				]
+			]
 			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(12.0f, 0.0f, 0.0f, 0.0f)
 			[ SNew(STextBlock).Text(this, &SNexusEconomyView::GetSummaryText) ]
 		]
@@ -107,22 +159,34 @@ void SNexusEconomyView::Construct(const FArguments& InArgs)
 			.Padding(4.0f)
 			[
 				SAssignNew(ListView, SListView<TSharedPtr<FEconomyRow>>)
-				.ListItemsSource(&Rows)
+				.ListItemsSource(&VisibleRows)
 				.OnGenerateRow(this, &SNexusEconomyView::OnGenerateRow)
 				.OnMouseButtonDoubleClick(this, &SNexusEconomyView::OnRowDoubleClicked)
 				.SelectionMode(ESelectionMode::Single)
 				.HeaderRow(
 					SNew(SHeaderRow)
 					+ SHeaderRow::Column(ColName).DefaultLabel(LOCTEXT("CName", "Name")).FillWidth(0.30f)
+						.SortMode_Lambda([this]() { return GetSortModeForColumn(ColName); })
+						.OnSort(this, &SNexusEconomyView::OnSort)
 					+ SHeaderRow::Column(ColValue).DefaultLabel(LOCTEXT("CValue", "Value")).FillWidth(0.10f)
+						.SortMode_Lambda([this]() { return GetSortModeForColumn(ColValue); })
+						.OnSort(this, &SNexusEconomyView::OnSort)
 					+ SHeaderRow::Column(ColCells).DefaultLabel(LOCTEXT("CCells", "Cells")).FillWidth(0.08f)
+						.SortMode_Lambda([this]() { return GetSortModeForColumn(ColCells); })
+						.OnSort(this, &SNexusEconomyView::OnSort)
 					+ SHeaderRow::Column(ColPerCell).DefaultLabel(LOCTEXT("CPerCell", "Value/Cell")).FillWidth(0.13f)
+						.SortMode_Lambda([this]() { return GetSortModeForColumn(ColPerCell); })
+						.OnSort(this, &SNexusEconomyView::OnSort)
 					+ SHeaderRow::Column(ColSell).DefaultLabel(LOCTEXT("CSell", "Sell")).FillWidth(0.08f)
 					+ SHeaderRow::Column(ColBuy).DefaultLabel(LOCTEXT("CBuy", "Buy")).FillWidth(0.08f)
 					+ SHeaderRow::Column(ColFlags).DefaultLabel(LOCTEXT("CFlags", "Flags")).FillWidth(0.23f))
 			]
 		]
 	];
+
+	// Live: re-read the sheet whenever any item changes (inc. our own inline edits).
+	Watcher = MakeShared<FNexusAssetWatcher>();
+	Watcher->Start({ UNexusItemDefinition::StaticClass() }, [this]() { Rebuild(); });
 }
 
 void SNexusEconomyView::Rebuild()
@@ -130,6 +194,9 @@ void SNexusEconomyView::Rebuild()
 	using namespace NexusEconomy;
 
 	Rows.Reset();
+
+	// Outlier sensitivity is a project setting now, not a magic constant.
+	const float OutlierFactor = FMath::Max(1.5f, UNexusEditorSettings::Get().EconomyOutlierFactor);
 
 	TArray<UNexusItemDefinition*> Items;
 	NexusEditorUtil::GatherAssets(Items);
@@ -191,18 +258,52 @@ void SNexusEconomyView::Rebuild()
 		else if (Row->bOutlier && Flags.Num() > 1) { ++Mistakes; }
 	}
 
-	// Worst offenders (anything flagged) float to the top, then by value/cell.
-	Rows.Sort([](const TSharedPtr<FEconomyRow>& A, const TSharedPtr<FEconomyRow>& B)
-	{
-		const bool FlagA = A.IsValid() && !A->Flags.IsEmpty();
-		const bool FlagB = B.IsValid() && !B->Flags.IsEmpty();
-		if (FlagA != FlagB) { return FlagA; }
-		return (A.IsValid() ? A->ValuePerCell : 0.0f) > (B.IsValid() ? B->ValuePerCell : 0.0f);
-	});
-
 	SummaryText = FText::Format(
 		LOCTEXT("Summary", "{0} item(s)   median {1}/cell   {2} value/cell outlier(s)"),
 		FText::AsNumber(Rows.Num()), FText::AsNumber(FMath::RoundToInt(Median)), FText::AsNumber(Outliers));
+
+	ApplyView();
+}
+
+void SNexusEconomyView::ApplyView()
+{
+	using namespace NexusEconomy;
+
+	VisibleRows.Reset();
+	for (const TSharedPtr<FEconomyRow>& Row : Rows)
+	{
+		if (Row.IsValid() && (Filter.IsEmpty() || Row->Name.Contains(Filter)))
+		{
+			VisibleRows.Add(Row);
+		}
+	}
+
+	if (SortMode == EColumnSortMode::None)
+	{
+		// Default: worst offenders (anything flagged) on top, then by value/cell.
+		VisibleRows.Sort([](const TSharedPtr<FEconomyRow>& A, const TSharedPtr<FEconomyRow>& B)
+		{
+			const bool FlagA = A.IsValid() && !A->Flags.IsEmpty();
+			const bool FlagB = B.IsValid() && !B->Flags.IsEmpty();
+			if (FlagA != FlagB) { return FlagA; }
+			return (A.IsValid() ? A->ValuePerCell : 0.0f) > (B.IsValid() ? B->ValuePerCell : 0.0f);
+		});
+	}
+	else
+	{
+		const bool bAsc = (SortMode == EColumnSortMode::Ascending);
+		const FName Col = SortColumn;
+		VisibleRows.Sort([bAsc, Col](const TSharedPtr<FEconomyRow>& A, const TSharedPtr<FEconomyRow>& B)
+		{
+			if (!A.IsValid() || !B.IsValid()) { return false; }
+			bool bLess;
+			if (Col == ColValue)        { bLess = A->Value < B->Value; }
+			else if (Col == ColCells)   { bLess = A->Cells < B->Cells; }
+			else if (Col == ColPerCell) { bLess = A->ValuePerCell < B->ValuePerCell; }
+			else                        { bLess = A->Name < B->Name; } // ColName / fallback
+			return bAsc ? bLess : !bLess;
+		});
+	}
 
 	if (ListView.IsValid())
 	{
@@ -213,7 +314,67 @@ void SNexusEconomyView::Rebuild()
 TSharedRef<ITableRow> SNexusEconomyView::OnGenerateRow(
 	TSharedPtr<FEconomyRow> Row, const TSharedRef<STableViewBase>& Owner)
 {
-	return SNew(SNexusEconomyRow, Owner).Row(Row);
+	return SNew(SNexusEconomyRow, Owner).Row(Row).View(this);
+}
+
+void SNexusEconomyView::OnSearchChanged(const FText& Text)
+{
+	Filter = Text.ToString();
+	ApplyView();
+}
+
+void SNexusEconomyView::OnSort(EColumnSortPriority::Type /*Priority*/, const FName& Column, EColumnSortMode::Type Mode)
+{
+	SortColumn = Column;
+	SortMode = Mode;
+	ApplyView();
+}
+
+EColumnSortMode::Type SNexusEconomyView::GetSortModeForColumn(FName Column) const
+{
+	return (Column == SortColumn) ? SortMode : EColumnSortMode::None;
+}
+
+void SNexusEconomyView::CommitValue(TSharedPtr<FEconomyRow> Row, int32 NewValue)
+{
+	UNexusItemDefinition* Item = Row.IsValid() ? Row->Item.Get() : nullptr;
+	if (!Item || Item->BaseValue == NewValue)
+	{
+		return;
+	}
+	const FScopedTransaction Transaction(LOCTEXT("EditValue", "Edit Item Value"));
+	Item->Modify();
+	Item->BaseValue = FMath::Max(0, NewValue);
+	Item->MarkPackageDirty();
+	Rebuild(); // the watcher also fires; Rebuild is idempotent and never mutates assets
+}
+
+void SNexusEconomyView::CommitSellable(TSharedPtr<FEconomyRow> Row, bool bNewSellable)
+{
+	UNexusItemDefinition* Item = Row.IsValid() ? Row->Item.Get() : nullptr;
+	if (!Item || Item->bSellable == bNewSellable)
+	{
+		return;
+	}
+	const FScopedTransaction Transaction(LOCTEXT("EditSellable", "Edit Item Sellable"));
+	Item->Modify();
+	Item->bSellable = bNewSellable;
+	Item->MarkPackageDirty();
+	Rebuild();
+}
+
+void SNexusEconomyView::CommitBuyable(TSharedPtr<FEconomyRow> Row, bool bNewBuyable)
+{
+	UNexusItemDefinition* Item = Row.IsValid() ? Row->Item.Get() : nullptr;
+	if (!Item || Item->bBuyable == bNewBuyable)
+	{
+		return;
+	}
+	const FScopedTransaction Transaction(LOCTEXT("EditBuyable", "Edit Item Buyable"));
+	Item->Modify();
+	Item->bBuyable = bNewBuyable;
+	Item->MarkPackageDirty();
+	Rebuild();
 }
 
 void SNexusEconomyView::OnRowDoubleClicked(TSharedPtr<FEconomyRow> Row)

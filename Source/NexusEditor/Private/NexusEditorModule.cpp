@@ -6,6 +6,7 @@
 #include "Crafting/SNexusCraftingTree.h"
 #include "Matrix/SNexusAttachmentMatrix.h"
 #include "Grid/SNexusGridPreview.h"
+#include "Sandbox/SNexusInventorySandbox.h"
 #include "Tags/SNexusTagAudit.h"
 #include "Economy/SNexusEconomyView.h"
 #include "Docs/SNexusDocsBrowser.h"
@@ -37,6 +38,7 @@ const FName FNexusEditorModule::PreviewTabName(TEXT("NexusAssemblyPreview"));
 const FName FNexusEditorModule::CraftingTabName(TEXT("NexusCraftingTree"));
 const FName FNexusEditorModule::MatrixTabName(TEXT("NexusAttachmentMatrix"));
 const FName FNexusEditorModule::GridTabName(TEXT("NexusGridPreview"));
+const FName FNexusEditorModule::SandboxTabName(TEXT("NexusInventorySandbox"));
 const FName FNexusEditorModule::TagAuditTabName(TEXT("NexusTagAudit"));
 const FName FNexusEditorModule::EconomyTabName(TEXT("NexusEconomyView"));
 const FName FNexusEditorModule::DocsTabName(TEXT("NexusDocsBrowser"));
@@ -103,6 +105,13 @@ void FNexusEditorModule::StartupModule()
 		.SetMenuType(ETabSpawnerMenuType::Hidden);
 
 	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+			SandboxTabName,
+			FOnSpawnTab::CreateRaw(this, &FNexusEditorModule::SpawnSandboxTab))
+		.SetDisplayName(LOCTEXT("SandboxTitle", "Nexus Inventory Sandbox"))
+		.SetTooltipText(LOCTEXT("SandboxTooltip", "Drag real items onto a real attaché grid — footprint and case-size tuning, live."))
+		.SetMenuType(ETabSpawnerMenuType::Hidden);
+
+	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
 			TagAuditTabName,
 			FOnSpawnTab::CreateRaw(this, &FNexusEditorModule::SpawnTagAuditTab))
 		.SetDisplayName(LOCTEXT("TagAuditTitle", "Nexus Tag Audit"))
@@ -143,6 +152,7 @@ void FNexusEditorModule::ShutdownModule()
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(CraftingTabName);
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(MatrixTabName);
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(GridTabName);
+		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(SandboxTabName);
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TagAuditTabName);
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(EconomyTabName);
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(DocsTabName);
@@ -183,6 +193,24 @@ void FNexusEditorModule::RegisterMenus()
 			FSlateIcon(FAppStyle::GetAppStyleSetName(), "Icons.Box"),
 			false);
 		Section.AddEntry(Entry);
+	}
+
+	// === Content Browser "+ Add" menu =======================================
+	// Designers reach for the green Add button (or right-click empty space) to make
+	// assets; the bare factories there create blank assets. Surface the Creator right
+	// where that instinct lives so the better, template-driven path is one click away.
+	if (UToolMenu* AddMenu = UToolMenus::Get()->ExtendMenu("ContentBrowser.AddNewContextMenu"))
+	{
+		FToolMenuSection& Section = AddMenu->FindOrAddSection("Nexus", LOCTEXT("CBNexusSection", "Nexus"));
+		Section.AddMenuEntry(
+			"OpenNexusCreatorFromAdd",
+			LOCTEXT("CBCreatorLabel", "Nexus Asset Creator..."),
+			LOCTEXT("CBCreatorTooltip", "Open the Nexus Creator to stamp items/attachments/recipes with templates and smart defaults (instead of a blank asset)."),
+			FSlateIcon(FAppStyle::GetAppStyleSetName(), "Icons.Plus"),
+			FUIAction(FExecuteAction::CreateLambda([]()
+			{
+				FGlobalTabmanager::Get()->TryInvokeTab(CreatorTabName);
+			})));
 	}
 }
 
@@ -357,6 +385,15 @@ TSharedRef<SDockTab> FNexusEditorModule::SpawnGridTab(const FSpawnTabArgs& Args)
 		.TabRole(ETabRole::NomadTab)
 		[
 			SNew(SNexusGridPreview)
+		];
+}
+
+TSharedRef<SDockTab> FNexusEditorModule::SpawnSandboxTab(const FSpawnTabArgs& Args)
+{
+	return SNew(SDockTab)
+		.TabRole(ETabRole::NomadTab)
+		[
+			SNew(SNexusInventorySandbox)
 		];
 }
 

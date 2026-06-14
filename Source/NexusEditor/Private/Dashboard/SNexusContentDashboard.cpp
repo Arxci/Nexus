@@ -20,6 +20,7 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SSearchBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Text/STextBlock.h"
@@ -29,11 +30,15 @@
 #include "Nexus/Inventory/NexusItemDefinition.h"
 #include "Nexus/Equipment/Attachments/NexusAttachmentDefinition.h"
 
+#include "Shared/NexusEditorAssetWatcher.h"
+#include "Shared/NexusEditorWidgets.h"
+
 #define LOCTEXT_NAMESPACE "NexusContentDashboard"
 
 namespace NexusDashboard
 {
-	// Column ids. Name/Identity are shared between the two tables.
+	// Column ids. Name/Identity are shared between the two tables. The Cell / SectionHeader
+	// helpers this file used to carry locally now come from NexusEditorWidgets.
 	const FName ColName("Name");
 	const FName ColIdentity("Identity");
 	const FName ColCategory("Category");
@@ -47,34 +52,6 @@ namespace NexusDashboard
 	const FName ColConflict("Conflict");
 	const FName ColMesh("Mesh");
 	const FName ColIssues("Issues");
-
-	/** A single cell: padded, eliding text with a full-value tooltip. */
-	TSharedRef<SWidget> Cell(const FString& Text, const FSlateColor& Color = FSlateColor::UseForeground(), const FString& Tooltip = FString())
-	{
-		return SNew(SBox)
-			.Padding(FMargin(6.0f, 2.0f))
-			.VAlign(VAlign_Center)
-			[
-				SNew(STextBlock)
-				.Text(FText::FromString(Text))
-				.ColorAndOpacity(Color)
-				.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
-				.ToolTipText(FText::FromString(Tooltip.IsEmpty() ? Text : Tooltip))
-			];
-	}
-
-	/** Titled band above each table. */
-	TSharedRef<SWidget> SectionHeader(const FText& Title)
-	{
-		return SNew(SBorder)
-			.BorderImage(FAppStyle::Get().GetBrush("Brushes.Header"))
-			.Padding(FMargin(8.0f, 4.0f))
-			[
-				SNew(STextBlock)
-				.Text(Title)
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
-			];
-	}
 }
 
 /** Multi-column row for the items table. */
@@ -94,6 +71,7 @@ public:
 	virtual TSharedRef<SWidget> GenerateWidgetForColumn(const FName& Column) override
 	{
 		using namespace NexusDashboard;
+		using namespace NexusEditorWidgets;
 		if (Column == ColName)     { return Cell(Row->DisplayName); }
 		if (Column == ColIdentity) { return Cell(Row->IdentityTag); }
 		if (Column == ColCategory) { return Cell(Row->Category); }
@@ -126,6 +104,7 @@ public:
 	virtual TSharedRef<SWidget> GenerateWidgetForColumn(const FName& Column) override
 	{
 		using namespace NexusDashboard;
+		using namespace NexusEditorWidgets;
 		if (Column == ColName)     { return Cell(Row->DisplayName); }
 		if (Column == ColIdentity) { return Cell(Row->IdentityTag); }
 		if (Column == ColProvided) { return Cell(Row->Provided); }
@@ -195,6 +174,15 @@ void SNexusContentDashboard::Construct(const FArguments& InArgs)
 				.ToolTipText(LOCTEXT("AutoTagUntaggedTip", "Derive + register an IdentityTag for every item/attachment that has none (undoable)."))
 				.OnClicked(this, &SNexusContentDashboard::OnAutoTagUntaggedClicked)
 			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(12.0f, 0.0f, 0.0f, 0.0f)
+			[
+				SNew(SBox).WidthOverride(200.0f)
+				[
+					SNew(SSearchBox)
+					.HintText(LOCTEXT("SearchHint", "Filter items/attachments..."))
+					.OnTextChanged(this, &SNexusContentDashboard::OnSearchChanged)
+				]
+			]
 			+ SHorizontalBox::Slot()
 			.FillWidth(1.0f)
 			.VAlign(VAlign_Center)
@@ -211,7 +199,7 @@ void SNexusContentDashboard::Construct(const FArguments& InArgs)
 		]
 
 		// Findings.
-		+ SVerticalBox::Slot().AutoHeight()[ SectionHeader(LOCTEXT("FindingsHeader", "Audit Findings")) ]
+		+ SVerticalBox::Slot().AutoHeight()[ NexusEditorWidgets::SectionHeader(LOCTEXT("FindingsHeader", "Audit Findings")) ]
 		+ SVerticalBox::Slot()
 		.FillHeight(0.3f)
 		[
@@ -223,12 +211,12 @@ void SNexusContentDashboard::Construct(const FArguments& InArgs)
 		]
 
 		// Items.
-		+ SVerticalBox::Slot().AutoHeight()[ SectionHeader(LOCTEXT("ItemsHeader", "Items")) ]
+		+ SVerticalBox::Slot().AutoHeight()[ NexusEditorWidgets::SectionHeader(LOCTEXT("ItemsHeader", "Items")) ]
 		+ SVerticalBox::Slot()
 		.FillHeight(0.35f)
 		[
 			SAssignNew(ItemListView, SListView<TSharedPtr<FNexusItemRow>>)
-			.ListItemsSource(&Audit.Items)
+			.ListItemsSource(&VisibleItems)
 			.OnGenerateRow(this, &SNexusContentDashboard::OnGenerateItemRow)
 			.OnMouseButtonDoubleClick(this, &SNexusContentDashboard::OnItemActivated)
 			.SelectionMode(ESelectionMode::Single)
@@ -245,12 +233,12 @@ void SNexusContentDashboard::Construct(const FArguments& InArgs)
 		]
 
 		// Attachments.
-		+ SVerticalBox::Slot().AutoHeight()[ SectionHeader(LOCTEXT("AttachmentsHeader", "Attachments")) ]
+		+ SVerticalBox::Slot().AutoHeight()[ NexusEditorWidgets::SectionHeader(LOCTEXT("AttachmentsHeader", "Attachments")) ]
 		+ SVerticalBox::Slot()
 		.FillHeight(0.35f)
 		[
 			SAssignNew(AttachmentListView, SListView<TSharedPtr<FNexusAttachmentRow>>)
-			.ListItemsSource(&Audit.Attachments)
+			.ListItemsSource(&VisibleAttachments)
 			.OnGenerateRow(this, &SNexusContentDashboard::OnGenerateAttachmentRow)
 			.OnMouseButtonDoubleClick(this, &SNexusContentDashboard::OnAttachmentActivated)
 			.SelectionMode(ESelectionMode::Single)
@@ -265,15 +253,55 @@ void SNexusContentDashboard::Construct(const FArguments& InArgs)
 				+ SHeaderRow::Column(ColIssues).DefaultLabel(LOCTEXT("ColIssues", "Issues")).FillWidth(0.18f))
 		]
 	];
+
+	// Now that the list views exist, populate the filtered views.
+	ApplyFilter();
+
+	// Live: re-run the audit when items or attachments change.
+	Watcher = MakeShared<FNexusAssetWatcher>();
+	Watcher->Start(
+		{ UNexusItemDefinition::StaticClass(), UNexusAttachmentDefinition::StaticClass() },
+		[this]() { RebuildAudit(); });
 }
 
 void SNexusContentDashboard::RebuildAudit()
 {
 	Audit = FNexusContentAudit::Run();
 
-	if (FindingListView.IsValid())    { FindingListView->RequestListRefresh(); }
+	if (FindingListView.IsValid()) { FindingListView->RequestListRefresh(); }
+	ApplyFilter(); // refills + refreshes the item/attachment tables
+}
+
+void SNexusContentDashboard::ApplyFilter()
+{
+	VisibleItems.Reset();
+	for (const TSharedPtr<FNexusItemRow>& Row : Audit.Items)
+	{
+		if (Row.IsValid() &&
+			(Filter.IsEmpty() || Row->DisplayName.Contains(Filter) || Row->IdentityTag.Contains(Filter) || Row->Category.Contains(Filter)))
+		{
+			VisibleItems.Add(Row);
+		}
+	}
+
+	VisibleAttachments.Reset();
+	for (const TSharedPtr<FNexusAttachmentRow>& Row : Audit.Attachments)
+	{
+		if (Row.IsValid() &&
+			(Filter.IsEmpty() || Row->DisplayName.Contains(Filter) || Row->IdentityTag.Contains(Filter)))
+		{
+			VisibleAttachments.Add(Row);
+		}
+	}
+
 	if (ItemListView.IsValid())       { ItemListView->RequestListRefresh(); }
 	if (AttachmentListView.IsValid()) { AttachmentListView->RequestListRefresh(); }
+}
+
+void SNexusContentDashboard::OnSearchChanged(const FText& Text)
+{
+	Filter = Text.ToString();
+	ApplyFilter();
 }
 
 TSharedRef<ITableRow> SNexusContentDashboard::OnGenerateItemRow(

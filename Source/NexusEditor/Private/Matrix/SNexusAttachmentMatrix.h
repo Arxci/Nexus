@@ -10,6 +10,7 @@ class STableViewBase;
 class SWidget;
 class SHeaderRow;
 class UNexusAttachmentDefinition;
+class FNexusAssetWatcher;
 
 /**
  * The attachment compatibility matrix: attachments down the rows, every Attachment.Type.*
@@ -45,4 +46,7 @@ private:
 	TSharedPtr<SListView<TSharedPtr<FMatrixRow>>> ListView;
 	TSharedPtr<SHeaderRow> HeaderRow;
 	FText SummaryText;
+
+	/** Live refresh when attachments change. */
+	TSharedPtr<FNexusAssetWatcher> Watcher;
 };

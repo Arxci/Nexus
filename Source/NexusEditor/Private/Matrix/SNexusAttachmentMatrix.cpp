@@ -1,9 +1,5 @@
 #include "Matrix/SNexusAttachmentMatrix.h"
 
-#include "AssetRegistry/ARFilter.h"
-#include "AssetRegistry/AssetRegistryModule.h"
-#include "AssetRegistry/IAssetRegistry.h"
-
 #include "Editor.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 
@@ -21,24 +17,15 @@
 
 #include "Nexus/Equipment/Attachments/NexusAttachmentDefinition.h"
 
+#include "Shared/NexusEditorAssetWatcher.h"
+#include "Shared/NexusEditorUtils.h"
+#include "Shared/NexusEditorWidgets.h"
+
 #define LOCTEXT_NAMESPACE "NexusAttachmentMatrix"
 
 namespace NexusMatrix
 {
 	const FName ColAttachment("Attachment");
-
-	FString Leaf(const FGameplayTag& Tag)
-	{
-		const FString Full = Tag.ToString();
-		int32 Dot = INDEX_NONE;
-		return Full.FindLastChar(TEXT('.'), Dot) ? Full.RightChop(Dot + 1) : Full;
-	}
-
-	TSharedRef<SWidget> Cell(const FString& Text, const FSlateColor& Color)
-	{
-		return SNew(SBox).Padding(FMargin(6.0f, 2.0f)).VAlign(VAlign_Center)
-			[ SNew(STextBlock).Text(FText::FromString(Text)).ColorAndOpacity(Color) ];
-	}
 }
 
 /** One attachment row; each type column shows P / R / C for that attachment. */
@@ -59,7 +46,10 @@ public:
 	{
 		using namespace NexusMatrix;
 		if (!Row.IsValid()) { return SNullWidget::NullWidget; }
-		if (Column == ColAttachment) { return Cell(Row->Name, FSlateColor::UseForeground()); }
+		if (Column == ColAttachment)
+		{
+			return NexusEditorWidgets::Cell(Row->Name);
+		}
 
 		const UNexusAttachmentDefinition* Attachment = Row->Attachment.Get();
 		if (!Attachment) { return SNullWidget::NullWidget; }
@@ -68,19 +58,22 @@ public:
 		if (!ColumnTag.IsValid()) { return SNullWidget::NullWidget; }
 
 		FString Marks;
+		TArray<FString> TooltipParts;
 		const bool bProvides = Attachment->ProvidedTags.HasTagExact(ColumnTag);
 		const bool bRequires = Attachment->RequiredTags.HasTagExact(ColumnTag);
 		const bool bConflicts = Attachment->ConflictTags.HasTagExact(ColumnTag);
-		if (bProvides)  { Marks += TEXT("P"); }
-		if (bRequires)  { Marks += Marks.IsEmpty() ? TEXT("R") : TEXT(" R"); }
-		if (bConflicts) { Marks += Marks.IsEmpty() ? TEXT("C") : TEXT(" C"); }
+		const FString FullTag = ColumnTag.ToString();
+		if (bProvides)  { Marks += TEXT("P"); TooltipParts.Add(FString::Printf(TEXT("Provides %s"), *FullTag)); }
+		if (bRequires)  { Marks += Marks.IsEmpty() ? TEXT("R") : TEXT(" R"); TooltipParts.Add(FString::Printf(TEXT("Requires %s"), *FullTag)); }
+		if (bConflicts) { Marks += Marks.IsEmpty() ? TEXT("C") : TEXT(" C"); TooltipParts.Add(FString::Printf(TEXT("Conflicts with %s"), *FullTag)); }
 
 		FSlateColor Color = FSlateColor::UseForeground();
 		if (Marks == TEXT("P"))      { Color = FStyleColors::AccentGreen; }
 		else if (Marks == TEXT("R")) { Color = FStyleColors::AccentBlue; }
 		else if (Marks == TEXT("C")) { Color = FStyleColors::Error; }
 
-		return Cell(Marks, Color);
+		// Tooltip spells out the full tag so a cryptic leaf ("NATO") is unambiguous.
+		return NexusEditorWidgets::Cell(Marks, Color, FString::Join(TooltipParts, TEXT("\n")));
 	}
 
 private:
@@ -123,35 +116,40 @@ void SNexusAttachmentMatrix::Construct(const FArguments& InArgs)
 	];
 
 	Rebuild();
+
+	// Live: rebuild when attachments change.
+	Watcher = MakeShared<FNexusAssetWatcher>();
+	Watcher->Start({ UNexusAttachmentDefinition::StaticClass() }, [this]() { Rebuild(); });
 }
 
 void SNexusAttachmentMatrix::Rebuild()
 {
 	using namespace NexusMatrix;
 
-	const IAssetRegistry& AssetRegistry =
-		FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
-	FARFilter Filter;
-	Filter.ClassPaths.Add(UNexusAttachmentDefinition::StaticClass()->GetClassPathName());
-	Filter.bRecursiveClasses = true;
-	TArray<FAssetData> Assets;
-	AssetRegistry.GetAssets(Filter, Assets);
+	TArray<UNexusAttachmentDefinition*> AllAttachments;
+	NexusEditorUtil::GatherAssets(AllAttachments);
 
 	Rows.Reset();
 	TSet<FGameplayTag> ColumnSet;
-	for (const FAssetData& Data : Assets)
+	int32 Inconsistent = 0;
+	for (UNexusAttachmentDefinition* Attachment : AllAttachments)
 	{
-		UNexusAttachmentDefinition* Attachment = Cast<UNexusAttachmentDefinition>(Data.GetAsset());
 		if (!Attachment) { continue; }
 
 		TSharedPtr<FMatrixRow> Row = MakeShared<FMatrixRow>();
 		Row->Attachment = Attachment;
-		Row->Name = Attachment->DisplayName.IsEmpty() ? Attachment->GetName() : Attachment->DisplayName.ToString();
+		Row->Name = NexusEditorUtil::DisplayLabel(Attachment, Attachment->DisplayName);
 		Rows.Add(Row);
 
 		for (const FGameplayTag& ProvidedTag : Attachment->ProvidedTags) { ColumnSet.Add(ProvidedTag); }
 		for (const FGameplayTag& RequiredTag : Attachment->RequiredTags) { ColumnSet.Add(RequiredTag); }
 		for (const FGameplayTag& ConflictTag : Attachment->ConflictTags) { ColumnSet.Add(ConflictTag); }
+
+		// A tag both required and conflicted-with can never be satisfied — flag it.
+		if (Attachment->RequiredTags.HasAnyExact(Attachment->ConflictTags))
+		{
+			++Inconsistent;
+		}
 	}
 
 	TypeColumns = ColumnSet.Array();
@@ -171,15 +169,19 @@ void SNexusAttachmentMatrix::Rebuild()
 		for (const FGameplayTag& ColumnTag : TypeColumns)
 		{
 			HeaderRow->AddColumn(SHeaderRow::Column(FName(*ColumnTag.ToString()))
-				.DefaultLabel(FText::FromString(Leaf(ColumnTag)))
+				.DefaultLabel(FText::FromString(NexusEditorUtil::TagLeaf(ColumnTag)))
+				.DefaultTooltip(FText::FromString(ColumnTag.ToString())) // full tag on hover
 				.HAlignHeader(HAlign_Center)
 				.HAlignCell(HAlign_Center)
 				.FillWidth(0.1f));
 		}
 	}
 
-	SummaryText = FText::Format(LOCTEXT("Summary", "{0} attachment(s), {1} type(s)."),
-		FText::AsNumber(Rows.Num()), FText::AsNumber(TypeColumns.Num()));
+	SummaryText = (Inconsistent > 0)
+		? FText::Format(LOCTEXT("SummaryBad", "{0} attachment(s), {1} type(s).   ⚠ {2} with required+conflicting tags."),
+			FText::AsNumber(Rows.Num()), FText::AsNumber(TypeColumns.Num()), FText::AsNumber(Inconsistent))
+		: FText::Format(LOCTEXT("Summary", "{0} attachment(s), {1} type(s)."),
+			FText::AsNumber(Rows.Num()), FText::AsNumber(TypeColumns.Num()));
 
 	if (ListView.IsValid())
 	{

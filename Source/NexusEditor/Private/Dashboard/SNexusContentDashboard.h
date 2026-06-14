@@ -8,6 +8,7 @@
 
 class ITableRow;
 class STableViewBase;
+class FNexusAssetWatcher;
 
 /**
  * The Nexus Content Dashboard: a dockable tab that runs FNexusContentAudit and
@@ -29,6 +30,9 @@ public:
 private:
 	/** Re-run the audit into Audit and refresh the three list views. */
 	void RebuildAudit();
+	/** Refill the filtered item/attachment views from Audit by the current search text. */
+	void ApplyFilter();
+	void OnSearchChanged(const FText& Text);
 
 	TSharedRef<ITableRow> OnGenerateItemRow(TSharedPtr<FNexusItemRow> Row, const TSharedRef<STableViewBase>& Owner);
 	TSharedRef<ITableRow> OnGenerateAttachmentRow(TSharedPtr<FNexusAttachmentRow> Row, const TSharedRef<STableViewBase>& Owner);
@@ -51,7 +55,15 @@ private:
 	FNexusAuditResult Audit;
 	FText CsvStatusText;
 
+	/** Filtered views bound to the item/attachment tables (findings bind to Audit directly). */
+	TArray<TSharedPtr<FNexusItemRow>> VisibleItems;
+	TArray<TSharedPtr<FNexusAttachmentRow>> VisibleAttachments;
+	FString Filter;
+
 	TSharedPtr<SListView<TSharedPtr<FNexusItemRow>>> ItemListView;
 	TSharedPtr<SListView<TSharedPtr<FNexusAttachmentRow>>> AttachmentListView;
 	TSharedPtr<SListView<TSharedPtr<FNexusAuditFinding>>> FindingListView;
+
+	/** Live refresh when items/attachments change. */
+	TSharedPtr<FNexusAssetWatcher> Watcher;
 };

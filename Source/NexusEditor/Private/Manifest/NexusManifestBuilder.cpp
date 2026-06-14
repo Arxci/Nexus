@@ -11,6 +11,7 @@
 #include "IAssetTools.h"
 #include "Misc/PackageName.h"
 #include "UObject/Package.h"
+#include "UObject/SoftObjectPath.h"
 
 #include "Nexus/Levels/NexusLevelManifest.h"
 #include "Nexus/Levels/NexusWorldSettings.h"
@@ -23,6 +24,45 @@
 
 namespace
 {
+	/** Make a level name path-safe for an asset name (the naming validator flags the rest). */
+	FString SanitizeName(const FString& In)
+	{
+		FString Out;
+		Out.Reserve(In.Len());
+		for (const TCHAR Ch : In)
+		{
+			Out.AppendChar((FChar::IsAlnum(Ch) || Ch == TEXT('_')) ? Ch : TEXT('_'));
+		}
+		return Out.IsEmpty() ? TEXT("Level") : Out;
+	}
+
+	/**
+	 * True when an existing manifest array (TSoftObjectPtr entries) already holds exactly
+	 * NewSet, compared by soft path so load state doesn't matter.
+	 */
+	template <typename TArrayType, typename TElem>
+	bool MatchesSet(const TArrayType& Existing, const TSet<TElem*>& NewSet)
+	{
+		if (Existing.Num() != NewSet.Num())
+		{
+			return false;
+		}
+		TSet<FSoftObjectPath> NewPaths;
+		NewPaths.Reserve(NewSet.Num());
+		for (TElem* Obj : NewSet)
+		{
+			if (Obj) { NewPaths.Add(FSoftObjectPath(Obj)); }
+		}
+		for (const auto& Entry : Existing)
+		{
+			if (!NewPaths.Contains(Entry.ToSoftObjectPath()))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
 	UNexusLevelManifest* CreateManifestAsset(const FString& AssetName)
 	{
 		IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
@@ -94,7 +134,7 @@ UNexusLevelManifest* FNexusManifestBuilder::BuildFromCurrentLevel(FString& OutMe
 
 	if (!Manifest)
 	{
-		const FString LevelName = FPackageName::GetShortName(World->GetOutermost()->GetName());
+		const FString LevelName = SanitizeName(FPackageName::GetShortName(World->GetOutermost()->GetName()));
 		Manifest = CreateManifestAsset(FString(TEXT("LM_")) + LevelName);
 		if (!Manifest)
 		{
@@ -108,6 +148,15 @@ UNexusLevelManifest* FNexusManifestBuilder::BuildFromCurrentLevel(FString& OutMe
 			WorldSettings->LevelManifest = Manifest;
 			WorldSettings->MarkPackageDirty(); // dirties the level — save it too
 		}
+	}
+
+	// Skip needless dirtying when the level's content already matches the manifest.
+	if (!bCreated && MatchesSet(Manifest->Items, Items) && MatchesSet(Manifest->Attachments, Attachments))
+	{
+		OutMessage = FString::Printf(
+			TEXT("Manifest '%s' is already up to date (%d item(s), %d attachment(s))."),
+			*Manifest->GetName(), Items.Num(), Attachments.Num());
+		return Manifest;
 	}
 
 	Manifest->Items.Reset();
