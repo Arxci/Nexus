@@ -10,6 +10,7 @@
 #include "UObject/Package.h"
 #include "UObject/UObjectGlobals.h"
 
+#include "Shared/NexusEditorAssetWatcher.h"
 #include "Shared/NexusEditorStyle.h"
 #include "Shared/NexusEditorWidgets.h"
 
@@ -33,6 +34,75 @@ void SNexusInventoryCanvas::Construct(const FArguments& InArgs)
 		// add lands on the grid (the sandbox is about footprints, not list sections).
 		Container->ConfigureSections(TArray<FNexusInventorySectionConfig>());
 	}
+
+	// When an item definition changes (notably its GridSize edited live in the Inspector),
+	// drop the cached icon/aspect and re-validate placements so a grown item can't overlap.
+	// Read-only canvases (the live PIE mirror) skip the reflow — they re-mirror each refresh.
+	Watcher = MakeShared<FNexusAssetWatcher>();
+	Watcher->Start({ UNexusItemDefinition::StaticClass() }, [this]()
+	{
+		IconBrushCache.Reset();
+		IconSizeCache.Reset();
+		if (!bReadOnly)
+		{
+			ReflowAfterFootprintChange();
+		}
+		Invalidate(EInvalidateWidgetReason::Paint | EInvalidateWidgetReason::Layout);
+	});
+}
+
+void SNexusInventoryCanvas::ReflowAfterFootprintChange()
+{
+	if (!Container.IsValid())
+	{
+		return;
+	}
+
+	// Copy: re-homing/removal mutates the container's item list while we iterate.
+	const TArray<UNexusItemInstance*> Snapshot = Container->GetItems();
+	for (UNexusItemInstance* Instance : Snapshot)
+	{
+		if (!Instance)
+		{
+			continue;
+		}
+		const FIntPoint Current = ItemTopLeft(Instance);
+		const FIntPoint Footprint = Instance->GetGridFootprint();
+		if (Container->CanPlaceAt(Footprint, Current, Instance))
+		{
+			continue; // still fits where it is
+		}
+
+		bool bPlaced = false;
+		auto TryFit = [&](FIntPoint Foot, bool bRotated)
+		{
+			for (int32 Y = 0; Y + Foot.Y <= GridH && !bPlaced; ++Y)
+			{
+				for (int32 X = 0; X + Foot.X <= GridW && !bPlaced; ++X)
+				{
+					if (Container->CanPlaceAt(Foot, FIntPoint(X, Y), Instance))
+					{
+						Container->MoveItemTo(Instance, FIntPoint(X, Y), bRotated);
+						bPlaced = true;
+					}
+				}
+			}
+		};
+
+		// Current orientation first, then the 90°-rotated footprint.
+		TryFit(Footprint, Instance->IsRotated());
+		if (!bPlaced)
+		{
+			TryFit(FIntPoint(Footprint.Y, Footprint.X), !Instance->IsRotated());
+		}
+		if (!bPlaced)
+		{
+			// No legal spot at the new size — drop it from the grid (the case-swap spill model).
+			Container->RemoveInstance(Instance);
+		}
+	}
+
+	Invalidate(EInvalidateWidgetReason::Paint | EInvalidateWidgetReason::Layout);
 }
 
 void SNexusInventoryCanvas::ResetGrid(int32 InWidth, int32 InHeight)
@@ -44,6 +114,22 @@ void SNexusInventoryCanvas::ResetGrid(int32 InWidth, int32 InHeight)
 		Container->ClearAll();
 		Container->Configure(GridW, GridH, 0.0f, true, MAX_int32);
 		Container->ConfigureSections(TArray<FNexusInventorySectionConfig>());
+	}
+	Held.Reset();
+	Invalidate(EInvalidateWidgetReason::Paint | EInvalidateWidgetReason::Layout);
+}
+
+void SNexusInventoryCanvas::MirrorSpatialItems(int32 InWidth, int32 InHeight, const TArray<FNexusItemSaveData>& Saved)
+{
+	GridW = FMath::Clamp(InWidth, 1, 40);
+	GridH = FMath::Clamp(InHeight, 1, 40);
+	if (Container.IsValid())
+	{
+		// Resize the grid, then rebuild display instances at their saved cells. RestoreFromSaveData
+		// recreates each instance from its descriptor (position + rotation + stack preserved), so the
+		// canvas shows the live grid exactly without re-running placement.
+		Container->SetGridDimensions(GridW, GridH);
+		Container->RestoreFromSaveData(Saved);
 	}
 	Held.Reset();
 	Invalidate(EInvalidateWidgetReason::Paint | EInvalidateWidgetReason::Layout);
@@ -185,6 +271,30 @@ const FSlateBrush* SNexusInventoryCanvas::GetIconBrush(UNexusItemDefinition* Def
 	return Brush.Get();
 }
 
+FVector2D SNexusInventoryCanvas::GetIconNativeSize(UNexusItemDefinition* Def) const
+{
+	if (!Def)
+	{
+		return FVector2D(1.0f, 1.0f);
+	}
+	if (const FVector2D* Found = IconSizeCache.Find(Def))
+	{
+		return *Found;
+	}
+	FVector2D Size(1.0f, 1.0f);
+	if (UTexture2D* Texture = Def->Icon.LoadSynchronous())
+	{
+		const int32 W = Texture->GetSizeX();
+		const int32 H = Texture->GetSizeY();
+		if (W > 0 && H > 0)
+		{
+			Size = FVector2D(W, H);
+		}
+	}
+	IconSizeCache.Add(Def, Size);
+	return Size;
+}
+
 FVector2D SNexusInventoryCanvas::ComputeDesiredSize(float) const
 {
 	return FVector2D(GridW * CellSize + 2.0f * NexusSandbox::Pad, GridH * CellSize + 2.0f * NexusSandbox::Pad);
@@ -207,6 +317,26 @@ int32 SNexusInventoryCanvas::OnPaint(
 	auto BoxGeom = [&AllottedGeometry](float Px, float Py, float Sx, float Sy)
 	{
 		return AllottedGeometry.ToPaintGeometry(FVector2D(Sx, Sy), FSlateLayoutTransform(FVector2D(Px, Py)));
+	};
+
+	// Draw an item icon centred and aspect-preserved inside a footprint rect — a non-square
+	// icon in a non-square slot is letter/pillar-boxed rather than stretched.
+	auto DrawIcon = [&](int32 InLayer, UNexusItemDefinition* Def, float Rx, float Ry, float Rw, float Rh, const FLinearColor& Tint)
+	{
+		const FSlateBrush* Icon = GetIconBrush(Def);
+		if (!Icon || Rw <= 0.0f || Rh <= 0.0f)
+		{
+			return;
+		}
+		const FVector2D Native = GetIconNativeSize(Def);
+		const float Aspect = (Native.Y > 0.0f) ? (Native.X / Native.Y) : 1.0f;
+		float DrawW = Rw;
+		float DrawH = Rh;
+		if (Rw / Rh > Aspect) { DrawW = Rh * Aspect; }                                  // rect wider than icon → pillarbox
+		else                  { DrawH = Rw / FMath::Max(Aspect, KINDA_SMALL_NUMBER); }  // rect taller → letterbox
+		const float Ox = Rx + (Rw - DrawW) * 0.5f;
+		const float Oy = Ry + (Rh - DrawH) * 0.5f;
+		FSlateDrawElement::MakeBox(OutDrawElements, InLayer, BoxGeom(Ox, Oy, DrawW, DrawH), Icon, Effects, Tint);
 	};
 
 	int32 Layer = LayerId;
@@ -277,11 +407,7 @@ int32 SNexusInventoryCanvas::OnPaint(
 				OutDrawElements, Layer, BoxGeom(Ix, Iy, Iw, Ih), White, Effects,
 				FLinearColor(0.10f, 0.12f, 0.16f, 1.0f));
 
-			if (const FSlateBrush* Icon = GetIconBrush(Instance->GetDefinition()))
-			{
-				FSlateDrawElement::MakeBox(
-					OutDrawElements, Layer + 1, BoxGeom(Ix, Iy, Iw, Ih), Icon, Effects, FLinearColor::White);
-			}
+			DrawIcon(Layer + 1, Instance->GetDefinition(), Ix, Iy, Iw, Ih, FLinearColor::White);
 
 			// Category-coloured frame (stands in for a rarity frame until rarity exists).
 			FSlateDrawElement::MakeBox(
@@ -345,13 +471,9 @@ int32 SNexusInventoryCanvas::OnPaint(
 			: FLinearColor(0.90f, 0.25f, 0.25f, 0.35f);
 		FSlateDrawElement::MakeBox(OutDrawElements, Layer + 1, BoxGeom(Origin.X, Origin.Y, W, H), White, Effects, Tint);
 
-		if (const FSlateBrush* Icon = GetIconBrush(Held->GetDefinition()))
-		{
-			FSlateDrawElement::MakeBox(
-				OutDrawElements, Layer + 2,
-				BoxGeom(Origin.X + CellInset, Origin.Y + CellInset, W - 2.0f * CellInset, H - 2.0f * CellInset),
-				Icon, Effects, FLinearColor(1.0f, 1.0f, 1.0f, 0.7f));
-		}
+		DrawIcon(Layer + 2, Held->GetDefinition(),
+			Origin.X + CellInset, Origin.Y + CellInset, W - 2.0f * CellInset, H - 2.0f * CellInset,
+			FLinearColor(1.0f, 1.0f, 1.0f, 0.7f));
 
 		// Invalid-drop reason, drawn just above the ghost.
 		const FString Reason = HeldInvalidReason();
@@ -392,6 +514,22 @@ FReply SNexusInventoryCanvas::OnMouseButtonDown(const FGeometry& MyGeometry, con
 {
 	const FVector2D Local = FVector2D(MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition()));
 	const FIntPoint Cell = LocalToCell(Local);
+
+	// Read-only (live inspector): never mutate; a left-click just reports the item under the cursor.
+	if (bReadOnly)
+	{
+		if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && Container.IsValid() && Cell != FIntPoint(-1, -1))
+		{
+			if (UNexusItemInstance* Instance = Container->GetItemAt(Cell))
+			{
+				if (OnItemClicked)
+				{
+					OnItemClicked(Instance->GetDefinition());
+				}
+			}
+		}
+		return FReply::Handled();
+	}
 
 	if (MouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
 	{
@@ -442,6 +580,10 @@ FReply SNexusInventoryCanvas::OnMouseMove(const FGeometry& MyGeometry, const FPo
 
 FReply SNexusInventoryCanvas::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
+	if (bReadOnly)
+	{
+		return FReply::Unhandled();
+	}
 	if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && Held.IsValid())
 	{
 		UNexusItemInstance* H = Held.Get();
@@ -524,6 +666,10 @@ void SNexusInventoryCanvas::DeserializeLayout(const FString& Data)
 
 FReply SNexusInventoryCanvas::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& KeyEvent)
 {
+	if (bReadOnly)
+	{
+		return FReply::Unhandled();
+	}
 	if (KeyEvent.GetKey() == EKeys::R && Held.IsValid())
 	{
 		RotateHeld();

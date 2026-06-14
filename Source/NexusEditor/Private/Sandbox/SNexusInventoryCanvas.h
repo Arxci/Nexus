@@ -9,6 +9,7 @@
 
 class UNexusItemDefinition;
 class UNexusItemInstance;
+class FNexusAssetWatcher;
 struct FSlateBrush;
 
 /**
@@ -34,6 +35,24 @@ public:
 
 	/** (Re)create the backing container at WxH cells. Existing contents are cleared. */
 	void ResetGrid(int32 InWidth, int32 InHeight);
+
+	/**
+	 * Read-only display mode: when set, the canvas ignores drag / remove / rotate input and a
+	 * left-click only reports the item under the cursor (see SetOnItemClicked). Used by the live
+	 * PIE inventory inspector, which reflects the real container and must not mutate it.
+	 */
+	void SetReadOnly(bool bInReadOnly) { bReadOnly = bInReadOnly; }
+
+	/**
+	 * Mirror an external container's spatially-placed items into this canvas for read-only
+	 * display. Saved are FNexusItemSaveData snapshots (definition + grid position + rotation +
+	 * stack); each lands at its saved cell, so the canvas shows the exact live grid. Holds no
+	 * reference to the source container — it rebuilds transient display instances each call.
+	 */
+	void MirrorSpatialItems(int32 InWidth, int32 InHeight, const TArray<FNexusItemSaveData>& Saved);
+
+	/** Invoked with the item definition under the cursor on a left-click while in read-only mode. */
+	void SetOnItemClicked(TFunction<void(UNexusItemDefinition*)> InHandler) { OnItemClicked = MoveTemp(InHandler); }
 
 	/** Spawn an instance of Def and let the container place it (first free slot). */
 	bool AddItem(UNexusItemDefinition* Def);
@@ -86,8 +105,23 @@ private:
 	/** Where the held item's top-left would land for the current cursor cell. */
 	FIntPoint HeldTargetTopLeft() const;
 	const FSlateBrush* GetIconBrush(UNexusItemDefinition* Def) const;
+	/** The icon texture's native pixel size (cached), for aspect-preserving draw. (1,1) when unknown. */
+	FVector2D GetIconNativeSize(UNexusItemDefinition* Def) const;
+
+	/**
+	 * Re-validate every placed item after a footprint (GridSize) change: items whose new size
+	 * no longer fits where they are get re-homed to the first free spot (trying rotation), and
+	 * any that can't fit anywhere are removed. Keeps the grid legal when an item is resized
+	 * live in the Inspector. No-op in read-only mode.
+	 */
+	void ReflowAfterFootprintChange();
 
 	TStrongObjectPtr<UNexusItemContainer> Container;
+
+	/** When true, input is read-only (live PIE inspector); a left-click just selects an item. */
+	bool bReadOnly = false;
+	/** Read-only left-click callback (the item definition under the cursor). */
+	TFunction<void(UNexusItemDefinition*)> OnItemClicked;
 
 	int32 GridW = 10;
 	int32 GridH = 8;
@@ -102,4 +136,9 @@ private:
 
 	/** Per-definition icon brushes, built on demand. mutable: OnPaint is const. */
 	mutable TMap<TWeakObjectPtr<UNexusItemDefinition>, TSharedPtr<FSlateBrush>> IconBrushCache;
+	/** Per-definition icon native pixel size, for aspect-preserving draw. mutable: OnPaint is const. */
+	mutable TMap<TWeakObjectPtr<UNexusItemDefinition>, FVector2D> IconSizeCache;
+
+	/** Rebuilds icon caches and reflows placements when an item definition changes (e.g. a resized GridSize). */
+	TSharedPtr<FNexusAssetWatcher> Watcher;
 };

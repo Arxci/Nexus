@@ -68,6 +68,15 @@ namespace NexusEditorTools
 				ECategory::Inspection,
 			},
 			{
+				FNexusEditorModule::LiveInventoryTabName,
+				TEXT("OpenNexusLiveInventory"),
+				LOCTEXT("LiveInventoryLabel", "Live Inventory"),
+				LOCTEXT("LiveInventoryTooltip", "Inspect the player's real inventory during Play-In-Editor — grid, weight, case, charms — and spawn items / swap the case live."),
+				LOCTEXT("LiveInventoryDesc", "The player's real runtime container during PIE: grid, weight, case, charms — read-only until you spawn or swap."),
+				TEXT("Icons.Box"),
+				ECategory::Inspection,
+			},
+			{
 				FNexusEditorModule::DocsTabName,
 				TEXT("OpenNexusDocs"),
 				LOCTEXT("DocsLabel", "API Reference"),

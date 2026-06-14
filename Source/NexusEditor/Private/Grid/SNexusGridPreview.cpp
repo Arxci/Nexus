@@ -26,6 +26,7 @@
 
 #include "Nexus/Inventory/NexusItemDefinition.h"
 
+#include "Audit/NexusContentAudit.h"
 #include "Shared/NexusEditorAssetWatcher.h"
 #include "Shared/NexusEditorUtils.h"
 #include "Shared/NexusEditorWidgets.h"
@@ -161,19 +162,12 @@ void SNexusGridPreview::Rebuild()
 		Row->Name = NexusEditorUtil::DisplayLabel(Item, Item->DisplayName);
 		Row->Grid = FIntPoint(FMath::Max(1, Item->GridSize.X), FMath::Max(1, Item->GridSize.Y));
 		Row->bWeapon = NexusEditorUtil::HasWeaponFragment(Item);
-		// A degenerate authored dimension (<1) is always wrong, regardless of the roster.
-		if (Item->GridSize.X < 1 || Item->GridSize.Y < 1)
-		{
-			Row->bFlagged = true;
-			Row->FlagReason = FString::Printf(TEXT("GridSize has a non-positive dimension (%dx%d) — clamped to 1 at runtime."),
-				Item->GridSize.X, Item->GridSize.Y);
-		}
 		Row->IconBrush = MakeIconBrush(Item);
 		Rows.Add(Row);
 	}
 
-	// Footprint-area outliers: items whose area sits far off the roster median are the likely
-	// typos (a 1x1 rifle, a 6x6 herb). Only meaningful once there's a roster to compare against.
+	// Mis-size flagging (degenerate dimension + footprint-area outliers) runs through the
+	// shared audit classifier, so the live roster, the dashboard, and CI agree on what's odd.
 	FlagAreaOutliers();
 
 	// Largest footprints first — the items most likely to be mis-sized.
@@ -203,51 +197,36 @@ void SNexusGridPreview::Rebuild()
 
 void SNexusGridPreview::FlagAreaOutliers()
 {
-	// Need a few items before a "median" means anything.
-	if (Rows.Num() < 4)
+	// Roster median: the baseline the shared outlier rule compares against. Needs a few items
+	// before it means anything (0 = don't judge outliers; degenerate dims are still flagged).
+	int32 Median = 0;
+	if (Rows.Num() >= 4)
 	{
-		return;
-	}
-
-	TArray<int32> Areas;
-	Areas.Reserve(Rows.Num());
-	for (const TSharedPtr<FGridRow>& Row : Rows)
-	{
-		if (Row.IsValid())
+		TArray<int32> Areas;
+		Areas.Reserve(Rows.Num());
+		for (const TSharedPtr<FGridRow>& Row : Rows)
 		{
-			Areas.Add(FMath::Max(1, Row->Grid.X * Row->Grid.Y));
+			if (Row.IsValid())
+			{
+				Areas.Add(FMath::Max(1, Row->Grid.X * Row->Grid.Y));
+			}
 		}
+		Areas.Sort();
+		Median = Areas[Areas.Num() / 2];
 	}
-	Areas.Sort();
-	const int32 Median = Areas[Areas.Num() / 2];
-	if (Median <= 0)
-	{
-		return;
-	}
-
-	// Generous factor — footprints legitimately vary a lot; we only want the gross typos.
-	constexpr float Factor = 4.0f;
-	const float High = Median * Factor;
-	const float Low = Median / Factor;
 
 	for (const TSharedPtr<FGridRow>& Row : Rows)
 	{
-		if (!Row.IsValid() || Row->bFlagged)
+		if (!Row.IsValid() || !Row->Item.IsValid())
 		{
-			continue;   // keep the stronger degenerate-dimension reason
+			continue;
 		}
-		const int32 Area = FMath::Max(1, Row->Grid.X * Row->Grid.Y);
-		if (Area > High)
+		FString Reason;
+		// Classify the *authored* GridSize (Row->Grid is clamped) so a degenerate dimension reads.
+		if (FNexusContentAudit::ClassifyFootprint(Row->Item->GridSize, Median, Reason) != ENexusFootprintFlag::Ok)
 		{
 			Row->bFlagged = true;
-			Row->FlagReason = FString::Printf(
-				TEXT("Footprint area %d is far above the roster median of %d — check for a typo."), Area, Median);
-		}
-		else if (Area < Low)
-		{
-			Row->bFlagged = true;
-			Row->FlagReason = FString::Printf(
-				TEXT("Footprint area %d is far below the roster median of %d — check for a typo."), Area, Median);
+			Row->FlagReason = Reason;
 		}
 	}
 }

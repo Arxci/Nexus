@@ -131,58 +131,18 @@ TSharedRef<SWidget> SNexusContentInsights::BuildReachability()
 {
 	TArray<UNexusItemDefinition*> Items;
 	NexusEditorUtil::GatherAssets(Items);
-	TArray<UNexusLevelManifest*> Manifests;
-	NexusEditorUtil::GatherAssets(Manifests);
-	TArray<UNexusCombinationRecipe*> Recipes;
-	NexusEditorUtil::GatherAssets(Recipes);
 
-	// Seed reachable with everything any manifest places.
-	TSet<const UNexusItemDefinition*> Reachable;
-	for (const UNexusLevelManifest* Manifest : Manifests)
-	{
-		if (!Manifest) { continue; }
-		for (const TSoftObjectPtr<UNexusItemDefinition>& Soft : Manifest->Items)
-		{
-			if (UNexusItemDefinition* Item = Soft.LoadSynchronous())
-			{
-				Reachable.Add(Item);
-			}
-		}
-	}
-
-	// Fixpoint: add any recipe output whose every input is already reachable.
-	bool bGrew = true;
-	while (bGrew)
-	{
-		bGrew = false;
-		for (const UNexusCombinationRecipe* Recipe : Recipes)
-		{
-			if (!Recipe || !Recipe->Output || Reachable.Contains(Recipe->Output))
-			{
-				continue;
-			}
-			bool bAllInputs = true;
-			for (const FNexusRecipeInput& In : Recipe->Inputs)
-			{
-				if (!In.Definition || !Reachable.Contains(In.Definition))
-				{
-					bAllInputs = false;
-					break;
-				}
-			}
-			if (bAllInputs)
-			{
-				Reachable.Add(Recipe->Output);
-				bGrew = true;
-			}
-		}
-	}
+	// The reachable set (manifest placements + the recipe fixpoint) lives in the shared audit,
+	// so this soft-lock window, the per-asset validator, and CI can never disagree on what's
+	// reachable. Build fresh (not the TTL cache) so an edit shows up the moment the watcher fires.
+	const FNexusAuditContext Context = FNexusAuditContext::Build();
 
 	TSharedRef<SVerticalBox> List = ReportList();
 	int32 Unreachable = 0;
 	for (UNexusItemDefinition* Item : Items)
 	{
-		if (!Item || Reachable.Contains(Item))
+		// A case is the container itself (equipped, not placed/crafted) — exempt, matching the audit.
+		if (!Item || NexusEditorUtil::HasCaseFragment(Item) || Context.ReachableItemPaths.Contains(FSoftObjectPath(Item)))
 		{
 			continue;
 		}

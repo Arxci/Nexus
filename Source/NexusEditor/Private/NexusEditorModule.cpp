@@ -13,6 +13,7 @@
 #include "Docs/SNexusDocsBrowser.h"
 #include "Insights/SNexusIconSheet.h"
 #include "Insights/SNexusContentInsights.h"
+#include "Live/SNexusLiveInventory.h"
 #include "Workbench/SNexusWorkbench.h"
 #include "Manifest/NexusManifestBuilder.h"
 #include "Shared/NexusEditorSelection.h"
@@ -47,6 +48,7 @@ const FName FNexusEditorModule::EconomyTabName(TEXT("NexusEconomyView"));
 const FName FNexusEditorModule::DocsTabName(TEXT("NexusDocsBrowser"));
 const FName FNexusEditorModule::IconSheetTabName(TEXT("NexusIconSheet"));
 const FName FNexusEditorModule::InsightsTabName(TEXT("NexusContentInsights"));
+const FName FNexusEditorModule::LiveInventoryTabName(TEXT("NexusLiveInventory"));
 TWeakPtr<SNexusCreatorWindow> FNexusEditorModule::ActiveCreator;
 TUniquePtr<FNexusSelectionService> FNexusEditorModule::SelectionService;
 
@@ -156,6 +158,13 @@ void FNexusEditorModule::StartupModule()
 		.SetTooltipText(LOCTEXT("InsightsTooltip", "Reachability, scarcity, localization, where-used, and attachment-build audits."))
 		.SetMenuType(ETabSpawnerMenuType::Hidden);
 
+	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+			LiveInventoryTabName,
+			FOnSpawnTab::CreateRaw(this, &FNexusEditorModule::SpawnLiveInventoryTab))
+		.SetDisplayName(LOCTEXT("LiveInventoryTitle", "Nexus Live Inventory"))
+		.SetTooltipText(LOCTEXT("LiveInventoryTooltip", "Inspect and drive the player's real inventory during Play-In-Editor."))
+		.SetMenuType(ETabSpawnerMenuType::Hidden);
+
 	// ToolMenus may not be ready this early in startup; defer menu wiring.
 	UToolMenus::RegisterStartupCallback(
 		FSimpleMulticastDelegate::FDelegate::CreateRaw(this, &FNexusEditorModule::RegisterMenus));
@@ -186,6 +195,7 @@ void FNexusEditorModule::ShutdownModule()
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(DocsTabName);
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(IconSheetTabName);
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(InsightsTabName);
+		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(LiveInventoryTabName);
 	}
 }
 
@@ -486,6 +496,15 @@ TSharedRef<SDockTab> FNexusEditorModule::SpawnInsightsTab(const FSpawnTabArgs& A
 		.TabRole(ETabRole::NomadTab)
 		[
 			SNew(SNexusContentInsights)
+		];
+}
+
+TSharedRef<SDockTab> FNexusEditorModule::SpawnLiveInventoryTab(const FSpawnTabArgs& Args)
+{
+	return SNew(SDockTab)
+		.TabRole(ETabRole::NomadTab)
+		[
+			SNew(SNexusLiveInventory)
 		];
 }
 

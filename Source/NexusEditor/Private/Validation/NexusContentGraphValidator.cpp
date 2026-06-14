@@ -18,44 +18,50 @@ bool UNexusContentGraphValidator::CanValidateAsset_Implementation(
 EDataValidationResult UNexusContentGraphValidator::ValidateLoadedAsset_Implementation(
 	const FAssetData& InAssetData, UObject* InAsset, FDataValidationContext& InContext)
 {
+	// One shared brain: the per-asset findings are exactly what the project-wide audit and
+	// the live windows compute, so "Validate Assets" can never disagree with the dashboard.
+	// The context is cached, so a "Validate All" pass scans the project a single time.
+	const FNexusAuditContext& Context = FNexusContentAudit::GetCachedContext();
+
+	TArray<FNexusAuditFinding> Findings;
 	if (const UNexusItemDefinition* Item = Cast<UNexusItemDefinition>(InAsset))
 	{
-		const TArray<UNexusItemDefinition*> Others = FNexusContentAudit::FindItemsSharingIdentity(Item);
-		if (Others.Num() > 0)
-		{
-			TArray<FString> Names;
-			for (const UNexusItemDefinition* Other : Others)
-			{
-				Names.Add(Other->GetName());
-			}
-
-			AssetFails(InAsset, FText::FromString(FString::Printf(
-				TEXT("Identity tag %s is also used by: %s. Identity tags must be unique across items."),
-				*Item->IdentityTag.ToString(), *FString::Join(Names, TEXT(", ")))));
-			return EDataValidationResult::Invalid;
-		}
-
-		AssetPasses(InAsset);
-		return EDataValidationResult::Valid;
+		FNexusContentAudit::AuditItem(Item, Context, Findings);
 	}
-
-	if (const UNexusAttachmentDefinition* Attachment = Cast<UNexusAttachmentDefinition>(InAsset))
+	else if (const UNexusAttachmentDefinition* Attachment = Cast<UNexusAttachmentDefinition>(InAsset))
 	{
-		const FGameplayTagContainer GlobalProvided = FNexusContentAudit::GatherGlobalProvidedTags();
-		const FGameplayTagContainer Missing = FNexusContentAudit::GetUnsatisfiedRequirements(Attachment, GlobalProvided);
-		if (!Missing.IsEmpty())
-		{
-			AssetFails(InAsset, FText::FromString(FString::Printf(
-				TEXT("Requires %s, which no attachment in the project provides — it could never be installed."),
-				*Missing.ToStringSimple())));
-			return EDataValidationResult::Invalid;
-		}
+		FNexusContentAudit::AuditAttachment(Attachment, Context, Findings);
+	}
+	else
+	{
+		return EDataValidationResult::NotValidated;
+	}
 
+	// Error gates (fails Validate Assets / CI); Warning surfaces but doesn't block; Info is
+	// log-only and left off the validation result to keep the panel signal-to-noise high.
+	bool bAnyError = false;
+	for (const FNexusAuditFinding& Finding : Findings)
+	{
+		if (Finding.Severity == ENexusAuditSeverity::Error)
+		{
+			AssetFails(InAsset, Finding.Message);
+			bAnyError = true;
+		}
+		else if (Finding.Severity == ENexusAuditSeverity::Warning)
+		{
+			// Route warnings through the validation context (the codebase's established
+			// pattern, see UNexusNamingValidator) rather than AssetWarning, whose signature
+			// has varied across engine versions.
+			InContext.AddWarning(Finding.Message);
+		}
+	}
+
+	if (!bAnyError)
+	{
 		AssetPasses(InAsset);
 		return EDataValidationResult::Valid;
 	}
-
-	return EDataValidationResult::NotValidated;
+	return EDataValidationResult::Invalid;
 }
 
 #undef LOCTEXT_NAMESPACE

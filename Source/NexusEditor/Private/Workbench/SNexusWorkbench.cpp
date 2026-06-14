@@ -24,6 +24,7 @@
 #include "Economy/SNexusEconomyView.h"
 #include "Insights/SNexusIconSheet.h"
 #include "Insights/SNexusContentInsights.h"
+#include "Live/SNexusLiveInventory.h"
 #include "Grid/SNexusGridPreview.h"
 #include "Sandbox/SNexusInventorySandbox.h"
 #include "Inventory/SNexusInventoryWorkspace.h"
@@ -475,6 +476,7 @@ TSharedPtr<SWidget> SNexusWorkbench::ConstructToolWidget(FName TabName)
 	if (TabName == FNexusEditorModule::DocsTabName)     { return SNew(SNexusDocsBrowser); }
 	if (TabName == FNexusEditorModule::IconSheetTabName) { return SNew(SNexusIconSheet); }
 	if (TabName == FNexusEditorModule::InsightsTabName) { return SNew(SNexusContentInsights); }
+	if (TabName == FNexusEditorModule::LiveInventoryTabName) { return SNew(SNexusLiveInventory); }
 	return nullptr;
 }
 

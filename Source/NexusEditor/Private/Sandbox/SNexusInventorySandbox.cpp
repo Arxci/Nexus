@@ -24,6 +24,7 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSplitter.h"
+#include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/SListView.h"
 #include "Widgets/Views/STableRow.h"
@@ -52,10 +53,15 @@ void SNexusInventorySandbox::Construct(const FArguments& InArgs)
 			.BorderImage(FAppStyle::Get().GetBrush("Brushes.Panel"))
 			.Padding(10.0f)
 			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				// SWrapBox so the toolbar wraps to a new row in a narrow tool pane instead of
+				// overflowing past the pane edge into the Inspector. InnerSlotPadding gives the
+				// uniform spacing the old per-slot Padding used to.
+				SNew(SWrapBox)
+				.UseAllottedSize(true)
+				.InnerSlotPadding(FVector2D(6.0f, 4.0f))
+				+ SWrapBox::Slot().VAlign(VAlign_Center)
 				[ NexusEditorWidgets::SectionLabel(LOCTEXT("CaseLabel", "CASE")) ]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f)
+				+ SWrapBox::Slot().VAlign(VAlign_Center)
 				[
 					SNew(SComboButton)
 					.OnGetMenuContent(this, &SNexusInventorySandbox::MakeCaseSizeMenu)
@@ -64,7 +70,7 @@ void SNexusInventorySandbox::Construct(const FArguments& InArgs)
 					[ SNew(STextBlock).Text(this, &SNexusInventorySandbox::GetCaseSizeText) ]
 				]
 				// Custom W x H entry.
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
+				+ SWrapBox::Slot().VAlign(VAlign_Center)
 				[
 					SNew(SBox).WidthOverride(56.0f)
 					[
@@ -75,9 +81,9 @@ void SNexusInventorySandbox::Construct(const FArguments& InArgs)
 						.OnValueChanged_Lambda([this](int32 V) { CaseWidth = FMath::Clamp(V, 1, 40); })
 					]
 				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(2.0f, 0.0f)
+				+ SWrapBox::Slot().VAlign(VAlign_Center)
 				[ SNew(STextBlock).Text(LOCTEXT("ByX", "×")) ]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				+ SWrapBox::Slot().VAlign(VAlign_Center)
 				[
 					SNew(SBox).WidthOverride(56.0f)
 					[
@@ -88,14 +94,14 @@ void SNexusInventorySandbox::Construct(const FArguments& InArgs)
 						.OnValueChanged_Lambda([this](int32 V) { CaseHeight = FMath::Clamp(V, 1, 40); })
 					]
 				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f, 0.0f, 0.0f)
+				+ SWrapBox::Slot().VAlign(VAlign_Center)
 				[
 					SNew(SButton)
 					.Text(LOCTEXT("Apply", "Apply"))
 					.ToolTipText(LOCTEXT("ApplyTip", "Resize (and clear) the grid to the custom width × height."))
 					.OnClicked_Lambda([this]() { SetCaseSize(CaseWidth, CaseHeight); return FReply::Handled(); })
 				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
+				+ SWrapBox::Slot().VAlign(VAlign_Center)
 				[
 					SNew(SComboButton)
 					.OnGetMenuContent(this, &SNexusInventorySandbox::MakeCaseItemMenu)
@@ -103,7 +109,7 @@ void SNexusInventorySandbox::Construct(const FArguments& InArgs)
 					.ButtonContent()
 					[ SNew(STextBlock).Text(LOCTEXT("LoadCase", "Load from Case…")) ]
 				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
+				+ SWrapBox::Slot().VAlign(VAlign_Center)
 				[
 					SNew(SComboButton)
 					.OnGetMenuContent(this, &SNexusInventorySandbox::MakeFillMenu)
@@ -111,7 +117,7 @@ void SNexusInventorySandbox::Construct(const FArguments& InArgs)
 					.ButtonContent()
 					[ SNew(STextBlock).Text(LOCTEXT("Fill", "Fill from…")) ]
 				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
+				+ SWrapBox::Slot().VAlign(VAlign_Center)
 				[
 					SNew(SBox).WidthOverride(110.0f)
 					[
@@ -120,14 +126,14 @@ void SNexusInventorySandbox::Construct(const FArguments& InArgs)
 						.ToolTipText(LOCTEXT("LayoutNameTip", "Name to save the current packing under."))
 					]
 				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f, 0.0f, 0.0f)
+				+ SWrapBox::Slot().VAlign(VAlign_Center)
 				[
 					SNew(SButton)
 					.Text(LOCTEXT("SaveLayout", "Save"))
 					.ToolTipText(LOCTEXT("SaveLayoutTip", "Save the current packing under the name on the left (per-user)."))
 					.OnClicked(this, &SNexusInventorySandbox::OnSaveLayoutClicked)
 				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f, 0.0f, 0.0f)
+				+ SWrapBox::Slot().VAlign(VAlign_Center)
 				[
 					SNew(SComboButton)
 					.OnGetMenuContent(this, &SNexusInventorySandbox::MakeLoadLayoutMenu)
@@ -135,29 +141,28 @@ void SNexusInventorySandbox::Construct(const FArguments& InArgs)
 					.ButtonContent()
 					[ SNew(STextBlock).Text(LOCTEXT("LoadLayout", "Load ▾")) ]
 				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(12.0f, 0.0f, 0.0f, 0.0f)
+				+ SWrapBox::Slot().VAlign(VAlign_Center)
 				[
 					SNew(SButton)
 					.Text(LOCTEXT("AutoArrange", "Auto-arrange"))
 					.ToolTipText(LOCTEXT("AutoArrangeTip", "Run the runtime first-fit-decreasing repack (the in-game Optimize)."))
 					.OnClicked(this, &SNexusInventorySandbox::OnAutoArrangeClicked)
 				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f, 0.0f, 0.0f)
+				+ SWrapBox::Slot().VAlign(VAlign_Center)
 				[
 					SNew(SButton)
 					.Text(LOCTEXT("Rotate", "Rotate"))
 					.ToolTipText(LOCTEXT("RotateTip", "Rotate the item you're currently dragging 90° (or press R)."))
 					.OnClicked(this, &SNexusInventorySandbox::OnRotateClicked)
 				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f, 0.0f, 0.0f)
+				+ SWrapBox::Slot().VAlign(VAlign_Center)
 				[
 					SNew(SButton)
 					.Text(LOCTEXT("Clear", "Clear"))
 					.ToolTipText(LOCTEXT("ClearTip", "Empty the grid."))
 					.OnClicked(this, &SNexusInventorySandbox::OnClearClicked)
 				]
-				+ SHorizontalBox::Slot().FillWidth(1.0f)[ SNullWidget::NullWidget ]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				+ SWrapBox::Slot().VAlign(VAlign_Center)
 				[
 					SNew(SButton)
 					.Text(LOCTEXT("Refresh", "Refresh"))

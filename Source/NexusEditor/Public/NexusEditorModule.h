@@ -9,20 +9,7 @@ class SDockTab;
 class SNexusCreatorWindow;
 class UToolMenu;
 
-/**
- * Editor module entry point. On startup it registers the Nexus tool tabs as
- * nomad tabs and adds entries to the level editor's Tools menu (as a single
- * Tools → Nexus submenu) plus a "Nexus" combo button on the Level Editor
- * toolbar. The Workbench is the suite's single home: a three-pane window
- * (Navigator | Tool | Inspector) with a Home page that folds in the old Hub's
- * cards and audit summary; the toolbar and Tools menu open it. The individual
- * tool tabs stay registered as optional tear-offs. The module also owns the
- * shared selection service (FNexusSelectionService) so a click in any tool
- * surfaces that asset in the Workbench's Inspector. The cross-asset validator
- * (UNexusContentGraphValidator) needs no manual registration — the editor's
- * validation subsystem discovers UEditorValidatorBase subclasses by reflection
- * once this module is loaded.
- */
+
 class FNexusEditorModule : public IModuleInterface
 {
 public:
@@ -70,6 +57,7 @@ public:
 	static const FName DocsTabName;
 	static const FName IconSheetTabName;
 	static const FName InsightsTabName;
+	static const FName LiveInventoryTabName;
 
 private:
 	void RegisterMenus();
@@ -91,6 +79,7 @@ private:
 	TSharedRef<SDockTab> SpawnDocsTab(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnIconSheetTab(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnInsightsTab(const FSpawnTabArgs& Args);
+	TSharedRef<SDockTab> SpawnLiveInventoryTab(const FSpawnTabArgs& Args);
 
 	/** The live Creator window, so other tools can hand assets to it. */
 	static TWeakPtr<SNexusCreatorWindow> ActiveCreator;
